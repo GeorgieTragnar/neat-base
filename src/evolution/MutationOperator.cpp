@@ -79,7 +79,9 @@ bool MutationOperator::addConnectionMutation(core::Genome& genome) {
 	auto [fromNode, toNode] = possibleConnections[connDist(rng)];
 	
 	// Create new connection with random weight
-	return genome.addConnection(fromNode, toNode, newWeightDist(rng));
+	genome.addConnection(fromNode, toNode, newWeightDist(rng));
+	
+	return true;
 }
 
 std::vector<std::pair<int32_t, int32_t>> MutationOperator::findPossibleConnections(const core::Genome& genome) {

@@ -14,13 +14,19 @@ namespace visualization {
 class InteractiveNetwork {
 public:
     struct Config {
-        int updateInterval = 100;  // milliseconds
-        bool showNodeValues = true;
-        bool animateSignals = true;
-        bool showStatistics = true;
+        int updateInterval;
+        bool showNodeValues;
+        bool animateSignals;
+        bool showStatistics;
+        
+        Config() 
+            : updateInterval(100)
+            , showNodeValues(true)
+            , animateSignals(true)
+            , showStatistics(true) {}
     };
 
-    InteractiveNetwork(const core::Genome& genome, const Config& config = Config{});
+    explicit InteractiveNetwork(const core::Genome& genome, const Config& config = Config{});
     
     // Start interactive visualization
     void start();

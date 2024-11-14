@@ -25,7 +25,7 @@ public:
     core::Genome crossover(const core::Genome& parent1, const core::Genome& parent2);
 
 private:
-    using GenePtr = const std::shared_ptr<core::Gene>;
+    using GenePtr = std::shared_ptr<core::Gene>;
     using GenePair = std::pair<GenePtr, GenePtr>;
     using InheritanceMap = std::map<int32_t, GenePair>;
 

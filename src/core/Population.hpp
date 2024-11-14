@@ -2,6 +2,7 @@
 #pragma once
 #include <cstdint>
 #include <functional>
+#include <random>
 
 namespace neat {
 namespace core {
@@ -26,6 +27,11 @@ public:
     const Genome& getBestGenome() const;
     const std::vector<Species>& getSpecies() const;
     
+    const Genome& getGenome(size_t idx) const { return genomes[idx]; }
+    Genome& getGenome(size_t idx) { return genomes[idx]; }
+    
+    size_t size() const { return genomes.size(); }
+    
 private:
     std::vector<Genome> genomes;
     std::vector<Species> species;
@@ -37,6 +43,8 @@ private:
     int32_t selectSpecies();
     void removeStaleSpecies();
     void removeWeakSpecies();
+
+    std::mt19937 rng;
 };
 
 }

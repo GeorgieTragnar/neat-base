@@ -25,7 +25,7 @@ void Network::addNode(int32_t id, core::ENodeType type) {
 	}
 }
 
-void Network::addConnection(int32_t fromId, int32_t toId, double weight, bool enabled = true) {
+void Network::addConnection(int32_t fromId, int32_t toId, double weight, bool enabled) {
 	auto from = fromId == -1 ? biasNode : nodes[fromId];
 	auto to = nodes[toId];
 	

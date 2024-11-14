@@ -36,7 +36,7 @@ public:
         double averageFitness;
         int32_t generation;
         int32_t speciesCount;
-        const std::shared_ptr<core::Genome> bestGenome;
+        std::shared_ptr<core::Genome> bestGenome;
     };
 
     const Stats& getStats() const;

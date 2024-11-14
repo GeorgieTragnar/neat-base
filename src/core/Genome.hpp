@@ -26,6 +26,53 @@ public:
     };
     
     Genome() = default;
+    // Copy constructor
+    Genome(const Genome& other)
+        : genes(other.genes)
+        , nodes(other.nodes)
+        , fitness(other.fitness)
+        , adjustedFitness(other.adjustedFitness)
+        , speciesId(other.speciesId)
+        , maxNodeId(other.maxNodeId)
+        , config(other.config) {}
+    
+    // Move constructor
+    Genome(Genome&& other) noexcept
+        : genes(std::move(other.genes))
+        , nodes(std::move(other.nodes))
+        , fitness(other.fitness)
+        , adjustedFitness(other.adjustedFitness)
+        , speciesId(other.speciesId)
+        , maxNodeId(other.maxNodeId)
+        , config(other.config) {}
+    
+    // Copy assignment
+    Genome& operator=(const Genome& other) {
+        if (this != &other) {
+            genes = other.genes;
+            nodes = other.nodes;
+            fitness = other.fitness;
+            adjustedFitness = other.adjustedFitness;
+            speciesId = other.speciesId;
+            maxNodeId = other.maxNodeId;
+            config = other.config;
+        }
+        return *this;
+    }
+    
+    // Move assignment
+    Genome& operator=(Genome&& other) noexcept {
+        if (this != &other) {
+            genes = std::move(other.genes);
+            nodes = std::move(other.nodes);
+            fitness = other.fitness;
+            adjustedFitness = other.adjustedFitness;
+            speciesId = other.speciesId;
+            maxNodeId = other.maxNodeId;
+            config = other.config;
+        }
+        return *this;
+    }
     explicit Genome(const Config& config);
     
     // Initialization
@@ -54,11 +101,19 @@ public:
     int32_t getSpecies() const noexcept { return speciesId; }
     const std::vector<Gene>& getGenes() const noexcept { return genes; }
     const std::map<NodeId, ENodeType>& getNodes() const noexcept { return nodes; }
+    std::vector<Gene>& getGenes() noexcept { return genes; }
+    std::map<NodeId, ENodeType>& getNodes() noexcept { return nodes; }
     
     // Modifiers
     void setFitness(Fitness f) noexcept { fitness = f; }
     void setAdjustedFitness(Fitness f) noexcept { adjustedFitness = f; }
     void setSpecies(int32_t id) noexcept { speciesId = id; }
+
+    
+    void rebuildNetwork();
+    bool isValidConnection(NodeId from, NodeId to) const;
+
+    Config getConfig() const { return config; }
 
 private:
     std::vector<Gene> genes;
@@ -70,9 +125,6 @@ private:
     int32_t maxNodeId = -1;
     Config config;
     std::mt19937 rng;
-    
-    void rebuildNetwork();
-    bool isValidConnection(NodeId from, NodeId to) const;
 };
 
 }
