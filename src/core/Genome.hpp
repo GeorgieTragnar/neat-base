@@ -1,8 +1,8 @@
 // genome.hpp
 #pragma once
-#include <cstdint>
-#include <vector>
-#include <map>
+
+#include <random>
+#include "network/Network.hpp"
 
 namespace neat {
 namespace core {
@@ -22,14 +22,20 @@ public:
         double newLinkRate = 0.05;
         double weightPerturbationRange = 0.2;
         double newWeightRange = 2.0;
+        network::Network::Config networkConfig;
     };
     
     Genome() = default;
     explicit Genome(const Config& config);
     
+    // Initialization
+    void initMinimalTopology(int32_t inputs, int32_t outputs);
+    NodeId getNextNodeId() noexcept { return ++maxNodeId; }
+
     // Core genome operations
     void addNode(NodeId id, ENodeType type);
     void addGene(const Gene& gene);
+    void addConnection(NodeId from, NodeId to, double weight);
     bool addConnectionMutation();
     bool addNodeMutation();
     void mutateWeights();
@@ -57,18 +63,16 @@ public:
 private:
     std::vector<Gene> genes;
     std::map<NodeId, ENodeType> nodes;
+    std::unique_ptr<network::Network> network;
     Fitness fitness = 0.0;
     Fitness adjustedFitness = 0.0;
     int32_t speciesId = -1;
     int32_t maxNodeId = -1;
     Config config;
+    std::mt19937 rng;
     
-    // Helper methods
-    bool hasCycle() const;
+    void rebuildNetwork();
     bool isValidConnection(NodeId from, NodeId to) const;
-    std::vector<NodeId> getTopologicalOrder() const;
-    void sanitizeNetwork();
-    static double activation(double x);
 };
 
 }
