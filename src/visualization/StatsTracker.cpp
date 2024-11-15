@@ -1,5 +1,6 @@
 #include "StatsTracker.hpp"
 #include "core/Population.hpp"
+#include "core/Species.hpp"
 #include <fstream>
 #include <sstream>
 #include <algorithm>
