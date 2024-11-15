@@ -15,14 +15,29 @@ const std::vector<double> XOR_OUTPUTS = {0, 1, 1, 0};
 
 double evaluateXORFitness(const core::Genome& genome) {
     double fitness = 4.0;  // Start with max fitness and subtract errors
-    std::vector<double> inputs(3);  // 2 inputs + bias
-    inputs[2] = 1.0;  // Bias input
+    
+    // Get number of inputs the network expects
+    size_t inputCount = std::count_if(genome.getNodes().begin(), genome.getNodes().end(),
+        [](const auto& pair) { return pair.second == neat::core::ENodeType::INPUT; });
+    
+    std::vector<double> inputs(inputCount);  // Will include bias if present
     
     for (size_t i = 0; i < XOR_INPUTS.size(); i++) {
-        inputs[0] = XOR_INPUTS[i][0];
-        inputs[1] = XOR_INPUTS[i][1];
+        // Copy the XOR inputs
+        for (size_t j = 0; j < XOR_INPUTS[i].size(); j++) {
+            inputs[j] = XOR_INPUTS[i][j];
+        }
+        
+        // If we have an extra input (bias), set it to 1.0
+        if (inputs.size() > XOR_INPUTS[i].size()) {
+            inputs.back() = 1.0;
+        }
         
         auto outputs = genome.activate(inputs);
+        if (outputs.empty()) {
+            return 0.0;  // Handle error case
+        }
+        
         double error = std::abs(outputs[0] - XOR_OUTPUTS[i]);
         fitness -= error * error;  // Square error
     }
@@ -37,10 +52,14 @@ void generationCallback(int32_t generation, const core::Population& population) 
 }
 
 int main() {
-    core::NEAT::Config config;
-    config.inputSize = 3;  // 2 inputs + bias
-    config.outputSize = 1;
+    core::NEAT::Config config(2, 1);
     config.populationConfig.populationSize = 150;
+    
+    // Print configuration
+    std::cout << "Creating NEAT with configuration:" << std::endl
+              << "Inputs: " << config.inputSize << std::endl
+              << "Outputs: " << config.outputSize << std::endl
+              << "Population size: " << config.populationConfig.populationSize << std::endl;
     
     core::NEAT neat(config);
     

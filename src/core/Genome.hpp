@@ -4,6 +4,7 @@
 #include <random>
 #include <set>
 #include "network/Network.hpp"
+#include <iostream>
 
 namespace neat {
 namespace core {
@@ -24,6 +25,10 @@ public:
         double weightPerturbationRange = 0.2;
         double newWeightRange = 2.0;
         network::Network::Config networkConfig;
+        
+        Config() = default;
+        Config(int32_t inputs, int32_t outputs) 
+            : networkConfig(inputs, outputs) {}
     };
     
     // Enhanced constructors with validation
@@ -35,21 +40,29 @@ public:
         , speciesIdx(-1)
         , maxNodeIdx(-1)
         , rng(std::random_device{}()) {
-        nodes[-1] = ENodeType::BIAS;
-        network->addNode(-1, ENodeType::BIAS);  // Add bias to network
+        // Initialize bias node
+        addNode(-1, ENodeType::BIAS, false);
     }
 
     // Copy constructor
     Genome(const Genome& other)
         : genes(other.genes)
-        , nodes(other.nodes)
+        , nodes(other.nodes)  // Copy nodes first
+        , config(other.config)
         , fitness(other.fitness)
         , adjustedFitness(other.adjustedFitness)
         , speciesIdx(other.speciesIdx)
         , maxNodeIdx(other.maxNodeIdx)
-        , config(other.config)
-        , network(std::make_unique<network::Network>(config.networkConfig))
+        , network(std::make_unique<network::Network>(other.config.networkConfig))
         , rng(std::random_device{}()) {
+    
+        // Debug output
+        std::cout << "Copying genome with " << std::count_if(nodes.begin(), nodes.end(),
+            [](const auto& pair) { return pair.second == ENodeType::INPUT; })
+            << " inputs and " << std::count_if(nodes.begin(), nodes.end(),
+            [](const auto& pair) { return pair.second == ENodeType::OUTPUT; })
+            << " outputs" << std::endl;
+
         rebuildNetwork();
         validate();
     }
@@ -106,8 +119,8 @@ public:
         , maxNodeIdx(-1)
         , network(std::make_unique<network::Network>(config.networkConfig))
         , rng(std::random_device{}()) {
-            nodes[-1] = ENodeType::BIAS;  // Ensure bias node exists
-            network->addNode(-1, ENodeType::BIAS);  // Add bias to network
+            // Initialize bias node
+            addNode(-1, ENodeType::BIAS, false);
         }
     
     // Initialization
@@ -117,7 +130,7 @@ public:
     // Core genome operations
     void addNode(NodeId id, ENodeType type, bool validateAfter = true);
     void addGene(const Gene& gene, bool validateAfter = true);
-    void addConnection(NodeId from, NodeId to, double weight);
+    void addConnection(NodeId from, NodeId to, double weight, bool validateAfter = true);
     bool addConnectionMutation();
     bool addNodeMutation();
     void mutateWeights();
@@ -157,6 +170,12 @@ public:
     Config getConfig() const { return config; }
 
 private:
+
+
+    // Add these validation helper methods to the Genome class private section
+    void ensureNodeExists(NodeId id, ENodeType type);
+    std::vector<std::pair<NodeId, NodeId>> findPossibleConnections() const;
+    bool wouldCreateCycle(NodeId fromId, NodeId toId) const;
 
     bool hasCycle() const;
     bool validateNodeStructure() const;

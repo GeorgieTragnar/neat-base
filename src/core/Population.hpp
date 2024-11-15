@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <random>
+#include "core/Genome.hpp"
 
 namespace neat {
 namespace core {
@@ -19,6 +20,11 @@ public:
         int32_t speciesTargetSize = 5;
         int32_t tournamentSize = 3;
         double elitismRate = 0.1;
+        Genome::Config genomeConfig;
+        
+        Config() = default;
+        Config(int32_t inputs, int32_t outputs)
+            : genomeConfig(inputs, outputs) {}
     };
     
     Population(int32_t inputSize, int32_t outputSize, const Config& config);

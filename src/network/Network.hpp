@@ -12,9 +12,16 @@ namespace network {
 class Network {
 public:
     struct Config {
+        int32_t inputSize = 0;
+        int32_t outputSize = 0;
         activation::EActivationFunction activationFunction = activation::EActivationFunction::SIGMOID;
         bool allowRecurrent = false;
         double biasValue = 1.0;
+        
+        Config() = default;
+        Config(int32_t inputs, int32_t outputs)
+            : inputSize(inputs)
+            , outputSize(outputs) {}
     };
     
     Network(const Config& config)

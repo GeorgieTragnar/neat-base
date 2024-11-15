@@ -13,7 +13,12 @@ public:
         int32_t inputSize;
         int32_t outputSize;
         Population::Config populationConfig;
-        Genome::Config genomeConfig;
+
+        // Add explicit Genome config initialization
+        Config(int32_t inputs, int32_t outputs) 
+            : inputSize(inputs)
+            , outputSize(outputs)
+            , populationConfig(inputs, outputs) {}
     };
     
     explicit NEAT(const Config& config);

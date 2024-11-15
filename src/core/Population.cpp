@@ -3,18 +3,44 @@
 #include "Species.hpp"
 #include <algorithm>
 #include <random>
+#include <iostream>
 
 namespace neat {
 namespace core {
 
 Population::Population(int32_t inputSize, int32_t outputSize, const Config& config)
-    : config(config) {
+    : config(config)
+    , rng(std::random_device{}()) {
     
+    std::cout << "Creating population with " << inputSize << " inputs and " 
+              << outputSize << " outputs" << std::endl;
+              
     genomes.reserve(config.populationSize);
+    
+    // Create initial genomes with proper config
     for (int32_t i = 0; i < config.populationSize; ++i) {
-        genomes.emplace_back(Genome::Config{});
-        genomes.back().initMinimalTopology(inputSize, outputSize);
+        // Pass the genome config from population config
+        Genome genome(config.genomeConfig);
+        genome.initMinimalTopology(inputSize, outputSize);
+        
+        // Verify genome structure
+        auto& nodes = genome.getNodes();
+        int inputCount = 0, outputCount = 0;
+        for (const auto& [id, type] : nodes) {
+            if (type == ENodeType::INPUT) inputCount++;
+            if (type == ENodeType::OUTPUT) outputCount++;
+        }
+        
+        std::cout << "Genome " << i << " initialized with " 
+                  << inputCount << " inputs and "
+                  << outputCount << " outputs" << std::endl;
+                  
+        genomes.push_back(std::move(genome));
     }
+    
+    std::cout << "Population initialized with " << genomes.size() 
+              << " genomes" << std::endl;
+              
     speciate();
 }
 

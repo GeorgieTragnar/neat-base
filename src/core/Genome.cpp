@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <queue>
+#include <iostream>
 
 namespace neat {
 namespace core {
@@ -12,16 +13,26 @@ namespace core {
 
 // Validation helper methods
 bool Genome::validateNodeStructure() const {
-    // Check node ID bounds and required types
-    bool hasInput = false, hasOutput = false;
+    // Count input and output nodes
+    int inputCount = 0;
+    int outputCount = 0;
+    bool hasBias = false;
+    
     for (const auto& [id, type] : nodes) {
-        if (id > maxNodeIdx && id != -1) {
-            return false;
+        if (id == -1 && type == ENodeType::BIAS) {
+            hasBias = true;
+        } else if (type == ENodeType::INPUT) {
+            inputCount++;
+        } else if (type == ENodeType::OUTPUT) {
+            outputCount++;
         }
-        if (type == ENodeType::INPUT) hasInput = true;
-        if (type == ENodeType::OUTPUT) hasOutput = true;
     }
-    return hasInput && hasOutput;
+    
+    // Network must have:
+    // 1. At least one input node
+    // 2. At least one output node
+    // 3. A bias node
+    return inputCount > 0 && outputCount > 0 && hasBias;
 }
 
 bool Genome::validateGeneStructure() const {
@@ -144,88 +155,270 @@ void Genome::sanitizeNetwork() {
 }
 
 void Genome::initMinimalTopology(int32_t inputs, int32_t outputs) {
-    // Add bias node
-    addNode(-1, ENodeType::BIAS);
+    std::cout << "Initializing minimal topology with " << inputs 
+              << " inputs and " << outputs << " outputs" << std::endl;
+              
+    // Clear any existing structure
+    nodes.clear();
+    genes.clear();
+    maxNodeIdx = -1;
     
-    // Add input and output nodes
+    addNode(-1, ENodeType::BIAS, false);
+    std::cout << "Added bias node" << std::endl;
+
+    // Add input nodes
+    std::vector<NodeId> inputNodeIds;
     for (int32_t i = 0; i < inputs; ++i) {
-        addNode(getNextNodeId(), ENodeType::INPUT);
+        NodeId id = getNextNodeId();
+        addNode(id, ENodeType::INPUT, false);
+        inputNodeIds.push_back(id);
     }
+    std::cout << "Added " << inputs << " input nodes" << std::endl;
     
+    // Add output nodes
+    std::vector<NodeId> outputNodeIds;
     for (int32_t i = 0; i < outputs; ++i) {
-        addNode(getNextNodeId(), ENodeType::OUTPUT);
+        NodeId id = getNextNodeId();
+        addNode(id, ENodeType::OUTPUT, false);
+        outputNodeIds.push_back(id);
     }
+    std::cout << "Added " << outputs << " output nodes" << std::endl;
     
-    // Connect inputs to outputs
+    // Add connections from all inputs (including bias) to all outputs
     std::uniform_real_distribution<double> weightDist(-config.newWeightRange, config.newWeightRange);
     
-    for (const auto& [fromId, fromType] : nodes) {
-        if (fromType != ENodeType::INPUT && fromType != ENodeType::BIAS) continue;
-        
-        for (const auto& [toId, toType] : nodes) {
-            if (toType != ENodeType::OUTPUT) continue;
-            addConnection(fromId, toId, weightDist(rng));
+    // Connect regular inputs to outputs
+    for (NodeId inputId : inputNodeIds) {
+        for (NodeId outputId : outputNodeIds) {
+            addConnection(inputId, outputId, weightDist(rng), false);
         }
+    }
+
+    // Connect bias to all outputs
+    for (NodeId outputId : outputNodeIds) {
+        addConnection(-1, outputId, weightDist(rng), false);
+    }
+
+    std::cout << "Added connections between nodes" << std::endl;
+    
+    // Print final network structure
+    std::cout << "Final network structure:" << std::endl;
+    std::cout << "Nodes:" << std::endl;
+    for (const auto& [id, type] : nodes) {
+        std::cout << "  Node " << id << ": " 
+                  << (type == ENodeType::INPUT ? "INPUT" :
+                      type == ENodeType::OUTPUT ? "OUTPUT" :
+                      type == ENodeType::BIAS ? "BIAS" : "HIDDEN")
+                  << std::endl;
+    }
+
+    // Now validate the complete network
+    rebuildNetwork();
+    validate();
+}
+
+// Add these validation helper methods to the Genome class private section
+void Genome::ensureNodeExists(NodeId id, ENodeType type) {
+    if (nodes.find(id) == nodes.end()) {
+        nodes[id] = type;
+        if (id > maxNodeIdx && id != -1) {
+            maxNodeIdx = id;
+        }
+        // Update network
+        network->addNode(id, type);
     }
 }
 
+std::vector<std::pair<Genome::NodeId, Genome::NodeId>> Genome::findPossibleConnections() const {
+    std::vector<std::pair<NodeId, NodeId>> result;
+    
+    // Create set of existing connections for quick lookup
+    std::set<std::pair<NodeId, NodeId>> existingConns;
+    for (const auto& gene : genes) {
+        if (gene.enabled) {
+            existingConns.insert({gene.inputNode, gene.outputNode});
+        }
+    }
+    
+    // Check all possible node pairs
+    for (const auto& [fromId, fromType] : nodes) {
+        if (fromType == ENodeType::OUTPUT) continue; // Outputs can't be source nodes
+        
+        for (const auto& [toId, toType] : nodes) {
+            if (toType == ENodeType::INPUT) continue; // Inputs can't be target nodes
+            if (fromId == toId) continue; // No self-connections
+            
+            // Skip if connection already exists
+            if (existingConns.find({fromId, toId}) != existingConns.end()) {
+                continue;
+            }
+            
+            // Skip if would create cycle (for feed-forward networks)
+            if (!config.networkConfig.allowRecurrent && wouldCreateCycle(fromId, toId)) {
+                continue;
+            }
+            
+            result.emplace_back(fromId, toId);
+        }
+    }
+    
+    return result;
+}
+
+// Add this implementation to Genome.cpp:
+bool Genome::wouldCreateCycle(NodeId fromId, NodeId toId) const {
+    if (fromId == toId) {
+        return true;  // Self-connection is a cycle
+    }
+    
+    // Create adjacency list for enabled connections
+    std::map<NodeId, std::vector<NodeId>> adjacencyList;
+    for (const auto& gene : genes) {
+        if (gene.enabled) {
+            adjacencyList[gene.inputNode].push_back(gene.outputNode);
+        }
+    }
+    
+    // Temporarily add the new connection
+    adjacencyList[fromId].push_back(toId);
+    
+    // Use DFS to detect cycles
+    std::set<NodeId> visited;
+    std::set<NodeId> recursionStack;
+    
+    std::function<bool(NodeId)> hasCycleUtil = [&](NodeId node) -> bool {
+        if (recursionStack.find(node) != recursionStack.end()) {
+            return true;  // Node is in recursion stack - cycle found
+        }
+        
+        if (visited.find(node) != visited.end()) {
+            return false;  // Already visited this path - no cycle here
+        }
+        
+        visited.insert(node);
+        recursionStack.insert(node);
+        
+        // Check all neighbors
+        for (NodeId neighbor : adjacencyList[node]) {
+            if (hasCycleUtil(neighbor)) {
+                return true;
+            }
+        }
+        
+        recursionStack.erase(node);
+        return false;
+    };
+    
+    // Start DFS from the new source node
+    return hasCycleUtil(fromId);
+}
+
 void Genome::addNode(NodeId id, ENodeType type, bool validateAfter) {
+    // Don't allow duplicate nodes
+    if (nodes.find(id) != nodes.end()) {
+        return;
+    }
+    
     nodes[id] = type;
     if (id > maxNodeIdx && id != -1) {
         maxNodeIdx = id;
     }
+    
+    // Keep network in sync
     network->addNode(id, type);
-    if (validateAfter)
+    
+    if (validateAfter) {
         validate();
+    }
 }
 
 void Genome::addGene(const Gene& gene, bool validateAfter) {
-    genes.push_back(gene);
-    if (gene.enabled)
-        network->addConnection(gene.inputNode, gene.outputNode, gene.weight, gene.enabled);
-    if (validateAfter)
+    // Check if gene already exists
+    auto it = std::find_if(genes.begin(), genes.end(),
+        [&gene](const Gene& existing) {
+            return existing.inputNode == gene.inputNode && 
+                   existing.outputNode == gene.outputNode;
+        });
+        
+    if (it != genes.end()) {
+        // Update existing gene
+        it->weight = gene.weight;
+        it->enabled = gene.enabled;
+        it->innovation = gene.innovation;
+        
+        // Update connection in network if enabled status or weight changed
+        if (gene.enabled) {
+            network->addConnection(gene.inputNode, gene.outputNode, gene.weight);
+        }
+    } else {
+        // Add new gene
+        genes.push_back(gene);
+        
+        // Add to network if enabled
+        if (gene.enabled) {
+            network->addConnection(gene.inputNode, gene.outputNode, gene.weight);
+        }
+    }
+    
+    if (validateAfter) {
         validate();
+    }
 }
 
-void Genome::addConnection(NodeId from, NodeId to, double weight) {
+void Genome::addConnection(NodeId from, NodeId to, double weight, bool validateAfter) {
+    // Ensure both nodes exist before adding connection
+    if (from != -1) {  // Skip check for bias node
+        auto fromType = nodes.find(from) != nodes.end() ? nodes[from] : ENodeType::HIDDEN;
+        ensureNodeExists(from, fromType);
+    }
+    
+    auto toType = nodes.find(to) != nodes.end() ? nodes[to] : ENodeType::HIDDEN;
+    ensureNodeExists(to, toType);
+    
+    // Now add the connection
     Gene gene(from, to, weight, true, InnovationTracker::getNextInnovation());
-    addGene(gene);
+    genes.push_back(gene);
+    
+    // Update network
+    if (gene.enabled) {
+        network->addConnection(gene.inputNode, gene.outputNode, gene.weight);
+    }
+    
+    if (validateAfter) {
+        validate();
+    }
 }
 
 bool Genome::addConnectionMutation() {
+    std::cout << "Starting connection mutation with " 
+              << std::count_if(nodes.begin(), nodes.end(),
+                  [](const auto& pair) { return pair.second == ENodeType::INPUT; })
+              << " inputs and " 
+              << std::count_if(nodes.begin(), nodes.end(),
+                  [](const auto& pair) { return pair.second == ENodeType::OUTPUT; })
+              << " outputs" << std::endl;
+              
     // Make a backup before mutation
     auto backup = *this;
     
     try {
-        std::uniform_real_distribution<double> weightDist(-config.newWeightRange, config.newWeightRange);
-        
-        // Find all possible connections
-        std::vector<std::pair<NodeId, NodeId>> possibleConnections;
-        
-        for (const auto& [fromId, fromType] : nodes) {
-            if (fromType == ENodeType::OUTPUT) continue;
-            
-            for (const auto& [toId, toType] : nodes) {
-                if (toType == ENodeType::INPUT || fromId == toId) continue;
-                
-                if (isValidConnection(fromId, toId)) {
-                    possibleConnections.emplace_back(fromId, toId);
-                }
-            }
+        auto possibleConnections = findPossibleConnections();
+        if (possibleConnections.empty()) {
+            return false;
         }
         
-        if (possibleConnections.empty()) return false;
+        // Select random possible connection
+        std::uniform_int_distribution<size_t> dist(0, possibleConnections.size() - 1);
+        auto [fromId, toId] = possibleConnections[dist(rng)];
         
-        // Select random connection
-        std::uniform_int_distribution<size_t> connDist(0, possibleConnections.size() - 1);
-        auto [fromId, toId] = possibleConnections[connDist(rng)];
+        // Generate random weight
+        std::uniform_real_distribution<double> weightDist(-config.newWeightRange, config.newWeightRange);
+        double weight = weightDist(rng);
         
-        addConnection(fromId, toId, weightDist(rng));
+        // Add new connection with validation
+        addConnection(fromId, toId, weight);
         
-        // Validate the modified network
-        validate();
         return true;
-        
     } catch (const std::exception& e) {
         // Restore backup on failure
         *this = backup;
@@ -387,25 +580,67 @@ std::vector<double> Genome::activate(const std::vector<double>& inputs) const {
 bool Genome::validate() const {
     std::vector<std::string> errors;
     
-    if (!validateNodeStructure()) {
-        errors.push_back("Invalid node structure");
+    // Debug output for node structure
+    std::cout << "Validating genome..." << std::endl;
+    std::cout << "Node structure:" << std::endl;
+    for (const auto& [id, type] : nodes) {
+        std::cout << "  Node " << id << ": " 
+                  << (type == ENodeType::INPUT ? "INPUT" :
+                      type == ENodeType::OUTPUT ? "OUTPUT" :
+                      type == ENodeType::BIAS ? "BIAS" : "HIDDEN")
+                  << std::endl;
     }
+
+    // Check node structure
+    if (!validateNodeStructure()) {
+        int inputCount = 0;
+        int outputCount = 0;
+        int biasCount = 0;
+        for (const auto& [id, type] : nodes) {
+            if (type == ENodeType::INPUT) inputCount++;
+            if (type == ENodeType::OUTPUT) outputCount++;
+            if (type == ENodeType::BIAS) biasCount++;
+        }
+        errors.push_back("Invalid node structure: Found " + 
+                        std::to_string(inputCount) + " inputs, " +
+                        std::to_string(outputCount) + " outputs, and " +
+                        std::to_string(biasCount) + " bias nodes");
+    }
+    
+    // Debug output for genes
+    std::cout << "Gene structure:" << std::endl;
+    for (const auto& gene : genes) {
+        std::cout << "  Gene: " << gene.inputNode << " -> " << gene.outputNode 
+                  << " (weight: " << gene.weight 
+                  << ", enabled: " << (gene.enabled ? "yes" : "no") << ")" << std::endl;
+    }
+    
+    // Check gene structure
     if (!validateGeneStructure()) {
         errors.push_back("Invalid gene structure");
     }
-    if (hasCycle()) {
-        errors.push_back("Network contains cycles");
+    
+    // Check for cycles in feedforward networks
+    if (!config.networkConfig.allowRecurrent && hasCycle()) {
+        errors.push_back("Network contains cycles in feedforward mode");
     }
     
+    // Check output node reachability
     auto reachable = getReachableNodes();
+    std::cout << "Reachable nodes: ";
+    for (const auto& id : reachable) {
+        std::cout << id << " ";
+    }
+    std::cout << std::endl;
+    
     for (const auto& [id, type] : nodes) {
         if (type == ENodeType::OUTPUT && reachable.find(id) == reachable.end()) {
             errors.push_back("Output node " + std::to_string(id) + " is not reachable");
         }
     }
     
-    // Add network validation
-    if (!network->validate()) {
+    // Network level validation
+    if (network && !network->validate()) {
         errors.push_back("Neural network validation failed");
     }
     
@@ -414,10 +649,12 @@ bool Genome::validate() const {
         for (const auto& error : errors) {
             errorMsg += "- " + error + "\n";
         }
+        std::cout << "Validation failed with errors:\n" << errorMsg;
         throw std::runtime_error(errorMsg);
     }
-
-    return network->validate();
+    
+    std::cout << "Validation successful" << std::endl;
+    return true;
 }
 
 }
