@@ -7,6 +7,9 @@
 #include <vector>
 #include <filesystem>
 
+#include "logger/Logger.hpp"
+static auto logger = LOGGER("main");
+
 using namespace neat;
 
 // XOR truth table inputs/outputs
@@ -62,6 +65,8 @@ int main() {
               << "Inputs: " << config.inputSize << std::endl
               << "Outputs: " << config.outputSize << std::endl
               << "Population size: " << config.populationConfig.populationSize << std::endl;
+
+    LOG_FATAL("hello");
     
     core::NEAT neat(config);
     
