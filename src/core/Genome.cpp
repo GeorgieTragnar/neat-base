@@ -232,6 +232,16 @@ void Genome::ensureNodeExists(NodeId id, ENodeType type) {
 std::vector<std::pair<Genome::NodeId, Genome::NodeId>> Genome::findPossibleConnections() const {
     std::vector<std::pair<NodeId, NodeId>> result;
     
+    std::cout << "Finding possible connections:" << std::endl;
+    std::cout << "Current nodes:" << std::endl;
+    for (const auto& [id, type] : nodes) {
+        std::cout << "  Node " << id << ": " 
+                  << (type == ENodeType::INPUT ? "INPUT" :
+                      type == ENodeType::OUTPUT ? "OUTPUT" :
+                      type == ENodeType::BIAS ? "BIAS" : "HIDDEN")
+                  << std::endl;
+    }
+    
     // Create set of existing connections for quick lookup
     std::set<std::pair<NodeId, NodeId>> existingConns;
     for (const auto& gene : genes) {
@@ -259,6 +269,7 @@ std::vector<std::pair<Genome::NodeId, Genome::NodeId>> Genome::findPossibleConne
             }
             
             result.emplace_back(fromId, toId);
+            std::cout << "  Found possible connection: " << fromId << " -> " << toId << std::endl;
         }
     }
     
@@ -390,6 +401,8 @@ void Genome::addConnection(NodeId from, NodeId to, double weight, bool validateA
 }
 
 bool Genome::addConnectionMutation() {
+    validate();
+
     std::cout << "Starting connection mutation with " 
               << std::count_if(nodes.begin(), nodes.end(),
                   [](const auto& pair) { return pair.second == ENodeType::INPUT; })
@@ -398,13 +411,27 @@ bool Genome::addConnectionMutation() {
                   [](const auto& pair) { return pair.second == ENodeType::OUTPUT; })
               << " outputs" << std::endl;
               
-    // Make a backup before mutation
-    auto backup = *this;
-    
+    // Make a deep copy backup using copy constructor
+    Genome backup(*this);
+    std::cout << "Created backup - validating..." << std::endl;
+    backup.validate();
+
     try {
+        std::cout << "Finding possible connections..." << std::endl;
         auto possibleConnections = findPossibleConnections();
         if (possibleConnections.empty()) {
+            std::cout << "No possible connections found" << std::endl;
             return false;
+        }
+        
+        // Print current node structure before mutation
+        std::cout << "Current node structure before mutation:" << std::endl;
+        for (const auto& [id, type] : nodes) {
+            std::cout << "  Node " << id << ": " 
+                      << (type == ENodeType::INPUT ? "INPUT" :
+                          type == ENodeType::OUTPUT ? "OUTPUT" :
+                          type == ENodeType::BIAS ? "BIAS" : "HIDDEN")
+                      << std::endl;
         }
         
         // Select random possible connection
@@ -415,13 +442,28 @@ bool Genome::addConnectionMutation() {
         std::uniform_real_distribution<double> weightDist(-config.newWeightRange, config.newWeightRange);
         double weight = weightDist(rng);
         
+        std::cout << "Adding connection from " << fromId << " to " << toId 
+                  << " with weight " << weight << std::endl;
+                
         // Add new connection with validation
         addConnection(fromId, toId, weight);
         
+        validate();
+
         return true;
     } catch (const std::exception& e) {
-        // Restore backup on failure
-        *this = backup;
+        std::cout << "Connection mutation failed: " << e.what() << std::endl;
+        std::cout << "Restoring from backup..." << std::endl;
+        
+        // Verify backup before restore
+        backup.validate();
+        
+        // Restore using assignment operator
+        *this = std::move(backup);
+        
+        // Verify restoration
+        validate();
+        
         return false;
     }
 }
@@ -434,13 +476,20 @@ Genome Genome::clone() const {
 }
 
 bool Genome::addNodeMutation() {
+    std::cout << "\nStarting node mutation" << std::endl;
+    std::cout << "Current genome state:" << std::endl;
+    std::cout << "  Inputs: " << std::count_if(nodes.begin(), nodes.end(),
+        [](const auto& pair) { return pair.second == ENodeType::INPUT; }) << std::endl;
+    std::cout << "  Outputs: " << std::count_if(nodes.begin(), nodes.end(),
+        [](const auto& pair) { return pair.second == ENodeType::OUTPUT; }) << std::endl;
+    std::cout << "  Total nodes: " << nodes.size() << std::endl;
+    std::cout << "  Total genes: " << genes.size() << std::endl;
+    
     // Make a backup before mutation
     auto backup = *this;
     
     try {
-        if (genes.empty()) return false;
-        
-        // Select random enabled gene
+        // Get enabled genes
         std::vector<std::reference_wrapper<Gene>> enabledGenes;
         for (auto& gene : genes) {
             if (gene.enabled) {
@@ -448,27 +497,53 @@ bool Genome::addNodeMutation() {
             }
         }
         
-        if (enabledGenes.empty()) return false;
+        if (enabledGenes.empty()) {
+            std::cout << "No enabled genes available for node mutation" << std::endl;
+            return false;
+        }
         
         std::uniform_int_distribution<size_t> geneDist(0, enabledGenes.size() - 1);
         Gene& selectedGene = enabledGenes[geneDist(rng)];
         
+        std::cout << "Selected gene: " << selectedGene.inputNode << " -> " 
+                  << selectedGene.outputNode << std::endl;
+        
+        // Store old connection info
+        NodeId fromNode = selectedGene.inputNode;
+        NodeId toNode = selectedGene.outputNode;
+        double oldWeight = selectedGene.weight;
+
         // Disable selected gene
         selectedGene.enabled = false;
         
         // Add new node
         NodeId newNodeId = getNextNodeId();
-        addNode(newNodeId, ENodeType::HIDDEN);
+        std::cout << "Creating new node: " << newNodeId << std::endl;
+
+        addNode(newNodeId, ENodeType::HIDDEN, false);
         
         // Add new connections
-        addConnection(selectedGene.inputNode, newNodeId, 1.0);
-        addConnection(newNodeId, selectedGene.outputNode, selectedGene.weight);
+        std::cout << "Adding new connections" << std::endl;
+        addConnection(fromNode, newNodeId, 1.0, false);  // Weight 1.0 to the new node
+        addConnection(newNodeId, toNode, oldWeight, false);  // Keep old weight to output
         
+        std::cout << "Node mutation complete. New structure:" << std::endl;
+        for (const auto& [id, type] : nodes) {
+            std::cout << "  Node " << id << ": " 
+                      << (type == ENodeType::INPUT ? "INPUT" :
+                          type == ENodeType::OUTPUT ? "OUTPUT" :
+                          type == ENodeType::BIAS ? "BIAS" : "HIDDEN")
+                      << std::endl;
+        }
+
         // Validate the modified network
         validate();
+
+        std::cout << "Node mutation successful" << std::endl;
         return true;
         
     } catch (const std::exception& e) {
+        std::cout << "Node mutation failed: " << e.what() << std::endl;
         // Restore backup on failure
         *this = backup;
         return false;
@@ -489,31 +564,6 @@ void Genome::mutateWeights() {
             }
         }
     }
-}
-
-Genome Genome::crossover(const Genome& parent1, const Genome& parent2, const Config& config) {
-    Genome child(config);
-    
-    // Inherit nodes
-    child.nodes = parent1.nodes;
-    
-    // Match genes by innovation number
-    for (const auto& gene1 : parent1.genes) {
-        auto it = std::find_if(parent2.genes.begin(), parent2.genes.end(),
-            [&gene1](const Gene& gene2) { return gene1.innovation == gene2.innovation; });
-            
-        if (it != parent2.genes.end()) {
-            // Matching gene - randomly inherit from either parent
-            child.addGene(std::uniform_int_distribution<int>(0,1)(child.rng) ? gene1 : *it);
-        } else {
-            // Disjoint/excess gene - inherit from more fit parent
-            if (parent1.fitness >= parent2.fitness) {
-                child.addGene(gene1);
-            }
-        }
-    }
-    
-    return child;
 }
 
 double Genome::compatibilityDistance(const Genome& genome1, const Genome& genome2) {

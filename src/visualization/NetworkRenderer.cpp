@@ -13,56 +13,93 @@ NetworkRenderer::NetworkRenderer(const Config& config) : config(config) {}
 
 void NetworkRenderer::calculateLayout(const core::Genome& genome) {
     nodePositions.clear();
-    const auto& nodes = genome.getNodes();
     
-    // Count nodes of each type
-    size_t inputCount = 0, hiddenCount = 0, outputCount = 0;
-    for (const auto& [id, type] : nodes) {
-        switch (type) {
-            case core::ENodeType::INPUT: inputCount++; break;
-            case core::ENodeType::HIDDEN: hiddenCount++; break;
-            case core::ENodeType::OUTPUT: outputCount++; break;
-            default: break;
+    // First identify actually connected nodes
+    std::set<int32_t> connectedNodes;
+    for (const auto& gene : genome.getGenes()) {
+        if (gene.enabled) {
+            connectedNodes.insert(gene.inputNode);
+            connectedNodes.insert(gene.outputNode);
         }
     }
     
-    // Calculate positions
-    double verticalSpacing = config.height / std::max((size_t)2, std::max(inputCount, outputCount));
-    double horizontalSpacing = config.width / 4.0;
+    // Calculate horizontal positions
+    double inputX = config.width * 0.2;    // 20% from left
+    double hiddenX = config.width * 0.5;   // Center
+    double outputX = config.width * 0.8;   // 80% from left
     
-    size_t inputIdx = 0, hiddenIdx = 0, outputIdx = 0;
-    for (const auto& [id, type] : nodes) {
+    // Group nodes by type
+    std::vector<int32_t> inputNodes, outputNodes, hiddenNodes;
+    for (const auto& [id, type] : genome.getNodes()) {
+        if (connectedNodes.count(id) || type == core::ENodeType::INPUT || type == core::ENodeType::OUTPUT) {
+            switch (type) {
+                case core::ENodeType::INPUT:
+                    inputNodes.push_back(id);
+                    break;
+                case core::ENodeType::OUTPUT:
+                    outputNodes.push_back(id);
+                    break;
+                case core::ENodeType::HIDDEN:
+                    if (connectedNodes.count(id)) {
+                        hiddenNodes.push_back(id);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+    
+    // Sort nodes by ID for consistent layout
+    std::sort(inputNodes.begin(), inputNodes.end());
+    std::sort(hiddenNodes.begin(), hiddenNodes.end());
+    std::sort(outputNodes.begin(), outputNodes.end());
+    
+    // Calculate vertical spacing
+    double verticalSpacing = config.height / (std::max({inputNodes.size(), hiddenNodes.size(), outputNodes.size()}) + 1);
+    
+    // Position bias node at top left
+    NodeLayout biasLayout;
+    biasLayout.id = -1;
+    biasLayout.type = core::ENodeType::BIAS;
+    biasLayout.x = inputX;
+    biasLayout.y = verticalSpacing * 0.5;
+    nodePositions[-1] = biasLayout;
+    
+    // Position input nodes
+    for (size_t i = 0; i < inputNodes.size(); ++i) {
         NodeLayout layout;
-        layout.id = id;
-        layout.type = type;
-        
-        switch (type) {
-            case core::ENodeType::INPUT:
-                layout.x = horizontalSpacing;
-                layout.y = (inputIdx + 1) * verticalSpacing;
-                inputIdx++;
-                break;
-                
-            case core::ENodeType::HIDDEN:
-                layout.x = 2 * horizontalSpacing;
-                layout.y = (hiddenIdx + 1) * (config.height / (hiddenCount + 1));
-                hiddenIdx++;
-                break;
-                
-            case core::ENodeType::OUTPUT:
-                layout.x = 3 * horizontalSpacing;
-                layout.y = (outputIdx + 1) * verticalSpacing;
-                outputIdx++;
-                break;
-                
-            case core::ENodeType::BIAS:
-                layout.x = horizontalSpacing;
-                layout.y = 0;
-                break;
-        }
-        
-        nodePositions[id] = layout;
+        layout.id = inputNodes[i];
+        layout.type = genome.getNodes().at(inputNodes[i]);
+        layout.x = inputX;
+        layout.y = (i + 1) * verticalSpacing;
+        nodePositions[inputNodes[i]] = layout;
     }
+    
+    // Position hidden nodes
+    for (size_t i = 0; i < hiddenNodes.size(); ++i) {
+        NodeLayout layout;
+        layout.id = hiddenNodes[i];
+        layout.type = genome.getNodes().at(hiddenNodes[i]);
+        layout.x = hiddenX;
+        layout.y = (i + 1) * verticalSpacing;
+        nodePositions[hiddenNodes[i]] = layout;
+    }
+    
+    // Position output nodes
+    for (size_t i = 0; i < outputNodes.size(); ++i) {
+        NodeLayout layout;
+        layout.id = outputNodes[i];
+        layout.type = genome.getNodes().at(outputNodes[i]);
+        layout.x = outputX;
+        layout.y = (i + 1) * verticalSpacing;
+        nodePositions[outputNodes[i]] = layout;
+    }
+    
+    std::cout << "Layout calculated with:\n"
+              << "  Input nodes: " << inputNodes.size() << "\n"
+              << "  Hidden nodes (connected): " << hiddenNodes.size() << "\n"
+              << "  Output nodes: " << outputNodes.size() << std::endl;
 }
 
 std::string NetworkRenderer::generateNodeSVG(const NodeLayout& node) {
@@ -92,34 +129,50 @@ std::string NetworkRenderer::generateNodeSVG(const NodeLayout& node) {
 std::string NetworkRenderer::generateEdgeSVG(const NodeLayout& from, const NodeLayout& to, const core::Gene& gene) {
     std::ostringstream ss;
     
-    // Calculate edge path
+    // Determine if this is a feedback connection
+    bool isFeedback = from.x >= to.x;
+    
+    // Calculate control points
     double dx = to.x - from.x;
     double dy = to.y - from.y;
-    double angle = std::atan2(dy, dx);
+    double ctrlX1, ctrlY1, ctrlX2, ctrlY2;
     
-    double fromX = from.x + config.style.nodeRadius * std::cos(angle);
-    double fromY = from.y + config.style.nodeRadius * std::sin(angle);
-    double toX = to.x - config.style.nodeRadius * std::cos(angle);
-    double toY = to.y - config.style.nodeRadius * std::sin(angle);
+    if (isFeedback) {
+        // Make feedback connections curve more dramatically
+        ctrlX1 = from.x + std::abs(dy) * 0.5;
+        ctrlY1 = from.y;
+        ctrlX2 = to.x - std::abs(dy) * 0.5;
+        ctrlY2 = to.y;
+    } else {
+        // Forward connections curve gently
+        ctrlX1 = from.x + dx * 0.5;
+        ctrlY1 = from.y;
+        ctrlX2 = to.x - dx * 0.5;
+        ctrlY2 = to.y;
+    }
     
-    std::string color = config.style.colorizeWeights ? 
-        getColorForWeight(gene.weight) : config.style.edgeColor;
+    // Determine color based on weight
+    std::string color = gene.weight > 0 ? config.style.positiveWeightColor : config.style.negativeWeightColor;
     
-    // Draw connection line
-    ss << "<line "
-       << "x1=\"" << fromX << "\" "
-       << "y1=\"" << fromY << "\" "
-       << "x2=\"" << toX << "\" "
-       << "y2=\"" << toY << "\" "
+    // Draw curved connection
+    ss << "<path d=\"M " << from.x << " " << from.y << " "
+       << "C " << ctrlX1 << " " << ctrlY1 << " "
+       << ctrlX2 << " " << ctrlY2 << " "
+       << to.x << " " << to.y << "\" "
        << "stroke=\"" << color << "\" "
        << "stroke-width=\"" << config.style.edgeWidth << "\" "
+       << "fill=\"none\" "
        << (gene.enabled ? "" : "stroke-dasharray=\"5,5\" ")
        << "/>\n";
-       
+    
     // Add weight label
     if (config.style.showWeights) {
-        double midX = (fromX + toX) / 2;
-        double midY = (fromY + toY) / 2;
+        double midX = (from.x + to.x) / 2;
+        double midY = (from.y + to.y) / 2;
+        if (isFeedback) {
+            // Adjust label position for feedback connections
+            midX += std::abs(dy) * 0.25;
+        }
         ss << "<text "
            << "x=\"" << midX << "\" "
            << "y=\"" << midY << "\" "

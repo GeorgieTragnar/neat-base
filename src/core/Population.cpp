@@ -1,6 +1,7 @@
 #include "Population.hpp"
 #include "Genome.hpp"
 #include "Species.hpp"
+#include "evolution/CrossoverOperator.hpp"
 #include <algorithm>
 #include <random>
 #include <iostream>
@@ -45,12 +46,21 @@ Population::Population(int32_t inputSize, int32_t outputSize, const Config& conf
 }
 
 void Population::evolve(const std::function<double(const Genome&)>& fitnessFunction) {
+    std::cout << "Starting evolution cycle" << std::endl;
+
+    // Create operators
+    evolution::CrossoverOperator crossover(evolution::CrossoverOperator::Config{});
+
     // Evaluate fitness
-    for (auto& genome : genomes) {
-        genome.setFitness(fitnessFunction(genome));
+    for (size_t i = 0; i < genomes.size(); i++) {
+        auto& genome = genomes[i];
+        genome.validate();  // Validate before fitness evaluation
+        double fitness = fitnessFunction(genome);
+        genome.setFitness(fitness);
     }
     
     // Update species and adjust fitness
+    std::cout << "Updating species..." << std::endl;
     speciate();
     adjustFitness();
     removeStaleSpecies();
@@ -62,6 +72,8 @@ void Population::evolve(const std::function<double(const Genome&)>& fitnessFunct
     
     // Elitism - copy best genomes
     auto eliteCount = static_cast<size_t>(config.populationSize * config.elitismRate);
+    std::cout << "Selecting " << eliteCount << " elites" << std::endl;
+    
     std::vector<size_t> indices(genomes.size());
     std::iota(indices.begin(), indices.end(), 0);
     std::sort(indices.begin(), indices.end(),
@@ -69,31 +81,62 @@ void Population::evolve(const std::function<double(const Genome&)>& fitnessFunct
     
     for (size_t i = 0; i < eliteCount && i < indices.size(); ++i) {
         nextGen.emplace_back(genomes[indices[i]]);
+        nextGen.back().validate();  // Verify elite copy
     }
     
     // Fill rest with offspring
     while (nextGen.size() < config.populationSize) {
-        Genome child(selectParent().getConfig());
+        // Select and copy first parent
+        const auto& parent1 = selectParent();
+        Genome child(parent1);  // Use copy constructor to get complete genome
+        child.validate();  // Verify copy
         
         // Crossover with second parent
         if (std::uniform_real_distribution<>(0, 1)(rng) < 0.75) {
             const auto& parent2 = selectParent();
-            child = Genome::crossover(child, parent2, child.getConfig());
+            child = crossover.crossover(parent1, parent2);
+            child.validate();  // Verify after crossover
         }
+        
+        std::cout << "Before mutations - Child has " 
+                  << std::count_if(child.getNodes().begin(), child.getNodes().end(),
+                      [](const auto& pair) { return pair.second == core::ENodeType::INPUT; })
+                  << " inputs and "
+                  << std::count_if(child.getNodes().begin(), child.getNodes().end(),
+                      [](const auto& pair) { return pair.second == core::ENodeType::OUTPUT; })
+                  << " outputs" << std::endl;
         
         // Apply mutations
         child.mutateWeights();
         if (std::uniform_real_distribution<>(0, 1)(rng) < child.getConfig().newNodeRate) {
+            std::cout << "Attempting node mutation..." << std::endl;
             child.addNodeMutation();
         }
         if (std::uniform_real_distribution<>(0, 1)(rng) < child.getConfig().newLinkRate) {
+            std::cout << "Attempting connection mutation..." << std::endl;
             child.addConnectionMutation();
         }
         
+        std::cout << "After mutations - Child has " 
+                  << std::count_if(child.getNodes().begin(), child.getNodes().end(),
+                      [](const auto& pair) { return pair.second == core::ENodeType::INPUT; })
+                  << " inputs and "
+                  << std::count_if(child.getNodes().begin(), child.getNodes().end(),
+                      [](const auto& pair) { return pair.second == core::ENodeType::OUTPUT; })
+                  << " outputs" << std::endl;
+        
+        child.validate();  // Final validation before adding to next generation
         nextGen.push_back(std::move(child));
     }
     
     genomes = std::move(nextGen);
+    
+    // Validate final population
+    for (auto& genome : genomes) {
+        genome.validate();
+    }
+    
+    std::cout << "Evolution cycle complete" << std::endl;
 }
 
 const Genome& Population::getBestGenome() const {

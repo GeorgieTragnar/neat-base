@@ -53,17 +53,22 @@ public:
         , adjustedFitness(other.adjustedFitness)
         , speciesIdx(other.speciesIdx)
         , maxNodeIdx(other.maxNodeIdx)
-        , network(std::make_unique<network::Network>(other.config.networkConfig))
         , rng(std::random_device{}()) {
-    
-        // Debug output
-        std::cout << "Copying genome with " << std::count_if(nodes.begin(), nodes.end(),
-            [](const auto& pair) { return pair.second == ENodeType::INPUT; })
-            << " inputs and " << std::count_if(nodes.begin(), nodes.end(),
-            [](const auto& pair) { return pair.second == ENodeType::OUTPUT; })
-            << " outputs" << std::endl;
-
-        rebuildNetwork();
+        
+        std::cout << "Copy constructor - Starting with:" << std::endl;
+        std::cout << "  Input nodes: " << std::count_if(other.nodes.begin(), other.nodes.end(),
+            [](const auto& pair) { return pair.second == ENodeType::INPUT; }) << std::endl;
+        std::cout << "  Output nodes: " << std::count_if(other.nodes.begin(), other.nodes.end(),
+            [](const auto& pair) { return pair.second == ENodeType::OUTPUT; }) << std::endl;
+        
+        rebuildNetwork();  // Use existing method to rebuild network
+        
+        std::cout << "Copy constructor - Resulting in:" << std::endl;
+        std::cout << "  Input nodes: " << std::count_if(nodes.begin(), nodes.end(),
+            [](const auto& pair) { return pair.second == ENodeType::INPUT; }) << std::endl;
+        std::cout << "  Output nodes: " << std::count_if(nodes.begin(), nodes.end(),
+            [](const auto& pair) { return pair.second == ENodeType::OUTPUT; }) << std::endl;
+        
         validate();
     }
     
@@ -82,15 +87,29 @@ public:
     // Copy assignment
     Genome& operator=(const Genome& other) {
         if (this != &other) {
+            std::cout << "Assignment operator - Starting with:" << std::endl;
+            std::cout << "  Input nodes: " << std::count_if(other.nodes.begin(), other.nodes.end(),
+                [](const auto& pair) { return pair.second == ENodeType::INPUT; }) << std::endl;
+            std::cout << "  Output nodes: " << std::count_if(other.nodes.begin(), other.nodes.end(),
+                [](const auto& pair) { return pair.second == ENodeType::OUTPUT; }) << std::endl;
+            
+            // Copy all members
             genes = other.genes;
             nodes = other.nodes;
+            config = other.config;
             fitness = other.fitness;
             adjustedFitness = other.adjustedFitness;
             speciesIdx = other.speciesIdx;
             maxNodeIdx = other.maxNodeIdx;
-            config = other.config;
-            network = std::make_unique<network::Network>(config.networkConfig);
-            rebuildNetwork();
+            
+            rebuildNetwork();  // Use existing method to rebuild network
+            
+            std::cout << "Assignment operator - Resulting in:" << std::endl;
+            std::cout << "  Input nodes: " << std::count_if(nodes.begin(), nodes.end(),
+                [](const auto& pair) { return pair.second == ENodeType::INPUT; }) << std::endl;
+            std::cout << "  Output nodes: " << std::count_if(nodes.begin(), nodes.end(),
+                [](const auto& pair) { return pair.second == ENodeType::OUTPUT; }) << std::endl;
+            
             validate();
         }
         return *this;
@@ -101,11 +120,11 @@ public:
         if (this != &other) {
             genes = std::move(other.genes);
             nodes = std::move(other.nodes);
+            config = other.config;
             fitness = other.fitness;
             adjustedFitness = other.adjustedFitness;
             speciesIdx = other.speciesIdx;
             maxNodeIdx = other.maxNodeIdx;
-            config = other.config;
             network = std::move(other.network);
         }
         return *this;
@@ -140,7 +159,6 @@ public:
     bool validate() const;
     
     // Genetic operations
-    static Genome crossover(const Genome& parent1, const Genome& parent2, const Config& config);
     static double compatibilityDistance(const Genome& genome1, const Genome& genome2);
     
     // Clone method for safe copying
