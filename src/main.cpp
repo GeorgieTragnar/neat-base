@@ -122,7 +122,7 @@ int main(int argc, char* argv[]) {
     std::filesystem::create_directories(outputDir);
     
     // Run evolution
-    neat.evolve(100, evaluateXORFitness, generationCallback);
+    neat.evolve(500, evaluateXORFitness, generationCallback);
     
     // Get the best genome
     const auto& bestGenome = neat.getBestGenome();
