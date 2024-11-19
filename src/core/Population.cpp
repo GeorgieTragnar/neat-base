@@ -6,6 +6,9 @@
 #include <random>
 #include <iostream>
 
+#include "logger/Logger.hpp"
+static auto logger = LOGGER("core::Population");
+
 namespace neat {
 namespace core {
 
@@ -13,8 +16,7 @@ Population::Population(int32_t inputSize, int32_t outputSize, const Config& conf
     : config(config)
     , rng(std::random_device{}()) {
     
-    std::cout << "Creating population with " << inputSize << " inputs and " 
-              << outputSize << " outputs" << std::endl;
+    LOG_DEBUG("Creating population with {} inputs and {} outputs", inputSize, outputSize);
               
     genomes.reserve(config.populationSize);
     
@@ -32,21 +34,18 @@ Population::Population(int32_t inputSize, int32_t outputSize, const Config& conf
             if (type == ENodeType::OUTPUT) outputCount++;
         }
         
-        std::cout << "Genome " << i << " initialized with " 
-                  << inputCount << " inputs and "
-                  << outputCount << " outputs" << std::endl;
+        LOG_DEBUG("Genome {} initialized with {} inputs and {} outputs", i, inputCount, outputCount);
                   
         genomes.push_back(std::move(genome));
     }
     
-    std::cout << "Population initialized with " << genomes.size() 
-              << " genomes" << std::endl;
+    LOG_DEBUG("Population initialized with {} genomes", genomes.size());
               
     speciate();
 }
 
 void Population::evolve(const std::function<double(const Genome&)>& fitnessFunction) {
-    std::cout << "Starting evolution cycle" << std::endl;
+    LOG_TRACE("Starting evolution cycle");
 
     // Create operators
     evolution::CrossoverOperator crossover(evolution::CrossoverOperator::Config{});
@@ -60,7 +59,7 @@ void Population::evolve(const std::function<double(const Genome&)>& fitnessFunct
     }
     
     // Update species and adjust fitness
-    std::cout << "Updating species..." << std::endl;
+    LOG_TRACE("Updating species...");
     speciate();
     adjustFitness();
     removeStaleSpecies();
@@ -72,7 +71,7 @@ void Population::evolve(const std::function<double(const Genome&)>& fitnessFunct
     
     // Elitism - copy best genomes
     auto eliteCount = static_cast<size_t>(config.populationSize * config.elitismRate);
-    std::cout << "Selecting " << eliteCount << " elites" << std::endl;
+    LOG_TRACE("Selecting {} elites", eliteCount);
     
     std::vector<size_t> indices(genomes.size());
     std::iota(indices.begin(), indices.end(), 0);
@@ -98,32 +97,28 @@ void Population::evolve(const std::function<double(const Genome&)>& fitnessFunct
             child.validate();  // Verify after crossover
         }
         
-        std::cout << "Before mutations - Child has " 
-                  << std::count_if(child.getNodes().begin(), child.getNodes().end(),
-                      [](const auto& pair) { return pair.second == core::ENodeType::INPUT; })
-                  << " inputs and "
-                  << std::count_if(child.getNodes().begin(), child.getNodes().end(),
-                      [](const auto& pair) { return pair.second == core::ENodeType::OUTPUT; })
-                  << " outputs" << std::endl;
+        LOG_TRACE("Before mutations - Child has {} inputs and {} outputs",
+            std::count_if(child.getNodes().begin(), child.getNodes().end(),
+                      [](const auto& pair) { return pair.second == core::ENodeType::INPUT; }),
+            std::count_if(child.getNodes().begin(), child.getNodes().end(),
+                      [](const auto& pair) { return pair.second == core::ENodeType::OUTPUT; }));
         
         // Apply mutations
         child.mutateWeights();
         if (std::uniform_real_distribution<>(0, 1)(rng) < child.getConfig().newNodeRate) {
-            std::cout << "Attempting node mutation..." << std::endl;
+            LOG_TRACE("Attempting node mutation...");
             child.addNodeMutation();
         }
         if (std::uniform_real_distribution<>(0, 1)(rng) < child.getConfig().newLinkRate) {
-            std::cout << "Attempting connection mutation..." << std::endl;
+            LOG_TRACE("Attempting connection mutation...");
             child.addConnectionMutation();
         }
         
-        std::cout << "After mutations - Child has " 
-                  << std::count_if(child.getNodes().begin(), child.getNodes().end(),
-                      [](const auto& pair) { return pair.second == core::ENodeType::INPUT; })
-                  << " inputs and "
-                  << std::count_if(child.getNodes().begin(), child.getNodes().end(),
-                      [](const auto& pair) { return pair.second == core::ENodeType::OUTPUT; })
-                  << " outputs" << std::endl;
+        LOG_TRACE("After mutations - Child has {} inputs and {} outputs",
+            std::count_if(child.getNodes().begin(), child.getNodes().end(),
+                      [](const auto& pair) { return pair.second == core::ENodeType::INPUT; }),
+            std::count_if(child.getNodes().begin(), child.getNodes().end(),
+                      [](const auto& pair) { return pair.second == core::ENodeType::OUTPUT; }));
         
         child.validate();  // Final validation before adding to next generation
         nextGen.push_back(std::move(child));
@@ -136,7 +131,7 @@ void Population::evolve(const std::function<double(const Genome&)>& fitnessFunct
         genome.validate();
     }
     
-    std::cout << "Evolution cycle complete" << std::endl;
+    LOG_TRACE("Evolution cycle complete");
 }
 
 const Genome& Population::getBestGenome() const {

@@ -37,6 +37,10 @@ public:
         if (auto it = loggers_.find(name); it != loggers_.end()) {
             it->second->set_level(level);
         }
+        else
+        {
+            std::raise(SIGTERM);
+        }
     }
 
     void set_global_level(spdlog::level::level_enum level) {
@@ -74,10 +78,10 @@ private:
 } // namespace neat
 
 #define LOGGER(name) neat::Logger::instance().get(name)
-#define LOG_TRACE(...) do { if (logger) logger->trace("{:<{}} | {:>{}}", __VA_ARGS__, 186, fmt::format("{}:{}", __FILE_NAME__, __LINE__), 30); } while(0)
-#define LOG_DEBUG(...) do { if (logger) logger->debug("{:<{}} | {:>{}}", __VA_ARGS__, 186, fmt::format("{}:{}", __FILE_NAME__, __LINE__), 30); } while(0)
-#define LOG_INFO(...) do { if (logger) logger->info("{:<{}} | {:>{}}", __VA_ARGS__, 186, fmt::format("{}:{}", __FILE_NAME__, __LINE__), 30); } while(0)
-#define LOG_WARN(...) do { if (logger) logger->warn("{:<{}} | {:>{}}", __VA_ARGS__, 186, fmt::format("{}:{}", __FILE_NAME__, __LINE__), 30); } while(0)
-#define LOG_ERROR(...) do { if (logger) logger->error("{:<{}} | {:>{}}", __VA_ARGS__, 186, fmt::format("{}:{}", __FILE_NAME__, __LINE__), 30); } while(0)
-#define LOG_CRITICAL(...) do { if (logger) logger->critical("{:<{}} | {:>{}}", __VA_ARGS__, 186, fmt::format("{}:{}", __FILE_NAME__, __LINE__), 30); } while(0)
-#define LOG_FATAL(...) do { if (logger) { logger->critical("{:<{}} | {:>{}}", __VA_ARGS__, 186, fmt::format("{}:{}", __FILE_NAME__, __LINE__), 30); std::raise(SIGTERM); } } while(0)
+#define LOG_TRACE(...) do { if (logger) logger->trace(fmt::runtime("{:<186} | {:>30}"), fmt::format(__VA_ARGS__), fmt::format("{}:{}", __FILE_NAME__, __LINE__)); } while(0)
+#define LOG_DEBUG(...) do { if (logger) logger->debug(fmt::runtime("{:<186} | {:>30}"), fmt::format(__VA_ARGS__), fmt::format("{}:{}", __FILE_NAME__, __LINE__)); } while(0)
+#define LOG_INFO(...) do { if (logger) logger->info(fmt::runtime("{:<186} | {:>30}"), fmt::format(__VA_ARGS__), fmt::format("{}:{}", __FILE_NAME__, __LINE__)); } while(0)
+#define LOG_WARN(...) do { if (logger) logger->warn(fmt::runtime("{:<186} | {:>30}"), fmt::format(__VA_ARGS__), fmt::format("{}:{}", __FILE_NAME__, __LINE__)); } while(0)
+#define LOG_ERROR(...) do { if (logger) logger->error(fmt::runtime("{:<186} | {:>30}"), fmt::format(__VA_ARGS__), fmt::format("{}:{}", __FILE_NAME__, __LINE__)); } while(0)
+#define LOG_CRITICAL(...) do { if (logger) logger->critical(fmt::runtime("{:<186} | {:>30}"), fmt::format(__VA_ARGS__), fmt::format("{}:{}", __FILE_NAME__, __LINE__)); } while(0)
+#define LOG_FATAL(...) do { if (logger) { logger->critical(fmt::runtime("{:<186} | {:>30}"), fmt::format(__VA_ARGS__), fmt::format("{}:{}", __FILE_NAME__, __LINE__)); std::raise(SIGTERM); } } while(0)

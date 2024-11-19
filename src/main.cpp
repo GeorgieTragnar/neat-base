@@ -12,6 +12,47 @@ static auto logger = LOGGER("main");
 
 using namespace neat;
 
+
+// Logger configuration map
+const std::map<std::string, spdlog::level::level_enum> LOG_LEVELS = {
+    {"trace", spdlog::level::trace},
+    {"debug", spdlog::level::debug},
+    {"info", spdlog::level::info},
+    {"warn", spdlog::level::warn},
+    {"error", spdlog::level::err},
+    {"critical", spdlog::level::critical}
+};
+
+void printUsage(const char* program) {
+    std::cout << "Usage: " << program << " [options]\n"
+              << "Options:\n"
+              << "  <logger>=<level>  Set log level for specific logger\n"
+              << "Available levels: trace, debug, info, warn, error\n"
+              << "Example: " << program << " main=debug core.Genome=trace\n";
+}
+
+void configureLoggers(int argc, char* argv[]) {
+    for (int i = 1; i < argc; i++) {
+        std::string param = argv[i];
+        
+        if (param == "--help") {
+            printUsage(argv[0]);
+            exit(0);
+        }
+        
+        size_t pos = param.find('=');
+        if (pos != std::string::npos) {
+            std::string loggerName = param.substr(0, pos);
+            std::string levelStr = param.substr(pos + 1);
+            auto levelIt = LOG_LEVELS.find(levelStr);
+            if (levelIt != LOG_LEVELS.end()) {
+                Logger::instance().set_level(loggerName, levelIt->second);
+                LOG_INFO("Set log level for {} to {}", loggerName, levelStr);
+            }
+        }
+    }
+}
+
 // XOR truth table inputs/outputs
 const std::vector<std::vector<double>> XOR_INPUTS = {
     {0, 0}, {0, 1}, {1, 0}, {1, 1}
@@ -52,21 +93,20 @@ double evaluateXORFitness(const core::Genome& genome) {
 
 void generationCallback(int32_t generation, const core::Population& population) {
     const auto& best = population.getBestGenome();
-    std::cout << "Generation " << generation 
-              << " Best Fitness: " << best.getFitness() << std::endl;
+    LOG_INFO("Generation {} Best Fitness {}", generation, best.getFitness());
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    // Configure loggers from command line arguments
+    configureLoggers(argc, argv);
+
     core::NEAT::Config config(2, 1);
     config.populationConfig.populationSize = 150;
     
-    // Print configuration
-    std::cout << "Creating NEAT with configuration:" << std::endl
-              << "Inputs: " << config.inputSize << std::endl
-              << "Outputs: " << config.outputSize << std::endl
-              << "Population size: " << config.populationConfig.populationSize << std::endl;
-
-    LOG_FATAL("hello");
+    LOG_INFO("Creating NEAT with configuration:");
+    LOG_INFO("Inputs: {}", config.inputSize);
+    LOG_INFO("Outputs: {}", config.outputSize);
+    LOG_INFO("Population size: {}", config.populationConfig.populationSize);
     
     core::NEAT neat(config);
     
@@ -290,8 +330,8 @@ int main() {
                 std::filesystem::perm_options::add
             );
             
-            std::cout << "\nVisualization saved to " << outputDir << std::endl;
-            std::cout << "Run './view.sh' in that directory to view the results" << std::endl;
+            LOG_INFO("Visualization saved to {}", outputDir);
+            LOG_INFO("Run './view.sh' in that directory to view the results");
         
     
     return 0;

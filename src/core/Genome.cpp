@@ -7,6 +7,9 @@
 #include <queue>
 #include <iostream>
 
+#include "logger/Logger.hpp"
+static auto logger = LOGGER("core::Genome");
+
 namespace neat {
 namespace core {
 
@@ -155,8 +158,7 @@ void Genome::sanitizeNetwork() {
 }
 
 void Genome::initMinimalTopology(int32_t inputs, int32_t outputs) {
-    std::cout << "Initializing minimal topology with " << inputs 
-              << " inputs and " << outputs << " outputs" << std::endl;
+    LOG_DEBUG("Initializing minimal topology with {} inputs and {} outputs", inputs, outputs);
               
     // Clear any existing structure
     nodes.clear();
@@ -164,8 +166,8 @@ void Genome::initMinimalTopology(int32_t inputs, int32_t outputs) {
     maxNodeIdx = -1;
     
     addNode(-1, ENodeType::BIAS, false);
-    std::cout << "Added bias node" << std::endl;
-
+    LOG_TRACE("Added bias node");
+    
     // Add input nodes
     std::vector<NodeId> inputNodeIds;
     for (int32_t i = 0; i < inputs; ++i) {
@@ -173,7 +175,7 @@ void Genome::initMinimalTopology(int32_t inputs, int32_t outputs) {
         addNode(id, ENodeType::INPUT, false);
         inputNodeIds.push_back(id);
     }
-    std::cout << "Added " << inputs << " input nodes" << std::endl;
+    LOG_TRACE("Added {} input nodes", inputs);
     
     // Add output nodes
     std::vector<NodeId> outputNodeIds;
@@ -182,7 +184,7 @@ void Genome::initMinimalTopology(int32_t inputs, int32_t outputs) {
         addNode(id, ENodeType::OUTPUT, false);
         outputNodeIds.push_back(id);
     }
-    std::cout << "Added " << outputs << " output nodes" << std::endl;
+    LOG_TRACE("Added {} output nodes", outputs);
     
     // Add connections from all inputs (including bias) to all outputs
     std::uniform_real_distribution<double> weightDist(-config.newWeightRange, config.newWeightRange);
@@ -199,17 +201,15 @@ void Genome::initMinimalTopology(int32_t inputs, int32_t outputs) {
         addConnection(-1, outputId, weightDist(rng), false);
     }
 
-    std::cout << "Added connections between nodes" << std::endl;
+    LOG_TRACE("Added connections between nodes");
     
     // Print final network structure
-    std::cout << "Final network structure:" << std::endl;
-    std::cout << "Nodes:" << std::endl;
+    LOG_INFO("Final network structure:");
+    LOG_INFO("Nodes:");
     for (const auto& [id, type] : nodes) {
-        std::cout << "  Node " << id << ": " 
-                  << (type == ENodeType::INPUT ? "INPUT" :
-                      type == ENodeType::OUTPUT ? "OUTPUT" :
-                      type == ENodeType::BIAS ? "BIAS" : "HIDDEN")
-                  << std::endl;
+        LOG_INFO(" Node {}: {}", id, (type == ENodeType::INPUT ? "INPUT" :
+                                        type == ENodeType::OUTPUT ? "OUTPUT" :
+                                        type == ENodeType::BIAS ? "BIAS" : "HIDDEN"));
     }
 
     // Now validate the complete network
@@ -232,14 +232,12 @@ void Genome::ensureNodeExists(NodeId id, ENodeType type) {
 std::vector<std::pair<Genome::NodeId, Genome::NodeId>> Genome::findPossibleConnections() const {
     std::vector<std::pair<NodeId, NodeId>> result;
     
-    std::cout << "Finding possible connections:" << std::endl;
-    std::cout << "Current nodes:" << std::endl;
+    LOG_DEBUG("Finding possible connections:");
+    LOG_DEBUG("Current nodes:");
     for (const auto& [id, type] : nodes) {
-        std::cout << "  Node " << id << ": " 
-                  << (type == ENodeType::INPUT ? "INPUT" :
+        LOG_DEBUG(" Node {}: {}", id, (type == ENodeType::INPUT ? "INPUT" :
                       type == ENodeType::OUTPUT ? "OUTPUT" :
-                      type == ENodeType::BIAS ? "BIAS" : "HIDDEN")
-                  << std::endl;
+                      type == ENodeType::BIAS ? "BIAS" : "HIDDEN"));
     }
     
     // Create set of existing connections for quick lookup
@@ -269,7 +267,7 @@ std::vector<std::pair<Genome::NodeId, Genome::NodeId>> Genome::findPossibleConne
             }
             
             result.emplace_back(fromId, toId);
-            std::cout << "  Found possible connection: " << fromId << " -> " << toId << std::endl;
+            LOG_TRACE("  Found possible connection: {} -> {}", fromId, toId);
         }
     }
     
@@ -403,35 +401,31 @@ void Genome::addConnection(NodeId from, NodeId to, double weight, bool validateA
 bool Genome::addConnectionMutation() {
     validate();
 
-    std::cout << "Starting connection mutation with " 
-              << std::count_if(nodes.begin(), nodes.end(),
-                  [](const auto& pair) { return pair.second == ENodeType::INPUT; })
-              << " inputs and " 
-              << std::count_if(nodes.begin(), nodes.end(),
-                  [](const auto& pair) { return pair.second == ENodeType::OUTPUT; })
-              << " outputs" << std::endl;
+    LOG_DEBUG("Starting connection mutation with {} inputs and {} outputs",
+        std::count_if(nodes.begin(), nodes.end(),
+                  [](const auto& pair) { return pair.second == ENodeType::INPUT; }),
+        std::count_if(nodes.begin(), nodes.end(),
+                  [](const auto& pair) { return pair.second == ENodeType::OUTPUT; }));
               
     // Make a deep copy backup using copy constructor
     Genome backup(*this);
-    std::cout << "Created backup - validating..." << std::endl;
+    LOG_TRACE("Created backup - validating...");
     backup.validate();
 
     try {
-        std::cout << "Finding possible connections..." << std::endl;
+        LOG_TRACE("Finding possible connections...");
         auto possibleConnections = findPossibleConnections();
         if (possibleConnections.empty()) {
-            std::cout << "No possible connections found" << std::endl;
+            LOG_TRACE("No possible connections found");
             return false;
         }
         
         // Print current node structure before mutation
-        std::cout << "Current node structure before mutation:" << std::endl;
+        LOG_TRACE("Current node structure before mutation:");
         for (const auto& [id, type] : nodes) {
-            std::cout << "  Node " << id << ": " 
-                      << (type == ENodeType::INPUT ? "INPUT" :
+            LOG_TRACE("  Node {}: {}", id, (type == ENodeType::INPUT ? "INPUT" :
                           type == ENodeType::OUTPUT ? "OUTPUT" :
-                          type == ENodeType::BIAS ? "BIAS" : "HIDDEN")
-                      << std::endl;
+                          type == ENodeType::BIAS ? "BIAS" : "HIDDEN"));
         }
         
         // Select random possible connection
@@ -442,8 +436,7 @@ bool Genome::addConnectionMutation() {
         std::uniform_real_distribution<double> weightDist(-config.newWeightRange, config.newWeightRange);
         double weight = weightDist(rng);
         
-        std::cout << "Adding connection from " << fromId << " to " << toId 
-                  << " with weight " << weight << std::endl;
+        LOG_DEBUG("Adding connection from {} to {} with weight {}", fromId, toId, weight);
                 
         // Add new connection with validation
         addConnection(fromId, toId, weight);
@@ -452,8 +445,8 @@ bool Genome::addConnectionMutation() {
 
         return true;
     } catch (const std::exception& e) {
-        std::cout << "Connection mutation failed: " << e.what() << std::endl;
-        std::cout << "Restoring from backup..." << std::endl;
+        LOG_WARN("Connection mutation failed: {}", e.what());
+        LOG_WARN("Restoring from backup...");
         
         // Verify backup before restore
         backup.validate();
@@ -476,14 +469,14 @@ Genome Genome::clone() const {
 }
 
 bool Genome::addNodeMutation() {
-    std::cout << "\nStarting node mutation" << std::endl;
-    std::cout << "Current genome state:" << std::endl;
-    std::cout << "  Inputs: " << std::count_if(nodes.begin(), nodes.end(),
-        [](const auto& pair) { return pair.second == ENodeType::INPUT; }) << std::endl;
-    std::cout << "  Outputs: " << std::count_if(nodes.begin(), nodes.end(),
-        [](const auto& pair) { return pair.second == ENodeType::OUTPUT; }) << std::endl;
-    std::cout << "  Total nodes: " << nodes.size() << std::endl;
-    std::cout << "  Total genes: " << genes.size() << std::endl;
+    LOG_DEBUG("Starting node mutation");
+    LOG_DEBUG("Current genome state:");
+    LOG_DEBUG("  Inputs: {}", std::count_if(nodes.begin(), nodes.end(),
+        [](const auto& pair) { return pair.second == ENodeType::INPUT; }));
+    LOG_DEBUG("  Outputs: {}", std::count_if(nodes.begin(), nodes.end(),
+        [](const auto& pair) { return pair.second == ENodeType::OUTPUT; }));
+    LOG_DEBUG("  Total nodes: {}", nodes.size());
+    LOG_DEBUG("  Total genes: {}", genes.size());
     
     // Make a backup before mutation
     auto backup = *this;
@@ -498,15 +491,14 @@ bool Genome::addNodeMutation() {
         }
         
         if (enabledGenes.empty()) {
-            std::cout << "No enabled genes available for node mutation" << std::endl;
+            LOG_DEBUG("No enabled genes available for node mutation");
             return false;
         }
         
         std::uniform_int_distribution<size_t> geneDist(0, enabledGenes.size() - 1);
         Gene& selectedGene = enabledGenes[geneDist(rng)];
         
-        std::cout << "Selected gene: " << selectedGene.inputNode << " -> " 
-                  << selectedGene.outputNode << std::endl;
+        LOG_TRACE("Selected gene: {} -> {}", selectedGene.inputNode, selectedGene.outputNode);
         
         // Store old connection info
         NodeId fromNode = selectedGene.inputNode;
@@ -518,32 +510,30 @@ bool Genome::addNodeMutation() {
         
         // Add new node
         NodeId newNodeId = getNextNodeId();
-        std::cout << "Creating new node: " << newNodeId << std::endl;
+        LOG_TRACE("Creating new node: {}", newNodeId);
 
         addNode(newNodeId, ENodeType::HIDDEN, false);
         
         // Add new connections
-        std::cout << "Adding new connections" << std::endl;
+        LOG_TRACE("Adding new connections");
         addConnection(fromNode, newNodeId, 1.0, false);  // Weight 1.0 to the new node
         addConnection(newNodeId, toNode, oldWeight, false);  // Keep old weight to output
         
-        std::cout << "Node mutation complete. New structure:" << std::endl;
+        LOG_DEBUG("Node mutation complete. New structure:");
         for (const auto& [id, type] : nodes) {
-            std::cout << "  Node " << id << ": " 
-                      << (type == ENodeType::INPUT ? "INPUT" :
+            LOG_DEBUG("  Node {}: {}", id, (type == ENodeType::INPUT ? "INPUT" :
                           type == ENodeType::OUTPUT ? "OUTPUT" :
-                          type == ENodeType::BIAS ? "BIAS" : "HIDDEN")
-                      << std::endl;
+                          type == ENodeType::BIAS ? "BIAS" : "HIDDEN"));
         }
 
         // Validate the modified network
         validate();
 
-        std::cout << "Node mutation successful" << std::endl;
+        LOG_DEBUG("Node mutation successful");
         return true;
         
     } catch (const std::exception& e) {
-        std::cout << "Node mutation failed: " << e.what() << std::endl;
+        LOG_WARN("Node mutation failed: {}", e.what());
         // Restore backup on failure
         *this = backup;
         return false;
@@ -631,14 +621,12 @@ bool Genome::validate() const {
     std::vector<std::string> errors;
     
     // Debug output for node structure
-    std::cout << "Validating genome..." << std::endl;
-    std::cout << "Node structure:" << std::endl;
+    LOG_DEBUG("Validating genome...");
+    LOG_DEBUG("Node structure:");
     for (const auto& [id, type] : nodes) {
-        std::cout << "  Node " << id << ": " 
-                  << (type == ENodeType::INPUT ? "INPUT" :
+        LOG_DEBUG("  Node {}: {}", id, (type == ENodeType::INPUT ? "INPUT" :
                       type == ENodeType::OUTPUT ? "OUTPUT" :
-                      type == ENodeType::BIAS ? "BIAS" : "HIDDEN")
-                  << std::endl;
+                      type == ENodeType::BIAS ? "BIAS" : "HIDDEN"));
     }
 
     // Check node structure
@@ -658,11 +646,10 @@ bool Genome::validate() const {
     }
     
     // Debug output for genes
-    std::cout << "Gene structure:" << std::endl;
+    LOG_DEBUG("Gene structure:");
     for (const auto& gene : genes) {
-        std::cout << "  Gene: " << gene.inputNode << " -> " << gene.outputNode 
-                  << " (weight: " << gene.weight 
-                  << ", enabled: " << (gene.enabled ? "yes" : "no") << ")" << std::endl;
+        LOG_DEBUG("  Gene: {} -> {} (weight: {}, enabled {})", gene.inputNode, gene.outputNode,
+            gene.weight, (gene.enabled ? "yes" : "no"));
     }
     
     // Check gene structure
@@ -677,11 +664,11 @@ bool Genome::validate() const {
     
     // Check output node reachability
     auto reachable = getReachableNodes();
-    std::cout << "Reachable nodes: ";
+    std::stringstream ss;
     for (const auto& id : reachable) {
-        std::cout << id << " ";
+        ss << id << " ";
     }
-    std::cout << std::endl;
+    LOG_DEBUG("Reachable nodes: {}", ss.str());
     
     for (const auto& [id, type] : nodes) {
         if (type == ENodeType::OUTPUT && reachable.find(id) == reachable.end()) {
@@ -699,11 +686,11 @@ bool Genome::validate() const {
         for (const auto& error : errors) {
             errorMsg += "- " + error + "\n";
         }
-        std::cout << "Validation failed with errors:\n" << errorMsg;
+        LOG_ERROR("Validation failed with errors: {}", errorMsg);
         throw std::runtime_error(errorMsg);
     }
     
-    std::cout << "Validation successful" << std::endl;
+    LOG_DEBUG("Validation successful");
     return true;
 }
 

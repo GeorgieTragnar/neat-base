@@ -3,6 +3,9 @@
 #include "core/Genome.hpp"
 #include "core/InnovationTracker.hpp"
 
+#include "logger/Logger.hpp"
+static auto logger = LOGGER("evolution::CrossoverOperator");
+
 namespace neat {
 namespace evolution {
 
@@ -36,14 +39,10 @@ core::Genome CrossoverOperator::crossover(
     const core::Genome& parent1,
     const core::Genome& parent2) {
     
-    std::cout << "\nStarting crossover" << std::endl;
-    std::cout << "Parent 1 fitness: " << parent1.getFitness() 
-              << ", nodes: " << parent1.getNodes().size() 
-              << ", genes: " << parent1.getGenes().size() << std::endl;
-    std::cout << "Parent 2 fitness: " << parent2.getFitness()
-              << ", nodes: " << parent2.getNodes().size()
-              << ", genes: " << parent2.getGenes().size() << std::endl;
-    
+    LOG_DEBUG("Starting crossover");
+    LOG_DEBUG("Parent 1 fitness: {}, nodes: {}, genes: {}", parent1.getFitness(), parent1.getNodes().size(), parent1.getGenes().size());
+    LOG_DEBUG("Parent 2 fitness: {}, nodes: {}, genes: {}", parent2.getFitness(), parent2.getNodes().size(), parent2.getGenes().size());
+        
     // Create child genome with same config as parent
     core::Genome child(parent1.getConfig());
     child.getGenes().clear();
@@ -53,8 +52,7 @@ core::Genome CrossoverOperator::crossover(
     const double fitness2 = parent2.getFitness();
     const bool parent1IsFitter = fitness1 >= fitness2;
     
-    std::cout << "Parent 1 " << (parent1IsFitter ? "is" : "is not") 
-              << " fitter" << std::endl;
+    LOG_DEBUG("Parent 1 {} fitter", (parent1IsFitter ? "is" : "is not"));
     
     // Create inheritance map of matching and disjoint genes
     auto inheritanceMap = createInheritanceMap(parent1, parent2);
@@ -67,7 +65,7 @@ core::Genome CrossoverOperator::crossover(
     }
     
     // Inherit genes according to rules
-    std::cout << "Processing " << inheritanceMap.size() << " genes" << std::endl;
+    LOG_DEBUG("Processing {} genes", inheritanceMap.size());
     
     
     for (const auto& [innovation, genePair] : inheritanceMap) {
@@ -107,8 +105,7 @@ core::Genome CrossoverOperator::crossover(
         }
     }
     
-    std::cout << "Child created with " << child.getNodes().size() << " nodes and "
-              << child.getGenes().size() << " genes" << std::endl;
+    LOG_INFO("Child created with {} nodes and {} genes", child.getNodes().size(), child.getGenes().size());
     
     child.rebuildNetwork();
     child.validate();

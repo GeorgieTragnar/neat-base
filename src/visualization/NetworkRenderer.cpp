@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <iomanip>
 
+#include "logger/Logger.hpp"
+static auto logger = LOGGER("visualization::NetworkRenderer");
+
 namespace neat {
 namespace visualization {
 
@@ -96,10 +99,10 @@ void NetworkRenderer::calculateLayout(const core::Genome& genome) {
         nodePositions[outputNodes[i]] = layout;
     }
     
-    std::cout << "Layout calculated with:\n"
-              << "  Input nodes: " << inputNodes.size() << "\n"
-              << "  Hidden nodes (connected): " << hiddenNodes.size() << "\n"
-              << "  Output nodes: " << outputNodes.size() << std::endl;
+    LOG_INFO("Layout calculated with:");
+    LOG_INFO("  Input nodes: {}", inputNodes.size());
+    LOG_INFO("  Hidden nodes (connected): ", hiddenNodes.size());
+    LOG_INFO("  Output nodes: {}", outputNodes.size());
 }
 
 std::string NetworkRenderer::generateNodeSVG(const NodeLayout& node) {
