@@ -186,22 +186,44 @@ void Genome::initMinimalTopology(int32_t inputs, int32_t outputs) {
     }
     LOG_TRACE("Added {} output nodes", outputs);
     
-    // Add connections from all inputs (including bias) to all outputs
+    // Add hidden nodes
+    std::vector<NodeId> hiddenNodeIds;
+    for (int32_t i = 0; i < config.maxHiddenNodes; ++i) {
+        NodeId id = getNextNodeId();
+        addNode(id, ENodeType::HIDDEN, false);
+        hiddenNodeIds.push_back(id);
+    }
+    LOG_TRACE("Added {} hidden nodes", config.maxHiddenNodes);
+
+    // Initialize with minimal connections - one random input per output
     std::uniform_real_distribution<double> weightDist(-config.newWeightRange, config.newWeightRange);
     
-    // Connect regular inputs to outputs
-    for (NodeId inputId : inputNodeIds) {
+    // Initialize connections through hidden layer
+    for (NodeId hiddenId : hiddenNodeIds) {
+        // Connect inputs to hidden
+        for (NodeId inputId : inputNodeIds) {
+            addConnection(inputId, hiddenId, weightDist(rng), false);
+        }
+        addConnection(-1, hiddenId, weightDist(rng), false);  // Bias to hidden
+        
+        // Connect hidden to outputs
         for (NodeId outputId : outputNodeIds) {
-            addConnection(inputId, outputId, weightDist(rng), false);
+            addConnection(hiddenId, outputId, weightDist(rng), false);
         }
     }
-
-    // Connect bias to all outputs
+    
     for (NodeId outputId : outputNodeIds) {
+        // Connect regular inputs
+        for (NodeId inputId : inputNodeIds) {
+            addConnection(inputId, outputId, weightDist(rng), false);
+            LOG_TRACE("Added initial connection from {} to {}", inputId, outputId);
+        }
+        // Connect bias
         addConnection(-1, outputId, weightDist(rng), false);
+        LOG_TRACE("Added initial connection from {} to {}", -1, outputId);
     }
 
-    LOG_TRACE("Added connections between nodes");
+    LOG_TRACE("Added minimal initial connections");
     
     // Print final network structure
     LOG_INFO("Final network structure:");
@@ -323,6 +345,8 @@ bool Genome::wouldCreateCycle(NodeId fromId, NodeId toId) const {
 }
 
 void Genome::addNode(NodeId id, ENodeType type, bool validateAfter) {
+    markDirty();
+
     // Don't allow duplicate nodes
     if (nodes.find(id) != nodes.end()) {
         return;
@@ -342,6 +366,8 @@ void Genome::addNode(NodeId id, ENodeType type, bool validateAfter) {
 }
 
 void Genome::addGene(const Gene& gene, bool validateAfter) {
+    markDirty();
+    
     // Check if gene already exists
     auto it = std::find_if(genes.begin(), genes.end(),
         [&gene](const Gene& existing) {
@@ -375,6 +401,8 @@ void Genome::addGene(const Gene& gene, bool validateAfter) {
 }
 
 void Genome::addConnection(NodeId from, NodeId to, double weight, bool validateAfter) {
+    markDirty();
+    
     // Ensure both nodes exist before adding connection
     if (from != -1) {  // Skip check for bias node
         auto fromType = nodes.find(from) != nodes.end() ? nodes[from] : ENodeType::HIDDEN;
@@ -399,6 +427,8 @@ void Genome::addConnection(NodeId from, NodeId to, double weight, bool validateA
 }
 
 bool Genome::addConnectionMutation() {
+    markDirty();
+    
     validate();
 
     LOG_DEBUG("Starting connection mutation with {} inputs and {} outputs",
@@ -469,6 +499,8 @@ Genome Genome::clone() const {
 }
 
 bool Genome::addNodeMutation() {
+    markDirty();
+    
     LOG_DEBUG("Starting node mutation");
     LOG_DEBUG("Current genome state:");
     LOG_DEBUG("  Inputs: {}", std::count_if(nodes.begin(), nodes.end(),
@@ -541,6 +573,8 @@ bool Genome::addNodeMutation() {
 }
 
 void Genome::mutateWeights() {
+    markDirty();
+    
     std::uniform_real_distribution<double> dist(0.0, 1.0);
     std::normal_distribution<double> perturbDist(0.0, config.weightPerturbationRange);
     std::uniform_real_distribution<double> newWeightDist(-config.newWeightRange, config.newWeightRange);
@@ -612,9 +646,34 @@ void Genome::rebuildNetwork() {
     }
 }
 
-std::vector<double> Genome::activate(const std::vector<double>& inputs) const {
+std::vector<double> Genome::activate(const std::vector<double>& inputs) {
+    // Validate network before any operation
     validate();
-    return network->activate(inputs);
+
+    if (networkDirty) {
+        size_t newHash = calculateTopologyHash();
+        if (newHash != topologyHash) {
+            topologyHash = newHash;
+            activationCache.clear();
+        }
+        networkDirty = false;
+    }
+
+    // Check cache
+    size_t inputHash = calculateInputHash(inputs);
+    auto cacheIt = activationCache.find(inputHash);
+    if (cacheIt != activationCache.end()) {
+        return cacheIt->second;
+    }
+
+    // Perform network activation
+    auto outputs = network->activate(inputs);
+    
+    // Cache result
+    activationCache[inputHash] = outputs;
+    pruneCache();
+    
+    return outputs;
 }
 
 bool Genome::validate() const {
@@ -692,6 +751,45 @@ bool Genome::validate() const {
     
     LOG_DEBUG("Validation successful");
     return true;
+}
+
+void Genome::markDirty() {
+    networkDirty = true;
+    activationCache.clear();
+    topologyHash = 0;
+}
+
+size_t Genome::calculateTopologyHash() const {
+    size_t hash = 0;
+    for (const auto& [id, type] : nodes) {
+        hash ^= std::hash<int32_t>{}(id) + 0x9e3779b9;
+    }
+    for (const auto& gene : genes) {
+        if (gene.enabled) {
+            size_t geneHash = std::hash<int32_t>{}(gene.inputNode) ^
+                            (std::hash<int32_t>{}(gene.outputNode) << 1) ^
+                            (std::hash<double>{}(gene.weight) << 2);
+            hash ^= geneHash + 0x9e3779b9;
+        }
+    }
+    return hash;
+}
+
+size_t Genome::calculateInputHash(const std::vector<double>& inputs) const {
+    size_t hash = topologyHash;
+    for (const auto& input : inputs) {
+        hash ^= std::hash<double>{}(input) + 0x9e3779b9;
+    }
+    return hash;
+}
+
+void Genome::pruneCache() {
+    if (activationCache.size() > MAX_CACHE_SIZE) {
+        size_t targetSize = MAX_CACHE_SIZE / 2;
+        while (activationCache.size() > targetSize) {
+            activationCache.erase(activationCache.begin());
+        }
+    }
 }
 
 }

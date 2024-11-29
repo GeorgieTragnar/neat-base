@@ -53,13 +53,44 @@ void configureLoggers(int argc, char* argv[]) {
     }
 }
 
+// Sin function inputs/outputs
+const std::vector<std::vector<double>> SIN_INPUTS = {
+    {0.0}, {0.1}, {0.2}, {0.3}, {0.4}, {0.5}, {0.6}, {0.7}, {0.8}, {0.9}, {1.0}, {1.1}, {1.2}, {1.3}, {1.4}, {1.5},
+    {1.6}, {1.7}, {1.8}, {1.9}, {2.0}, {2.1}, {2.2}, {2.3}, {2.4}, {2.5}, {2.6}, {2.7}, {2.8}, {2.9}, {3.0}
+};
+const std::vector<double> SIN_OUTPUTS = {
+    0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5,
+    0.4, 0.3, 0.2, 0.1, 0.0, -0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0
+};
+
+double evaluateSinFitness(core::Genome& genome) {
+    // Scale fitness to number of test points
+    double fitness = SIN_INPUTS.size() * 10.0;
+    
+    std::vector<double> inputs(genome.getConfig().networkConfig.inputSize);
+    
+    for (size_t i = 0; i < SIN_INPUTS.size(); i++) {
+        // Normalize inputs to [-1,1]
+        inputs[0] = SIN_INPUTS[i][0] / M_PI - 1.0;
+        
+        auto outputs = genome.activate(inputs);
+        if (outputs.empty()) return 0.0;
+        
+        // Use absolute error with smaller penalty
+        double error = std::abs(outputs[0] - SIN_OUTPUTS[i]);
+        fitness -= error;
+    }
+    
+    return std::max(0.0, fitness / SIN_INPUTS.size()); // Normalize to [0,10]
+}
+
 // XOR truth table inputs/outputs
 const std::vector<std::vector<double>> XOR_INPUTS = {
     {0, 0}, {0, 1}, {1, 0}, {1, 1}
 };
 const std::vector<double> XOR_OUTPUTS = {0, 1, 1, 0};
 
-double evaluateXORFitness(const core::Genome& genome) {
+double evaluateXORFitness(core::Genome& genome) {
     double fitness = 4.0;  // Start with max fitness and subtract errors
     
     // Get number of inputs the network expects
@@ -101,7 +132,7 @@ int main(int argc, char* argv[]) {
     configureLoggers(argc, argv);
 
     core::NEAT::Config config(2, 1);
-    config.populationConfig.populationSize = 150;
+    config.populationConfig.populationSize = 500;
     
     LOG_INFO("Creating NEAT with configuration:");
     LOG_INFO("Inputs: {}", config.inputSize);
@@ -122,7 +153,7 @@ int main(int argc, char* argv[]) {
     std::filesystem::create_directories(outputDir);
     
     // Run evolution
-    neat.evolve(500, evaluateXORFitness, generationCallback);
+    neat.evolve(50, evaluateSinFitness, generationCallback);
     
     // Get the best genome
     const auto& bestGenome = neat.getBestGenome();

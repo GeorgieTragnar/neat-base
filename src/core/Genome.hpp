@@ -22,8 +22,9 @@ public:
         double weightPerturbationRate = 0.9;
         double newNodeRate = 0.03;
         double newLinkRate = 0.05;
-        double weightPerturbationRange = 0.2;
-        double newWeightRange = 2.0;
+        double weightPerturbationRange = 0.4;
+        double newWeightRange = 1.0;
+        int32_t maxHiddenNodes = 5;
         network::Network::Config networkConfig;
         
         Config() = default;
@@ -39,6 +40,8 @@ public:
         , adjustedFitness(0.0)
         , speciesIdx(-1)
         , maxNodeIdx(-1)
+        , networkDirty(true) 
+        , topologyHash(0) 
         , rng(std::random_device{}()) {
         // Initialize bias node
         addNode(-1, ENodeType::BIAS, false);
@@ -53,6 +56,8 @@ public:
         , adjustedFitness(other.adjustedFitness)
         , speciesIdx(other.speciesIdx)
         , maxNodeIdx(other.maxNodeIdx)
+        , networkDirty(true)
+        , topologyHash(0)
         , rng(std::random_device{}()) {
         
         rebuildNetwork();  // Use existing method to rebuild network
@@ -67,6 +72,8 @@ public:
         , adjustedFitness(other.adjustedFitness)
         , speciesIdx(other.speciesIdx)
         , maxNodeIdx(other.maxNodeIdx)
+        , networkDirty(other.networkDirty)
+        , topologyHash(other.topologyHash)
         , config(other.config)
         , network(std::move(other.network))
         , rng(std::random_device{}()) {}
@@ -82,6 +89,9 @@ public:
             adjustedFitness = other.adjustedFitness;
             speciesIdx = other.speciesIdx;
             maxNodeIdx = other.maxNodeIdx;
+            networkDirty = true;
+            topologyHash = 0;
+            activationCache.clear();
             
             rebuildNetwork();  // Use existing method to rebuild network
             
@@ -130,7 +140,7 @@ public:
     void mutateWeights();
     
     // Network operations
-    std::vector<double> activate(const std::vector<double>& inputs) const;
+    std::vector<double> activate(const std::vector<double>& inputs);
     bool validate() const;
     
     // Genetic operations
@@ -175,6 +185,16 @@ private:
     bool validateGeneStructure() const;
     std::set<int32_t> getReachableNodes() const;
     void sanitizeNetwork();
+
+    void markDirty();
+    size_t calculateTopologyHash() const;
+    size_t calculateInputHash(const std::vector<double>& inputs) const;
+    void pruneCache();
+
+    bool networkDirty = true;
+    size_t topologyHash = 0;
+    std::unordered_map<size_t, std::vector<double>> activationCache;
+    static constexpr size_t MAX_CACHE_SIZE = 1000;
 
     std::vector<Gene> genes;
     std::map<NodeId, ENodeType> nodes;

@@ -24,7 +24,7 @@ public:
     explicit NEAT(const Config& config);
     
     void evolve(int32_t generations, 
-                const std::function<double(const Genome&)>& fitnessFunction,
+                const std::function<double(Genome&)>& fitnessFunction,
                 const std::function<void(int32_t, const Population&)>& generationCallback = nullptr);
     
     const Genome& getBestGenome() const;

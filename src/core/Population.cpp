@@ -44,7 +44,7 @@ Population::Population(int32_t inputSize, int32_t outputSize, const Config& conf
     speciate();
 }
 
-void Population::evolve(const std::function<double(const Genome&)>& fitnessFunction) {
+void Population::evolve(const std::function<double(Genome&)>& fitnessFunction) {
     LOG_TRACE("Starting evolution cycle");
 
     // Create operators

@@ -15,11 +15,11 @@ class Population {
 public:
     struct Config {
         int32_t populationSize = 150;
-        double survivalThreshold = 0.2;
-        double compatibilityThreshold = 3.0;
+        double survivalThreshold = 0.3;
+        double compatibilityThreshold = 2.0;
         int32_t speciesTargetSize = 5;
-        int32_t tournamentSize = 3;
-        double elitismRate = 0.1;
+        int32_t tournamentSize = 5;
+        double elitismRate = 0.05;
         Genome::Config genomeConfig;
         
         Config() = default;
@@ -29,7 +29,7 @@ public:
     
     Population(int32_t inputSize, int32_t outputSize, const Config& config);
     
-    void evolve(const std::function<double(const Genome&)>& fitnessFunction);
+    void evolve(const std::function<double(Genome&)>& fitnessFunction);
     const Genome& getBestGenome() const;
     const std::vector<Species>& getSpecies() const;
     

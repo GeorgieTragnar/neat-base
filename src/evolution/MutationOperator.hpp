@@ -11,10 +11,10 @@ namespace evolution {
 class MutationOperator {
 public:
     struct Config {
-        double weightMutationRate = 0.8;
+        double weightMutationRate = 0.9;
         double weightPerturbationRate = 0.9;
-        double newNodeRate = 0.03;
-        double newConnectionRate = 0.05;
+        double newNodeRate = 0.1;
+        double newConnectionRate = 0.15;
         double weightPerturbationRange = 0.2;
         double newWeightRange = 2.0;
         bool allowRecurrent = false;

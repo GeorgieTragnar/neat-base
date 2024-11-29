@@ -16,8 +16,8 @@ public:
     struct Config {
         double compatibilityThreshold = 3.0;
         double targetSpeciesCount = 10;
-        int32_t stagnationThreshold = 15;
-        double minFitnessThreshold = 0.01;
+        int32_t stagnationThreshold = 20;
+        double minFitnessThreshold = 0.005;
     };
 
     explicit SpeciesManager(const Config& config);
