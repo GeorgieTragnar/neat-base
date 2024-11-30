@@ -27,6 +27,11 @@ void MutationOperator::mutate(core::Genome& genome) {
 		}
 	}
 
+	// Activation function mutations
+	if (weightDist(rng) < config.activationMutationRate) {
+		mutateActivations(genome);
+	}
+
 	// Structural mutations
 	if (weightDist(rng) < config.newNodeRate) {
 		addNodeMutation(genome);
@@ -34,6 +39,16 @@ void MutationOperator::mutate(core::Genome& genome) {
 
 	if (weightDist(rng) < config.newConnectionRate) {
 		addConnectionMutation(genome);
+	}
+}
+
+void MutationOperator::mutateActivations(core::Genome& genome) {
+	for (auto& gene : genome.getGenes()) {
+		if (gene.enabled) {
+            if (weightDist(rng) < config.activationConfig.mutationRate) {
+                gene.activation.mutate(config.activationConfig);
+            }
+		}
 	}
 }
 
@@ -58,14 +73,18 @@ bool MutationOperator::addNodeMutation(core::Genome& genome) {
 	// Create new node
 	int32_t newNodeId = genome.getNextNodeId();
 	double oldWeight = selectedGene.weight;
+	core::EActivationType oldActivation = selectedGene.activation.getType();
 	
 	// Disable old connection
 	selectedGene.enabled = false;
 	
+	// Create random activation for the new node's outgoing connection
+	core::ActivationGene newActivation = core::ActivationGene::createRandom(config.activationConfig);
+	
 	// Add new node and connections
 	genome.addNode(newNodeId, core::ENodeType::HIDDEN);
-	genome.addConnection(selectedGene.inputNode, newNodeId, 1.0);
-	genome.addConnection(newNodeId, selectedGene.outputNode, oldWeight);
+	genome.addConnection(selectedGene.inputNode, newNodeId, 1.0, true, oldActivation);
+	genome.addConnection(newNodeId, selectedGene.outputNode, oldWeight, true, newActivation.getType());
 	
 	return true;
 }
@@ -78,8 +97,22 @@ bool MutationOperator::addConnectionMutation(core::Genome& genome) {
 	std::uniform_int_distribution<size_t> connDist(0, possibleConnections.size() - 1);
 	auto [fromNode, toNode] = possibleConnections[connDist(rng)];
 	
+	// Create new activation function based on node types
+	const auto& nodes = genome.getNodes();
+	auto toType = nodes.at(toNode);
+	
+	core::ActivationGene activation;
+	if (toType == core::ENodeType::OUTPUT) {
+		// For output nodes, use only basic tier activations
+		std::uniform_int_distribution<int> basicDist(0, 2); // SIGMOID, TANH, RELU
+		activation = core::ActivationGene(static_cast<core::EActivationType>(basicDist(rng)));
+	} else {
+		// For hidden nodes, allow any activation function
+		activation = core::ActivationGene::createRandom(config.activationConfig);
+	}
+
 	// Create new connection with random weight
-	genome.addConnection(fromNode, toNode, newWeightDist(rng));
+	genome.addConnection(fromNode, toNode, newWeightDist(rng), true, activation.getType());
 	
 	return true;
 }

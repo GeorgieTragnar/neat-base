@@ -17,6 +17,9 @@ public:
         double newConnectionRate = 0.15;
         double weightPerturbationRange = 0.2;
         double newWeightRange = 2.0;
+        double activationMutationRate = 0.1;
+        double interTierMutationRate = 0.2;
+        core::ActivationGene::Config activationConfig;
         bool allowRecurrent = false;
     };
 
@@ -26,6 +29,7 @@ public:
 private:
     bool addNodeMutation(core::Genome& genome);
     bool addConnectionMutation(core::Genome& genome);
+    void mutateActivations(core::Genome& genome);
     std::vector<std::pair<int32_t, int32_t>> findPossibleConnections(const core::Genome& genome);
 
     Config config;

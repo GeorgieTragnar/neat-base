@@ -18,6 +18,7 @@ public:
         double targetSpeciesCount = 10;
         int32_t stagnationThreshold = 20;
         double minFitnessThreshold = 0.005;
+        double activationDiffWeight = 0.5;
     };
 
     explicit SpeciesManager(const Config& config);

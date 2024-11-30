@@ -19,6 +19,9 @@ private:
 	// Validate all genes reference valid nodes and have valid structure
 	static void validateGeneStructure(const core::Genome& genome);
 
+	// New: Validate activation functions
+	static void validateActivationFunctions(const core::Genome& genome);
+
 	// Validate network topology (no cycles in feedforward networks)
 	static void validateTopology(const core::Genome& genome);
 

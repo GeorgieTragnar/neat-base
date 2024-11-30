@@ -4,6 +4,7 @@
 #include <random>
 #include <set>
 #include "network/Network.hpp"
+#include "core/ActivationGene.hpp"
 #include <iostream>
 
 namespace neat {
@@ -26,6 +27,7 @@ public:
         double newWeightRange = 1.0;
         int32_t maxHiddenNodes = 5;
         network::Network::Config networkConfig;
+        core::ActivationGene::Config activationConfig;
         
         Config() = default;
         Config(int32_t inputs, int32_t outputs) 
@@ -126,6 +128,8 @@ public:
             // Initialize bias node
             addNode(-1, ENodeType::BIAS, false);
         }
+
+    void setConfig(const Config& newConfig) { config = newConfig; }
     
     // Initialization
     void initMinimalTopology(int32_t inputs, int32_t outputs);
@@ -134,10 +138,12 @@ public:
     // Core genome operations
     void addNode(NodeId id, ENodeType type, bool validateAfter = true);
     void addGene(const Gene& gene, bool validateAfter = true);
-    void addConnection(NodeId from, NodeId to, double weight, bool validateAfter = true);
+    void addConnection(NodeId from, NodeId to, double weight, bool validateAfter = true,
+        core::EActivationType activation = core::EActivationType::SIGMOID);
     bool addConnectionMutation();
     bool addNodeMutation();
     void mutateWeights();
+    void mutateActivations();
     
     // Network operations
     std::vector<double> activate(const std::vector<double>& inputs);

@@ -202,24 +202,29 @@ void Genome::initMinimalTopology(int32_t inputs, int32_t outputs) {
     for (NodeId hiddenId : hiddenNodeIds) {
         // Connect inputs to hidden
         for (NodeId inputId : inputNodeIds) {
-            addConnection(inputId, hiddenId, weightDist(rng), false);
+            auto activation = core::ActivationGene::createRandom(config.activationConfig);
+            addConnection(inputId, hiddenId, weightDist(rng), false, activation.getType());
         }
-        addConnection(-1, hiddenId, weightDist(rng), false);  // Bias to hidden
+        auto biasActivation = core::ActivationGene::createRandom(config.activationConfig);
+        addConnection(-1, hiddenId, weightDist(rng), false, biasActivation.getType()); // bias to hidden
         
         // Connect hidden to outputs
         for (NodeId outputId : outputNodeIds) {
-            addConnection(hiddenId, outputId, weightDist(rng), false);
+            auto activation = core::ActivationGene::createRandom(config.activationConfig);
+            addConnection(hiddenId, outputId, weightDist(rng), false, activation.getType());
         }
     }
     
     for (NodeId outputId : outputNodeIds) {
         // Connect regular inputs
         for (NodeId inputId : inputNodeIds) {
-            addConnection(inputId, outputId, weightDist(rng), false);
+            auto activation = core::ActivationGene::createRandom(config.activationConfig);
+            addConnection(inputId, outputId, weightDist(rng), false, activation.getType());
             LOG_TRACE("Added initial connection from {} to {}", inputId, outputId);
         }
         // Connect bias
-        addConnection(-1, outputId, weightDist(rng), false);
+        auto biasActivation = core::ActivationGene::createRandom(config.activationConfig);
+        addConnection(-1, outputId, weightDist(rng), false, biasActivation.getType());
         LOG_TRACE("Added initial connection from {} to {}", -1, outputId);
     }
 
@@ -237,6 +242,12 @@ void Genome::initMinimalTopology(int32_t inputs, int32_t outputs) {
     // Now validate the complete network
     rebuildNetwork();
     validate();
+}
+
+void Genome::mutateActivations() {
+    for (auto& gene : genes) {
+        gene.activation.mutate(config.activationConfig);
+    }
 }
 
 // Add these validation helper methods to the Genome class private section
@@ -400,7 +411,7 @@ void Genome::addGene(const Gene& gene, bool validateAfter) {
     }
 }
 
-void Genome::addConnection(NodeId from, NodeId to, double weight, bool validateAfter) {
+void Genome::addConnection(NodeId from, NodeId to, double weight, bool validateAfter, core::EActivationType activation) {
     markDirty();
     
     // Ensure both nodes exist before adding connection
@@ -414,6 +425,7 @@ void Genome::addConnection(NodeId from, NodeId to, double weight, bool validateA
     
     // Now add the connection
     Gene gene(from, to, weight, true, InnovationTracker::getNextInnovation());
+    gene.activation = ActivationGene(activation);
     genes.push_back(gene);
     
     // Update network
@@ -591,32 +603,49 @@ void Genome::mutateWeights() {
 }
 
 double Genome::compatibilityDistance(const Genome& genome1, const Genome& genome2) {
-    double disjoint = 0.0;
+    const auto& genes1 = genome1.getGenes();
+    const auto& genes2 = genome2.getGenes();
+    
     double weightDiff = 0.0;
-    int matching = 0;
+    double actDiff = 0.0;
+    int32_t matchingGenes = 0;
+    int32_t disjointGenes = 0;
     
     size_t i = 0, j = 0;
-    while (i < genome1.genes.size() && j < genome2.genes.size()) {
-        if (genome1.genes[i].innovation == genome2.genes[j].innovation) {
-            weightDiff += std::abs(genome1.genes[i].weight - genome2.genes[j].weight);
-            matching++;
+    while (i < genes1.size() && j < genes2.size()) {
+        if (genes1[i].innovation == genes2[j].innovation) {
+            weightDiff += std::abs(genes1[i].weight - genes2[j].weight);
+            
+            // Calculate activation difference using existing config
+            double actCompatibility = Gene::getActivationCompatibility(genes1[i], genes2[j]);
+            actDiff += actCompatibility * genome1.getConfig().activationConfig.compatibilityWeight;
+            
+            matchingGenes++;
             i++;
             j++;
-        } else if (genome1.genes[i].innovation < genome2.genes[j].innovation) {
-            disjoint++;
+        }
+        else if (genes1[i].innovation < genes2[j].innovation) {
+            disjointGenes++;
             i++;
-        } else {
-            disjoint++;
+        }
+        else {
+            disjointGenes++;
             j++;
         }
     }
     
-    disjoint += (genome1.genes.size() - i) + (genome2.genes.size() - j);
-    weightDiff = matching > 0 ? weightDiff / matching : 0;
+    disjointGenes += (genes1.size() - i) + (genes2.size() - j);
     
-    const double c1 = 1.0, c2 = 1.0;
-    return (c1 * disjoint / std::max(genome1.genes.size(), genome2.genes.size())) + 
-           (c2 * weightDiff);
+    const double c1 = 1.0;  // Disjoint coefficient
+    const double c2 = 1.0;  // Weight coefficient
+    
+    double distance = (c1 * disjointGenes) / std::max(genes1.size(), genes2.size());
+    if (matchingGenes > 0) {
+        distance += c2 * (weightDiff / matchingGenes);
+        distance += actDiff / matchingGenes;
+    }
+    
+    return distance;
 }
 
 bool Genome::isValidConnection(NodeId from, NodeId to) const {

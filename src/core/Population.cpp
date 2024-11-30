@@ -14,7 +14,13 @@ namespace core {
 
 Population::Population(int32_t inputSize, int32_t outputSize, const Config& config)
     : config(config)
+    , mutationOp(config.mutationConfig)
     , rng(std::random_device{}()) {
+
+    // Initialize population with proper activation configs
+    for (auto& genome : genomes) {
+        genome.setConfig(config.genomeConfig);
+    }
     
     LOG_DEBUG("Creating population with {} inputs and {} outputs", inputSize, outputSize);
               
@@ -105,6 +111,8 @@ void Population::evolve(const std::function<double(Genome&)>& fitnessFunction) {
         
         // Apply mutations
         child.mutateWeights();
+        child.mutateActivations();
+
         if (std::uniform_real_distribution<>(0, 1)(rng) < child.getConfig().newNodeRate) {
             LOG_TRACE("Attempting node mutation...");
             child.addNodeMutation();

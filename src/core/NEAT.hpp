@@ -13,12 +13,17 @@ public:
         int32_t inputSize;
         int32_t outputSize;
         Population::Config populationConfig;
+        core::ActivationGene::Config activationConfig;
 
         // Add explicit Genome config initialization
         Config(int32_t inputs, int32_t outputs) 
             : inputSize(inputs)
             , outputSize(outputs)
-            , populationConfig(inputs, outputs) {}
+            , populationConfig(inputs, outputs) {
+                // TODO: as part of future config rework redesign 
+                // config propagation needs to be revisitted 
+                // and config ownership/construction needs to be properly thought through
+            }
     };
     
     explicit NEAT(const Config& config);

@@ -6,8 +6,8 @@
 namespace neat {
 namespace network {
 
-void Network::addNode(int32_t id, core::ENodeType type) {
-	auto node = std::make_shared<Node>(id, type, activationFn);
+void Network::addNode(int32_t id, core::ENodeType type, core::EActivationType actType) {
+	auto node = std::make_shared<Node>(id, type, actType);
 	nodes[id] = node;
 	
 	switch (type) {
@@ -27,7 +27,7 @@ void Network::addNode(int32_t id, core::ENodeType type) {
 	}
 }
 
-void Network::addConnection(int32_t fromId, int32_t toId, double weight, bool enabled) {
+void Network::addConnection(int32_t fromId, int32_t toId, double weight, bool enabled, core::EActivationType actType) {
 	auto from = fromId == -1 ? biasNode : nodes[fromId];
 	auto to = nodes[toId];
 	
@@ -39,11 +39,11 @@ void Network::addConnection(int32_t fromId, int32_t toId, double weight, bool en
 		throw std::runtime_error("Attempting to create cycle in feed-forward network");
 	}
 	
-	from->addOutput(to, weight, enabled);
-	to->addInput(from, weight, enabled);
+	from->addOutput(to, weight, enabled, actType);
+	to->addInput(from, weight, enabled, actType);
 	
 	if (enabled) {
-		connections.emplace_back(fromId, toId, weight);
+		connections.emplace_back(fromId, toId, weight, actType);
 	}
 }
 
@@ -83,7 +83,7 @@ bool Network::validate() const {
 		}
 		
 		// Verify connection consistency
-		for (const auto& [fromId, toId, weight] : connections) {
+		for (const auto& [fromId, toId, weight, actType] : connections) {
 			auto from = fromId == -1 ? biasNode : nodes.at(fromId);
 			auto to = nodes.at(toId);
 			

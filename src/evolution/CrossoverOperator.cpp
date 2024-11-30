@@ -35,6 +35,24 @@ CrossoverOperator::InheritanceMap CrossoverOperator::createInheritanceMap(
     return inheritanceMap;
 }
 
+core::EActivationType CrossoverOperator::inheritActivation(
+    const core::Gene& gene1, 
+    const core::Gene& gene2,
+    bool parent1IsFitter) {
+        
+    // If both genes have same activation, keep it
+    if (gene1.activation.getType() == gene2.activation.getType()) {
+        return gene1.activation.getType();
+    }
+    
+    // Otherwise randomly inherit based on parent fitness
+    if (inheritanceDist(rng) < config.matchingActivationInheritanceRate) {
+        return parent1IsFitter ? gene1.activation.getType() : gene2.activation.getType();
+    } else {
+        return parent1IsFitter ? gene2.activation.getType() : gene1.activation.getType();
+    }
+}
+
 core::Genome CrossoverOperator::crossover(
     const core::Genome& parent1,
     const core::Genome& parent2) {
@@ -80,6 +98,11 @@ core::Genome CrossoverOperator::crossover(
                 : gene2;
                 
             auto newGene = *selectedGene;
+            
+            // Handle activation function inheritance
+            newGene.activation = core::ActivationGene(
+                inheritActivation(*gene1, *gene2, parent1IsFitter)
+            );
             
             // Check if gene should be re-enabled
             if (!newGene.enabled && 

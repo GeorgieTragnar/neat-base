@@ -74,6 +74,7 @@ double SpeciesManager::getCompatibilityDistance(
     const auto& genes2 = genome2.getGenes();
     
     double weightDiff = 0.0;
+    double actDiff = 0.0;
     int32_t matchingGenes = 0;
     int32_t disjointGenes = 0;
     
@@ -81,6 +82,10 @@ double SpeciesManager::getCompatibilityDistance(
     while (i < genes1.size() && j < genes2.size()) {
         if (genes1[i].innovation == genes2[j].innovation) {
             weightDiff += std::abs(genes1[i].weight - genes2[j].weight);
+
+            // Activation difference
+            actDiff += (genes1[i].activation.getType() != genes2[j].activation.getType()) ? 1.0 : 0.0;
+
             matchingGenes++;
             i++;
             j++;
@@ -103,6 +108,7 @@ double SpeciesManager::getCompatibilityDistance(
     double distance = (c1 * disjointGenes) / std::max(genes1.size(), genes2.size());
     if (matchingGenes > 0) {
         distance += c2 * (weightDiff / matchingGenes);
+        distance += config.activationDiffWeight * (actDiff / matchingGenes);
     }
     
     return distance;

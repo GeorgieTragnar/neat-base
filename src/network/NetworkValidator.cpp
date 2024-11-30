@@ -7,6 +7,14 @@
 namespace neat {
 namespace network {
 
+void NetworkValidator::validateNetwork(const core::Genome& genome) {
+	validateNodeStructure(genome);
+	validateGeneStructure(genome);
+	validateActivationFunctions(genome);
+	validateTopology(genome);
+	validateConnectivity(genome);
+}
+
 // Validate all nodes exist and have valid IDs
 void NetworkValidator::validateNodeStructure(const core::Genome& genome) {
 	const auto& nodes = genome.getNodes();
@@ -61,6 +69,56 @@ void NetworkValidator::validateGeneStructure(const core::Genome& genome) {
 			auto outputType = nodes.at(gene.outputNode);
 			if (outputType == core::ENodeType::INPUT) {
 				throw std::runtime_error("Input node cannot be output of connection");
+			}
+
+			// Validate activation gene type is within valid range
+			if (static_cast<int>(gene.activation.getType()) >= static_cast<int>(core::EActivationType::COUNT)) {
+				throw std::runtime_error("Invalid activation function type in gene");
+			}
+		}
+	}
+}
+
+void NetworkValidator::validateActivationFunctions(const core::Genome& genome) {
+	const auto& genes = genome.getGenes();
+    const auto& config = genome.getConfig().activationConfig;
+	
+	for (const auto& gene : genes) {
+		if (gene.enabled) {
+			// Check activation type is valid
+			auto actType = gene.activation.getType();
+			if (static_cast<int>(actType) >= static_cast<int>(core::EActivationType::COUNT)) {
+				throw std::runtime_error("Invalid activation type in gene: " + 
+					std::to_string(static_cast<int>(actType)));
+			}
+			
+			// Check activation function tier matches gene's position/importance
+			int tier = core::ActivationGene::getTier(actType);
+            switch(tier) {
+                case 0: // Basic
+                    if (config.basicTierProb <= 0.0) {
+                        throw std::runtime_error("Basic tier activation found but disabled in config");
+                    }
+                    break;
+                case 1: // Advanced
+                    if (config.advancedTierProb <= 0.0) {
+                        throw std::runtime_error("Advanced tier activation found but disabled in config");
+                    }
+                    break;
+                case 2: // Experimental
+                    if ((1.0 - config.basicTierProb - config.advancedTierProb) <= 0.0) {
+                        throw std::runtime_error("Experimental tier activation found but disabled in config");
+                    }
+                    break;
+            }
+			
+			// Optional: Add specific tier validation rules
+			if (tier == 2) { // Experimental tier
+				// Example: Limit experimental functions to hidden nodes
+				auto outputType = genome.getNodes().at(gene.outputNode);
+				if (outputType == core::ENodeType::OUTPUT) {
+					throw std::runtime_error("Experimental activation functions not allowed on output nodes");
+				}
 			}
 		}
 	}

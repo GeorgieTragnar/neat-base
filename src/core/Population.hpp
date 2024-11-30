@@ -4,6 +4,7 @@
 #include <functional>
 #include <random>
 #include "core/Genome.hpp"
+#include "evolution/MutationOperator.hpp"
 
 namespace neat {
 namespace core {
@@ -20,11 +21,18 @@ public:
         int32_t speciesTargetSize = 5;
         int32_t tournamentSize = 5;
         double elitismRate = 0.05;
+        core::ActivationGene::Config activationConfig;
         Genome::Config genomeConfig;
+        evolution::MutationOperator::Config mutationConfig;
         
         Config() = default;
         Config(int32_t inputs, int32_t outputs)
-            : genomeConfig(inputs, outputs) {}
+            : genomeConfig(inputs, outputs) {
+                // Propagate activation config to mutation operator
+                mutationConfig.activationConfig = activationConfig;
+                genomeConfig.activationConfig = activationConfig;
+                // TODO: need to redesign config propagation
+            }
     };
     
     Population(int32_t inputSize, int32_t outputSize, const Config& config);
@@ -50,6 +58,7 @@ private:
     void removeStaleSpecies();
     void removeWeakSpecies();
 
+    evolution::MutationOperator mutationOp;
     std::mt19937 rng;
 };
 
