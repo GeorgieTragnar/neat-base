@@ -9,7 +9,7 @@ namespace core {
 
 NEAT::NEAT(const Config& config)
     : config(config)
-    , population(config.inputSize, config.outputSize, config.populationConfig) {}
+    , population(config.createPopulationConfig()) {}
 
 void NEAT::evolve(int32_t generations, 
                  const std::function<double(Genome&)>& fitnessFunction,

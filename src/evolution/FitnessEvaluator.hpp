@@ -14,11 +14,11 @@ namespace evolution {
 class FitnessEvaluator {
 public:
     struct Config {
-        bool normalized = true;
-        double targetFitness = 1.0;
-        bool higherIsBetter = true;
-        double fitnessThreshold = 0.0;
-        bool useParallelEvaluation = true;
+        bool normalized;
+        double targetFitness;
+        bool higherIsBetter;
+        double fitnessThreshold;
+        bool useParallelEvaluation;
     };
 
     using FitnessFunction = std::function<double(const core::Genome&)>;

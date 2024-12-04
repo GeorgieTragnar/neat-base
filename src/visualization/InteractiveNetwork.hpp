@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <cstdint>
 #include <string>
+#include "network/Network.hpp"
 
 namespace neat {
 namespace core {
@@ -46,6 +47,7 @@ public:
 private:
     const core::Genome& genome;
     Config config;
+    network::Network::Config netConfig;
     std::unordered_map<int32_t, double> nodeValues;
     std::vector<std::vector<double>> signalHistory;
 };

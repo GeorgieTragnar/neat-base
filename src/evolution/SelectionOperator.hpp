@@ -17,8 +17,14 @@ namespace evolution {
 class SelectionOperator {
 public:
     struct Config {
-        int32_t tournamentSize = 3;
-        double elitismRate = 0.1;
+        int32_t tournamentSize;
+        double elitismRate;
+
+        Config() = delete;
+        Config(int32_t tournamentSize,
+                double elitismRate)
+            : tournamentSize(tournamentSize)
+            , elitismRate(elitismRate) {}
     };
 
     explicit SelectionOperator(const Config& config);

@@ -11,25 +11,40 @@ namespace network {
 class Network {
 public:
     struct Config {
-        int32_t inputSize = 0;
-        int32_t outputSize = 0;
+        // Core network parameters
+        int32_t inputSize;
+        int32_t outputSize;
+        bool allowRecurrent;
+        double biasValue;
         core::ActivationGene::Config activationConfig;
-        bool allowRecurrent = false;
-        double biasValue = 1.0;
-        
-        Config() = default;
-        Config(int32_t inputs, int32_t outputs)
+
+        Config() = delete;
+        Config(int32_t inputs, 
+               int32_t outputs,
+               const core::ActivationGene::Config& actConfig,
+               bool recurrent = false,
+               double bias = 1.0)
             : inputSize(inputs)
-            , outputSize(outputs) {}
+            , outputSize(outputs)
+            , allowRecurrent(recurrent)
+            , biasValue(bias)
+            , activationConfig(actConfig) {}
     };
-    
-    Network(const Config& config)
-        : config(config) {}
+
+    explicit Network(const Config& config)
+        : config(config) {
+        // Pre-allocate vectors for performance
+        inputNodes.reserve(config.inputSize);
+        outputNodes.reserve(config.outputSize);
+        hiddenNodes.reserve(10);
+    }
     
     void addNode(int32_t id, core::ENodeType type, core::EActivationType actType = core::EActivationType::SIGMOID);
     void addConnection(int32_t fromId, int32_t toId, double weight, bool enabled = true, core::EActivationType actType = core::EActivationType::SIGMOID);
     std::vector<double> activate(const std::vector<double>& inputs);
     bool validate() const;
+
+    const Config getConfig() const { return config; }
 
 private:
     struct Connection {

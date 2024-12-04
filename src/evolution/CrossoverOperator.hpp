@@ -17,10 +17,29 @@ namespace evolution {
 class CrossoverOperator {
 public:
     struct Config {
-        double matchingGeneInheritanceRate = 0.5;
-        bool inheritDisabledGenes = true;
-        double disabledGeneReenableRate = 0.25;
-        double matchingActivationInheritanceRate = 0.5;
+        double matchingGeneInheritanceRate;
+        bool inheritDisabledGenes;
+        double disabledGeneReenableRate;
+        double matchingActivationInheritanceRate;
+
+        Config() = delete;
+        Config(double matchingGeneRate,
+            bool inheritDisabled,
+            double reEnableRate,
+            double matchingActivationRate)
+            : matchingGeneInheritanceRate(validateRate(matchingGeneRate, "matchingGeneInheritanceRate"))
+            , inheritDisabledGenes(inheritDisabled)
+            , disabledGeneReenableRate(validateRate(reEnableRate, "disabledGeneReenableRate"))
+            , matchingActivationInheritanceRate(validateRate(matchingActivationRate, "matchingActivationInheritanceRate"))
+        {}
+
+        private:
+            static double validateRate(double value, const char* paramName) {
+                if (value < 0.0 || value > 1.0) {
+                    throw std::invalid_argument(std::string(paramName) + " must be between 0 and 1");
+                }
+                return value;
+            }
     };
 
     explicit CrossoverOperator(const Config& config);

@@ -1,6 +1,5 @@
 #include "InteractiveNetwork.hpp"
 #include "core/Genome.hpp"
-#include "network/Network.hpp"
 #include <sstream>
 #include <chrono>
 #include <thread>
@@ -12,12 +11,24 @@ namespace visualization {
 InteractiveNetwork::InteractiveNetwork(const core::Genome& genome, const Config& config)
     : genome(genome)
     , config(config)
+    , netConfig(
+        genome.getConfig().inputSize,
+        genome.getConfig().outputSize,
+        core::ActivationGene::Config(
+            0.1,
+            0.2,
+            0.8,
+            0.15,
+            1.0
+        ),
+        false,
+        1.0
+    )
 {
     reset();
 }
 
 void InteractiveNetwork::start() {
-    network::Network::Config netConfig;
     network::Network net(netConfig);
     
     for (const auto& [id, type] : genome.getNodes()) {
@@ -56,7 +67,6 @@ void InteractiveNetwork::updateInputs(const std::vector<double>& inputs) {
 }
 
 void InteractiveNetwork::step() {
-    network::Network::Config netConfig;
     network::Network net(netConfig);
     
     for (const auto& [id, type] : genome.getNodes()) {

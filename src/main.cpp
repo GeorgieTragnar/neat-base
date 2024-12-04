@@ -64,10 +64,16 @@ const std::vector<double> SIN_OUTPUTS = {
 };
 
 double evaluateSinFitness(core::Genome& genome) {
-    // Scale fitness to number of test points
-    double fitness = SIN_INPUTS.size() * 10.0;
+    // Validate network dimensions
+    if (genome.getConfig().inputSize != 1 || genome.getConfig().outputSize != 1) {
+        throw std::runtime_error("Network must have 1 input and 1 output for sin function");
+    }
     
-    std::vector<double> inputs(genome.getConfig().networkConfig.inputSize);
+    // Initialize with maximum possible fitness
+    double maxError = SIN_INPUTS.size() * 2.0; // Max error of 2.0 per point (-1 to 1 range)
+    double totalError = 0.0;
+    
+    std::vector<double> inputs(1); // Single input for sin function
     
     for (size_t i = 0; i < SIN_INPUTS.size(); i++) {
         // Normalize inputs to [-1,1]
@@ -76,12 +82,16 @@ double evaluateSinFitness(core::Genome& genome) {
         auto outputs = genome.activate(inputs);
         if (outputs.empty()) return 0.0;
         
-        // Use absolute error with smaller penalty
+        // Calculate absolute error
         double error = std::abs(outputs[0] - SIN_OUTPUTS[i]);
-        fitness -= error;
+        totalError += error;
     }
     
-    return std::max(0.0, fitness / SIN_INPUTS.size()); // Normalize to [0,10]
+    // Convert error to fitness (0 to 1 range)
+    // Perfect match = 1.0, worst possible = 0.0
+    double fitness = 1.0 - (totalError / maxError);
+    
+    return std::max(0.0, fitness);
 }
 
 // XOR truth table inputs/outputs
@@ -90,37 +100,37 @@ const std::vector<std::vector<double>> XOR_INPUTS = {
 };
 const std::vector<double> XOR_OUTPUTS = {0, 1, 1, 0};
 
-double evaluateXORFitness(core::Genome& genome) {
-    double fitness = 4.0;  // Start with max fitness and subtract errors
+// double evaluateXORFitness(core::Genome& genome) {
+//     double fitness = 4.0;  // Start with max fitness and subtract errors
     
-    // Get number of inputs the network expects
-    size_t inputCount = std::count_if(genome.getNodes().begin(), genome.getNodes().end(),
-        [](const auto& pair) { return pair.second == neat::core::ENodeType::INPUT; });
+//     // Get number of inputs the network expects
+//     size_t inputCount = std::count_if(genome.getNodes().begin(), genome.getNodes().end(),
+//         [](const auto& pair) { return pair.second == neat::core::ENodeType::INPUT; });
     
-    std::vector<double> inputs(inputCount);  // Will include bias if present
+//     std::vector<double> inputs(inputCount);  // Will include bias if present
     
-    for (size_t i = 0; i < XOR_INPUTS.size(); i++) {
-        // Copy the XOR inputs
-        for (size_t j = 0; j < XOR_INPUTS[i].size(); j++) {
-            inputs[j] = XOR_INPUTS[i][j];
-        }
+//     for (size_t i = 0; i < XOR_INPUTS.size(); i++) {
+//         // Copy the XOR inputs
+//         for (size_t j = 0; j < XOR_INPUTS[i].size(); j++) {
+//             inputs[j] = XOR_INPUTS[i][j];
+//         }
         
-        // If we have an extra input (bias), set it to 1.0
-        if (inputs.size() > XOR_INPUTS[i].size()) {
-            inputs.back() = 1.0;
-        }
+//         // If we have an extra input (bias), set it to 1.0
+//         if (inputs.size() > XOR_INPUTS[i].size()) {
+//             inputs.back() = 1.0;
+//         }
         
-        auto outputs = genome.activate(inputs);
-        if (outputs.empty()) {
-            return 0.0;  // Handle error case
-        }
+//         auto outputs = genome.activate(inputs);
+//         if (outputs.empty()) {
+//             return 0.0;  // Handle error case
+//         }
         
-        double error = std::abs(outputs[0] - XOR_OUTPUTS[i]);
-        fitness -= error * error;  // Square error
-    }
+//         double error = std::abs(outputs[0] - XOR_OUTPUTS[i]);
+//         fitness -= error * error;  // Square error
+//     }
     
-    return std::max(0.0, fitness);
-}
+//     return std::max(0.0, fitness);
+// }
 
 void generationCallback(int32_t generation, const core::Population& population) {
     const auto& best = population.getBestGenome();
@@ -131,13 +141,11 @@ int main(int argc, char* argv[]) {
     // Configure loggers from command line arguments
     configureLoggers(argc, argv);
 
-    core::NEAT::Config config(2, 1);
-    config.populationConfig.populationSize = 500;
+    core::NEAT::Config config(1, 1);
     
     LOG_INFO("Creating NEAT with configuration:");
     LOG_INFO("Inputs: {}", config.inputSize);
     LOG_INFO("Outputs: {}", config.outputSize);
-    LOG_INFO("Population size: {}", config.populationConfig.populationSize);
     
     core::NEAT neat(config);
     

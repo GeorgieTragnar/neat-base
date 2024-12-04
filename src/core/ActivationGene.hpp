@@ -1,6 +1,8 @@
 // ActivationGene.hpp
 #pragma once
 
+#include <stdexcept>
+
 namespace neat {
 namespace core {
 
@@ -24,12 +26,36 @@ enum class EActivationType {
 class ActivationGene {
 public:
     struct Config {
-        double mutationRate = 0.1;
-        double interTierMutationRate = 0.2;
-        double basicTierProb = 0.8;
-        double advancedTierProb = 0.15;
-		double compatibilityWeight = 0.5;
-    };
+			// Mutation parameters
+			double mutationRate;  // Chance of mutating activation
+			double interTierMutationRate; // Chance of changing tiers when mutating
+			
+			// Tier probabilities
+			double basicTierProb;     // For initial random assignment
+			double advancedTierProb;  // For initial random assignment
+			// Experimental tier = 1.0 - (basic + advanced)
+			
+			// Speciation parameter
+			double compatibilityWeight; // How much activation differences matter in speciation
+			
+            Config() = delete;
+			Config(double mutRate = 0.1,
+				   double interTierRate = 0.2,
+				   double basicProb = 0.8,
+				   double advancedProb = 0.15,
+				   double compatWeight = 1.0) {
+				
+				if (basicProb + advancedProb > 1.0) {
+					throw std::runtime_error("Tier probabilities exceed 1.0");
+				}
+				
+				mutationRate = mutRate;
+				interTierMutationRate = interTierRate;
+				basicTierProb = basicProb;
+				advancedTierProb = advancedProb;
+				compatibilityWeight = compatWeight;
+			}
+		};
     
     ActivationGene() : type(EActivationType::SIGMOID) {}
     explicit ActivationGene(EActivationType t) : type(t) {}

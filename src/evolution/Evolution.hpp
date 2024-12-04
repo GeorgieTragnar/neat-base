@@ -20,13 +20,31 @@ public:
         SpeciesManager::Config speciesConfig;
         FitnessEvaluator::Config fitnessConfig;
         
-        int32_t populationSize = 150;
-        int32_t maxGenerations = 100;
-        double targetFitness = 1.0;
-        bool stopOnTarget = true;
+        // Remove populationSize since it's defined by NEAT's Population
+        int32_t maxGenerations;
+        double targetFitness;
+        bool stopOnTarget;
+
+        Config() = delete;
+        Config(const MutationOperator::Config& mutConfig,
+            const CrossoverOperator::Config& crossConfig,
+            const SelectionOperator::Config& selectConfig,
+            const SpeciesManager::Config& speciesConfig,
+            const FitnessEvaluator::Config& fitnessConfig,
+            int32_t maxGen,
+            double targetFit,
+            bool stopTarget)
+            : mutationConfig(mutConfig)
+            , crossoverConfig(crossConfig)
+            , selectionConfig(selectConfig)
+            , speciesConfig(speciesConfig)
+            , fitnessConfig(fitnessConfig)
+            , maxGenerations(maxGen)
+            , targetFitness(targetFit)
+            , stopOnTarget(stopTarget) {}
     };
 
-    explicit Evolution(const Config& config);
+    explicit Evolution(const Config& config, core::Population& population);
     
     void initializePopulation(int32_t inputSize, int32_t outputSize);
     void evolve(const FitnessEvaluator::FitnessFunction& fitnessFunc);
@@ -48,7 +66,7 @@ private:
     void updateStats();
 
     Config config;
-    core::Population population;
+    core::Population& population;
     Stats currentStats;
     
     MutationOperator mutationOp;

@@ -14,11 +14,23 @@ namespace evolution {
 class SpeciesManager {
 public:
     struct Config {
-        double compatibilityThreshold = 3.0;
-        double targetSpeciesCount = 10;
-        int32_t stagnationThreshold = 20;
-        double minFitnessThreshold = 0.005;
-        double activationDiffWeight = 0.5;
+        double compatibilityThreshold;
+        double targetSpeciesCount;
+        int32_t stagnationThreshold;
+        double minFitnessThreshold;
+        double activationDiffWeight;
+
+        Config() = delete;
+        Config(double compatibilityThreshold,
+                double targetSpeciesCount,
+                int32_t stagnationThreshold,
+                double minFitnessThreshold,
+                double activationDiffWeight)
+            : compatibilityThreshold(compatibilityThreshold)
+            , targetSpeciesCount(targetSpeciesCount)
+            , stagnationThreshold(stagnationThreshold)
+            , minFitnessThreshold(minFitnessThreshold)
+            , activationDiffWeight(activationDiffWeight) {}
     };
 
     explicit SpeciesManager(const Config& config);

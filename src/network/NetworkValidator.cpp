@@ -80,48 +80,71 @@ void NetworkValidator::validateGeneStructure(const core::Genome& genome) {
 }
 
 void NetworkValidator::validateActivationFunctions(const core::Genome& genome) {
-	const auto& genes = genome.getGenes();
-    const auto& config = genome.getConfig().activationConfig;
-	
-	for (const auto& gene : genes) {
-		if (gene.enabled) {
-			// Check activation type is valid
-			auto actType = gene.activation.getType();
-			if (static_cast<int>(actType) >= static_cast<int>(core::EActivationType::COUNT)) {
-				throw std::runtime_error("Invalid activation type in gene: " + 
-					std::to_string(static_cast<int>(actType)));
-			}
-			
-			// Check activation function tier matches gene's position/importance
-			int tier = core::ActivationGene::getTier(actType);
-            switch(tier) {
-                case 0: // Basic
-                    if (config.basicTierProb <= 0.0) {
-                        throw std::runtime_error("Basic tier activation found but disabled in config");
-                    }
-                    break;
-                case 1: // Advanced
-                    if (config.advancedTierProb <= 0.0) {
-                        throw std::runtime_error("Advanced tier activation found but disabled in config");
-                    }
-                    break;
-                case 2: // Experimental
-                    if ((1.0 - config.basicTierProb - config.advancedTierProb) <= 0.0) {
-                        throw std::runtime_error("Experimental tier activation found but disabled in config");
-                    }
-                    break;
-            }
-			
-			// Optional: Add specific tier validation rules
-			if (tier == 2) { // Experimental tier
-				// Example: Limit experimental functions to hidden nodes
-				auto outputType = genome.getNodes().at(gene.outputNode);
-				if (outputType == core::ENodeType::OUTPUT) {
-					throw std::runtime_error("Experimental activation functions not allowed on output nodes");
-				}
-			}
-		}
-	}
+    const auto& genes = genome.getGenes();
+    const auto& nodes = genome.getNodes();
+    
+    // Track which tiers are in use
+    bool hasBasicTier = false;
+    bool hasAdvancedTier = false;
+    bool hasExperimentalTier = false;
+    
+    // First pass - check what tiers are in use
+    for (const auto& gene : genes) {
+        if (!gene.enabled) {
+            continue;
+        }
+        
+        int tier = core::ActivationGene::getTier(gene.activation.getType());
+        switch(tier) {
+            case 0: hasBasicTier = true; break;
+            case 1: hasAdvancedTier = true; break;
+            case 2: hasExperimentalTier = true; break;
+        }
+    }
+    
+    // Validate tier usage - basic tier must always be present if others are used
+    if ((hasAdvancedTier || hasExperimentalTier) && !hasBasicTier) {
+        throw std::runtime_error("Advanced/Experimental tiers cannot be used without Basic tier functions");
+    }
+    
+    // Main validation
+    for (const auto& gene : genes) {
+        if (!gene.enabled) {
+            continue;
+        }
+        
+        // Check activation type validity
+        auto actType = gene.activation.getType();
+        if (static_cast<int>(actType) >= static_cast<int>(core::EActivationType::COUNT)) {
+            throw std::runtime_error("Invalid activation type in gene: " + 
+                std::to_string(static_cast<int>(actType)));
+        }
+        
+        // Get node types for validation
+        auto outputNode = nodes.find(gene.outputNode);
+        if (outputNode == nodes.end()) {
+            throw std::runtime_error("Gene references non-existent output node: " + 
+                std::to_string(gene.outputNode));
+        }
+        
+        // Validate based on tier
+        int tier = core::ActivationGene::getTier(actType);
+        switch(tier) {
+            case 0: // Basic tier (SIGMOID, TANH, RELU)
+            case 1: // Advanced tier (LEAKY_RELU, SOFTPLUS)
+                break;
+                
+            case 2: // Experimental tier (GAUSSIAN, SINE)
+                if (outputNode->second == core::ENodeType::OUTPUT) {
+                    throw std::runtime_error("Experimental activation functions not allowed on output nodes");
+                }
+                break;
+                
+            default:
+                throw std::runtime_error("Unknown activation function tier: " + 
+                    std::to_string(tier));
+        }
+    }
 }
 
 // Validate network topology (no cycles in feedforward networks)

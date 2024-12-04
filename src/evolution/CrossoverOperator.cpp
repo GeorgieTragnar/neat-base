@@ -111,7 +111,10 @@ core::Genome CrossoverOperator::crossover(
                 newGene.enabled = true;
             }
             
-            child.addGene(newGene, false);  // Disable validation during construction
+            // Only add if it wouldn't create a cycle
+            if (!newGene.enabled || child.isValidConnection(newGene.inputNode, newGene.outputNode)) {
+                child.addGene(newGene, false);  // Disable validation during construction
+            }
         }
         // Disjoint/excess gene - inherit from fitter parent only
         else if ((gene1 && parent1IsFitter) || (gene2 && !parent1IsFitter)) {
@@ -124,7 +127,10 @@ core::Genome CrossoverOperator::crossover(
                 newGene.enabled = true;
             }
             
-            child.addGene(newGene, false);  // Disable validation during construction
+            // Only add if it wouldn't create a cycle
+            if (!newGene.enabled || child.isValidConnection(newGene.inputNode, newGene.outputNode)) {
+                child.addGene(newGene, false);  // Disable validation during construction
+            }
         }
     }
     

@@ -12,36 +12,15 @@ static auto logger = LOGGER("core::Population");
 namespace neat {
 namespace core {
 
-Population::Population(int32_t inputSize, int32_t outputSize, const Config& config)
+Population::Population(const Config& config)
     : config(config)
-    , mutationOp(config.mutationConfig)
+    , mutationOp(config.createMutationConfig())
     , rng(std::random_device{}()) {
 
-    // Initialize population with proper activation configs
-    for (auto& genome : genomes) {
-        genome.setConfig(config.genomeConfig);
-    }
-    
-    LOG_DEBUG("Creating population with {} inputs and {} outputs", inputSize, outputSize);
-              
+    // Initialize population with proper configs
     genomes.reserve(config.populationSize);
-    
-    // Create initial genomes with proper config
     for (int32_t i = 0; i < config.populationSize; ++i) {
-        // Pass the genome config from population config
-        Genome genome(config.genomeConfig);
-        genome.initMinimalTopology(inputSize, outputSize);
-        
-        // Verify genome structure
-        auto& nodes = genome.getNodes();
-        int inputCount = 0, outputCount = 0;
-        for (const auto& [id, type] : nodes) {
-            if (type == ENodeType::INPUT) inputCount++;
-            if (type == ENodeType::OUTPUT) outputCount++;
-        }
-        
-        LOG_DEBUG("Genome {} initialized with {} inputs and {} outputs", i, inputCount, outputCount);
-                  
+        Genome genome(config.createGenomeConfig());
         genomes.push_back(std::move(genome));
     }
     
@@ -54,7 +33,7 @@ void Population::evolve(const std::function<double(Genome&)>& fitnessFunction) {
     LOG_TRACE("Starting evolution cycle");
 
     // Create operators
-    evolution::CrossoverOperator crossover(evolution::CrossoverOperator::Config{});
+    evolution::CrossoverOperator crossover(config.createCrossoverConfig());
 
     // Evaluate fitness
     for (size_t i = 0; i < genomes.size(); i++) {

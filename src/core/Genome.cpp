@@ -231,10 +231,10 @@ void Genome::initMinimalTopology(int32_t inputs, int32_t outputs) {
     LOG_TRACE("Added minimal initial connections");
     
     // Print final network structure
-    LOG_INFO("Final network structure:");
-    LOG_INFO("Nodes:");
+    LOG_DEBUG("Final network structure:");
+    LOG_DEBUG("Nodes:");
     for (const auto& [id, type] : nodes) {
-        LOG_INFO(" Node {}: {}", id, (type == ENodeType::INPUT ? "INPUT" :
+        LOG_DEBUG(" Node {}: {}", id, (type == ENodeType::INPUT ? "INPUT" :
                                         type == ENodeType::OUTPUT ? "OUTPUT" :
                                         type == ENodeType::BIAS ? "BIAS" : "HIDDEN"));
     }
@@ -295,7 +295,7 @@ std::vector<std::pair<Genome::NodeId, Genome::NodeId>> Genome::findPossibleConne
             }
             
             // Skip if would create cycle (for feed-forward networks)
-            if (!config.networkConfig.allowRecurrent && wouldCreateCycle(fromId, toId)) {
+            if (!network->getConfig().allowRecurrent && wouldCreateCycle(fromId, toId)) {
                 continue;
             }
             
@@ -660,7 +660,7 @@ bool Genome::isValidConnection(NodeId from, NodeId to) const {
 
 // Modify rebuildNetwork to ensure proper initialization
 void Genome::rebuildNetwork() {
-    network = std::make_unique<network::Network>(config.networkConfig);
+    network = std::make_unique<network::Network>(network->getConfig());
     
     // First add all nodes
     for (const auto& [id, type] : nodes) {
@@ -746,7 +746,7 @@ bool Genome::validate() const {
     }
     
     // Check for cycles in feedforward networks
-    if (!config.networkConfig.allowRecurrent && hasCycle()) {
+    if (!network->getConfig().allowRecurrent && hasCycle()) {
         errors.push_back("Network contains cycles in feedforward mode");
     }
     
@@ -819,6 +819,29 @@ void Genome::pruneCache() {
             activationCache.erase(activationCache.begin());
         }
     }
+}
+
+bool Genome::canAddGene(const Gene& gene) const {
+    return isValidGeneStructure(gene) && 
+        (network->getConfig().allowRecurrent || !wouldCreateCycle(gene.inputNode, gene.outputNode));
+}
+
+bool Genome::isValidGeneStructure(const Gene& gene) const {
+    // Skip disabled genes
+    if (!gene.enabled) return true;
+    
+    auto getType = [this](int32_t id) {
+        if (id == -1) return ENodeType::BIAS;
+        auto it = nodes.find(id);
+        return it != nodes.end() ? it->second : ENodeType::HIDDEN;
+    };
+    
+    auto inType = getType(gene.inputNode);
+    auto outType = getType(gene.outputNode);
+    
+    return !(inType == ENodeType::OUTPUT ||     // Output can't be source
+            outType == ENodeType::INPUT ||      // Input can't be destination
+            gene.inputNode == gene.outputNode); // No self connections
 }
 
 }

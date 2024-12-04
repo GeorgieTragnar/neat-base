@@ -12,18 +12,31 @@ public:
     struct Config {
         int32_t inputSize;
         int32_t outputSize;
-        Population::Config populationConfig;
-        core::ActivationGene::Config activationConfig;
+        int32_t maxGenerations;
+        double targetFitness;
+        bool stopOnTarget;
 
-        // Add explicit Genome config initialization
-        Config(int32_t inputs, int32_t outputs) 
+        // Factory method for Population config
+        Population::Config createPopulationConfig() const {
+            return Population::Config{
+                inputSize,
+                outputSize,
+                500,  // Population size 
+                0.2,  // Survival threshold
+                3.0,  // Compatibility threshold
+                10,   // Species target
+                3,    // Tournament size
+                0.1   // Elitism rate
+            };
+        }
+
+        Config() = delete;
+        Config(int32_t inputs, int32_t outputs)
             : inputSize(inputs)
             , outputSize(outputs)
-            , populationConfig(inputs, outputs) {
-                // TODO: as part of future config rework redesign 
-                // config propagation needs to be revisitted 
-                // and config ownership/construction needs to be properly thought through
-            }
+            , maxGenerations(100)
+            , targetFitness(1.0)
+            , stopOnTarget(true) {}
     };
     
     explicit NEAT(const Config& config);
@@ -46,8 +59,8 @@ public:
     Stats getStats() const;
 
 private:
-    Population population;
     Config config;
+    Population population;
     Stats currentStats;
     
     void updateStats();

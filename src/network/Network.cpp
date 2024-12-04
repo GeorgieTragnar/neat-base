@@ -7,24 +7,33 @@ namespace neat {
 namespace network {
 
 void Network::addNode(int32_t id, core::ENodeType type, core::EActivationType actType) {
-	auto node = std::make_shared<Node>(id, type, actType);
-	nodes[id] = node;
-	
-	switch (type) {
-		case core::ENodeType::INPUT:
-			inputNodes.push_back(node);
-			break;
-		case core::ENodeType::OUTPUT:
-			outputNodes.push_back(node);
-			break;
-		case core::ENodeType::BIAS:
-			biasNode = node;
-			biasNode->setValue(config.biasValue);
-			break;
-		default:
-			hiddenNodes.push_back(node);
-			break;
-	}
+    auto node = std::make_shared<Node>(id, type, actType);
+    nodes[id] = node;
+    
+    switch (type) {
+        case core::ENodeType::INPUT:
+            if (inputNodes.size() >= config.inputSize) {
+                throw std::runtime_error("Exceeding maximum input size");
+            }
+            inputNodes.push_back(node);
+            break;
+        case core::ENodeType::OUTPUT:
+            if (outputNodes.size() >= config.outputSize) {
+                throw std::runtime_error("Exceeding maximum output size");
+            }
+            outputNodes.push_back(node);
+            break;
+        case core::ENodeType::BIAS:
+            if (biasNode) {
+                throw std::runtime_error("Multiple bias nodes not allowed");
+            }
+            biasNode = node;
+            biasNode->setValue(config.biasValue);
+            break;
+        default:
+            hiddenNodes.push_back(node);
+            break;
+    }
 }
 
 void Network::addConnection(int32_t fromId, int32_t toId, double weight, bool enabled, core::EActivationType actType) {
@@ -48,9 +57,11 @@ void Network::addConnection(int32_t fromId, int32_t toId, double weight, bool en
 }
 
 std::vector<double> Network::activate(const std::vector<double>& inputs) {
-	if (inputs.size() != inputNodes.size()) {
-		throw std::runtime_error("Invalid input size");
-	}
+    if (inputs.size() != config.inputSize) {
+        throw std::runtime_error("Invalid input size: " + 
+            std::to_string(inputs.size()) + 
+            " expected: " + std::to_string(config.inputSize));
+    }
 	
 	// Set input values
 	for (size_t i = 0; i < inputs.size(); ++i) {

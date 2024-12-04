@@ -19,34 +19,64 @@ public:
     using Fitness = double;
     
     struct Config {
-        double weightMutationRate = 0.8;
-        double weightPerturbationRate = 0.9;
-        double newNodeRate = 0.03;
-        double newLinkRate = 0.05;
-        double weightPerturbationRange = 0.4;
-        double newWeightRange = 1.0;
-        int32_t maxHiddenNodes = 5;
-        network::Network::Config networkConfig;
-        core::ActivationGene::Config activationConfig;
-        
-        Config() = default;
-        Config(int32_t inputs, int32_t outputs) 
-            : networkConfig(inputs, outputs) {}
+        // Core genome parameters
+        int32_t inputSize;
+        int32_t outputSize;
+        double weightMutationRate;
+        double weightPerturbationRate; 
+        double newNodeRate;
+        double newLinkRate;
+        double weightPerturbationRange;
+        double newWeightRange;
+        int32_t maxHiddenNodes;
+
+        ActivationGene::Config activationConfig;
+
+        // Factory methods for child configs
+        network::Network::Config createNetworkConfig() const {
+            return network::Network::Config{
+                inputSize,
+                outputSize,
+                activationConfig,
+                false,  // allowRecurrent
+                1.0     // biasValue
+            };
+        }
+
+    public:
+        Config() = delete;
+        Config(int32_t inputs, int32_t outputs,
+               double weightMutRate,
+               double weightPerturbRate,
+               double nodeRate,
+               double linkRate,
+               double perturbRange,
+               double newWeightR,
+               int32_t maxHidden,
+               ActivationGene::Config actConfig)
+            : inputSize(inputs)
+            , outputSize(outputs)
+            , weightMutationRate(weightMutRate)
+            , weightPerturbationRate(weightPerturbRate)
+            , newNodeRate(nodeRate)
+            , newLinkRate(linkRate)
+            , weightPerturbationRange(perturbRange)
+            , newWeightRange(newWeightR)
+            , maxHiddenNodes(maxHidden)
+            , activationConfig(actConfig) {}
     };
-    
-    // Enhanced constructors with validation
-    Genome() 
-        : config()  // Initialize with default config
-        , network(std::make_unique<network::Network>(config.networkConfig))
+
+    explicit Genome(const Config& config)
+        : config(config)
+        , network(std::make_unique<network::Network>(config.createNetworkConfig()))
         , fitness(0.0)
         , adjustedFitness(0.0)
         , speciesIdx(-1)
         , maxNodeIdx(-1)
-        , networkDirty(true) 
-        , topologyHash(0) 
+        , networkDirty(true)
+        , topologyHash(0)
         , rng(std::random_device{}()) {
-        // Initialize bias node
-        addNode(-1, ENodeType::BIAS, false);
+        initMinimalTopology(config.inputSize, config.outputSize);
     }
 
     // Copy constructor
@@ -60,6 +90,7 @@ public:
         , maxNodeIdx(other.maxNodeIdx)
         , networkDirty(true)
         , topologyHash(0)
+        , network(std::make_unique<network::Network>(config.createNetworkConfig()))
         , rng(std::random_device{}()) {
         
         rebuildNetwork();  // Use existing method to rebuild network
@@ -116,19 +147,7 @@ public:
         }
         return *this;
     }
-
-    explicit Genome(const Config& config)
-        : config(config)
-        , fitness(0.0)
-        , adjustedFitness(0.0)
-        , speciesIdx(-1)
-        , maxNodeIdx(-1)
-        , network(std::make_unique<network::Network>(config.networkConfig))
-        , rng(std::random_device{}()) {
-            // Initialize bias node
-            addNode(-1, ENodeType::BIAS, false);
-        }
-
+    
     void setConfig(const Config& newConfig) { config = newConfig; }
     
     // Initialization
@@ -151,6 +170,8 @@ public:
     
     // Genetic operations
     static double compatibilityDistance(const Genome& genome1, const Genome& genome2);
+
+    bool canAddGene(const Gene& gene) const;
     
     // Clone method for safe copying
     Genome clone() const;
@@ -185,6 +206,7 @@ private:
     void ensureNodeExists(NodeId id, ENodeType type);
     std::vector<std::pair<NodeId, NodeId>> findPossibleConnections() const;
     bool wouldCreateCycle(NodeId fromId, NodeId toId) const;
+    bool isValidGeneStructure(const Gene& gene) const;
 
     bool hasCycle() const;
     bool validateNodeStructure() const;
@@ -197,21 +219,21 @@ private:
     size_t calculateInputHash(const std::vector<double>& inputs) const;
     void pruneCache();
 
-    bool networkDirty = true;
-    size_t topologyHash = 0;
-    std::unordered_map<size_t, std::vector<double>> activationCache;
-    static constexpr size_t MAX_CACHE_SIZE = 1000;
 
+    Config config;
     std::vector<Gene> genes;
     std::map<NodeId, ENodeType> nodes;
     std::unique_ptr<network::Network> network;
-    Fitness fitness = 0.0;
-    Fitness adjustedFitness = 0.0;
-    int32_t speciesIdx = -1;
-    int32_t maxNodeIdx = -1;
-    static int32_t nextNodeIdx;
-    Config config;
+    Fitness fitness;
+    Fitness adjustedFitness;
+    int32_t speciesIdx;
+    int32_t maxNodeIdx;
+    bool networkDirty;
+    size_t topologyHash;
+    std::unordered_map<size_t, std::vector<double>> activationCache;
     std::mt19937 rng;
+
+    static constexpr size_t MAX_CACHE_SIZE = 1000;
 };
 
 }

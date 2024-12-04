@@ -46,6 +46,7 @@ void ActivationGene::mutate(const Config& config) {
 		
 		// Decide whether to change tiers
 		if (dis(gen) < config.interTierMutationRate) {
+			// Move up or down one tier, wrapping around
 			newTier = (currentTier + (dis(gen) < 0.5 ? -1 : 1)) % 3;
 			if (newTier < 0) newTier = 2;
 		}

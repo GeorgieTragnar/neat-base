@@ -11,16 +11,53 @@ namespace evolution {
 class MutationOperator {
 public:
     struct Config {
-        double weightMutationRate = 0.9;
-        double weightPerturbationRate = 0.9;
-        double newNodeRate = 0.1;
-        double newConnectionRate = 0.15;
-        double weightPerturbationRange = 0.2;
-        double newWeightRange = 2.0;
-        double activationMutationRate = 0.1;
-        double interTierMutationRate = 0.2;
+        double weightMutationRate;
+        double weightPerturbationRate;
+        double newNodeRate;
+        double newConnectionRate;
+        double weightPerturbationRange;
+        double newWeightRange;
+        double activationMutationRate;
+        double interTierMutationRate;
         core::ActivationGene::Config activationConfig;
-        bool allowRecurrent = false;
+        bool allowRecurrent;
+
+        Config() = delete;
+        Config(double weightMutRate,
+            double weightPerturbRate,
+            double nodeRate,
+            double connectionRate,
+            double perturbRange,
+            double newWeightR,
+            double actMutRate,
+            double interTierRate,
+            core::ActivationGene::Config actConfig,
+            bool recurrent)
+            : weightMutationRate(validateRate(weightMutRate, "weightMutationRate"))
+            , weightPerturbationRate(validateRate(weightPerturbRate, "weightPerturbationRate"))
+            , newNodeRate(validateRate(nodeRate, "newNodeRate"))
+            , newConnectionRate(validateRate(connectionRate, "newConnectionRate"))
+            , weightPerturbationRange(validatePositive(perturbRange, "weightPerturbationRange"))
+            , newWeightRange(validatePositive(newWeightR, "newWeightRange"))
+            , activationMutationRate(validateRate(actMutRate, "activationMutationRate"))
+            , interTierMutationRate(validateRate(interTierRate, "interTierMutationRate"))
+            , activationConfig(actConfig)
+            , allowRecurrent(recurrent) {}
+
+    private:
+        static double validateRate(double value, const char* paramName) {
+            if (value < 0.0 || value > 1.0) {
+                throw std::invalid_argument(std::string(paramName) + " must be between 0 and 1");
+            }
+            return value;
+        }
+
+        static double validatePositive(double value, const char* paramName) {
+            if (value <= 0.0) {
+                throw std::invalid_argument(std::string(paramName) + " must be positive");
+            }
+            return value;
+        }
     };
 
     explicit MutationOperator(const Config& config);

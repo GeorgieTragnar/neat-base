@@ -7,9 +7,9 @@
 namespace neat {
 namespace evolution {
 
-Evolution::Evolution(const Config& config)
+Evolution::Evolution(const Config& config, core::Population& population)
     : config(config)
-    , population(config.populationSize, config.populationSize, core::Population::Config{})
+    , population(population)
     , mutationOp(config.mutationConfig)
     , crossoverOp(config.crossoverConfig)
     , selectionOp(config.selectionConfig)
@@ -43,7 +43,7 @@ void Evolution::evolve(const FitnessEvaluator::FitnessFunction& fitnessFunc) {
         
         // Create next generation
         std::vector<core::Genome> nextGen;
-        nextGen.reserve(config.populationSize);
+        nextGen.reserve(population.getConfig().populationSize);
 
         // Elitism - carry over best performers
         auto elites = selectionOp.selectElites(population);
@@ -54,7 +54,7 @@ void Evolution::evolve(const FitnessEvaluator::FitnessFunction& fitnessFunc) {
         }
 
         // Fill rest of population through selection and reproduction
-        while (nextGen.size() < config.populationSize) {
+        while (nextGen.size() < population.getConfig().populationSize) {
             // Select parents
             const auto& parent1 = selectionOp.selectParent(population);
             const auto& parent2 = selectionOp.selectParent(population);
