@@ -42,16 +42,6 @@ void MutationOperator::mutate(core::Genome& genome) {
 	}
 }
 
-void MutationOperator::mutateActivations(core::Genome& genome) {
-	for (auto& gene : genome.getGenes()) {
-		if (gene.enabled) {
-            if (weightDist(rng) < config.activationConfig.mutationRate) {
-                gene.activation.mutate(config.activationConfig);
-            }
-		}
-	}
-}
-
 bool MutationOperator::addNodeMutation(core::Genome& genome) {
 	auto& genes = genome.getGenes();
 	if (genes.empty()) return false;
@@ -73,19 +63,34 @@ bool MutationOperator::addNodeMutation(core::Genome& genome) {
 	// Create new node
 	int32_t newNodeId = genome.getNextNodeId();
 	double oldWeight = selectedGene.weight;
-	core::EActivationType oldActivation = selectedGene.activation.getType();
-	
-	// Disable old connection
-	selectedGene.enabled = false;
-	
-	// Create random activation for the new node's outgoing connection
-	core::ActivationGene newActivation = core::ActivationGene::createRandom(config.activationConfig);
-	
-	// Add new node and connections
-	genome.addNode(newNodeId, core::ENodeType::HIDDEN);
-	genome.addConnection(selectedGene.inputNode, newNodeId, 1.0, true, oldActivation);
-	genome.addConnection(newNodeId, selectedGene.outputNode, oldWeight, true, newActivation.getType());
-	
+    
+    // Disable old connection
+    selectedGene.enabled = false;
+    
+    // Create new activation genes for the split connections
+    auto inputActivation = selectedGene.activation; // Keep original activation for input
+    auto outputActivation = core::ActivationGene::createRandom(config.activationConfig);
+    
+    // Add new node and connections
+    genome.addNode(newNodeId, core::ENodeType::HIDDEN);
+    
+    // Add two new connections with appropriate activations
+    genome.addConnection(
+        selectedGene.inputNode, 
+        newNodeId, 
+        1.0,  // Weight to new node
+        true, 
+        inputActivation.getType()
+    );
+    
+    genome.addConnection(
+        newNodeId,
+        selectedGene.outputNode,
+        oldWeight,  // Original weight to output
+        true,
+        outputActivation.getType()
+    );
+
 	return true;
 }
 
@@ -95,11 +100,15 @@ bool MutationOperator::addConnectionMutation(core::Genome& genome) {
 
 	// Select random possible connection
 	std::uniform_int_distribution<size_t> connDist(0, possibleConnections.size() - 1);
-	auto [fromNode, toNode] = possibleConnections[connDist(rng)];
+    auto [fromId, toId] = possibleConnections[connDist(rng)];
 	
+    // Generate random weight
+    std::uniform_real_distribution<double> weightDist(-config.newWeightRange, config.newWeightRange);
+    double weight = weightDist(rng);
+
 	// Create new activation function based on node types
 	const auto& nodes = genome.getNodes();
-	auto toType = nodes.at(toNode);
+	auto toType = nodes.at(toId);
 	
 	core::ActivationGene activation;
 	if (toType == core::ENodeType::OUTPUT) {
@@ -112,7 +121,7 @@ bool MutationOperator::addConnectionMutation(core::Genome& genome) {
 	}
 
 	// Create new connection with random weight
-	genome.addConnection(fromNode, toNode, newWeightDist(rng), true, activation.getType());
+	genome.addConnection(fromId, toId, weight, true, activation.getType());
 	
 	return true;
 }
@@ -142,6 +151,136 @@ std::vector<std::pair<int32_t, int32_t>> MutationOperator::findPossibleConnectio
 	}
 
 	return connections;
+}
+
+
+// MutationOperator.cpp - Implementation of activation mutations
+void MutationOperator::mutateActivations(core::Genome& genome) {
+    for (auto& gene : genome.getGenes()) {
+        if (!gene.enabled) continue;
+        
+        if (weightDist(rng) < config.activationMutationRate) {
+            mutateConnectionActivation(gene, genome);
+        }
+    }
+}
+
+void MutationOperator::mutateConnectionActivation(core::Gene& gene, core::Genome& genome) {
+    const auto& nodes = genome.getNodes();
+    auto targetType = nodes.at(gene.outputNode);
+    auto currentType = gene.activation.getType();
+    
+    // Special handling for output nodes - restrict to basic tier
+    if (targetType == core::ENodeType::OUTPUT) {
+        auto newType = selectNewActivation(currentType, targetType);
+        gene.activation = core::ActivationGene(newType);
+        return;
+    }
+    
+    int currentTier = getCurrentTierIndex(currentType);
+    
+    // Determine if we should change tiers
+    if (weightDist(rng) < config.interTierMutationRate) {
+        if (shouldMutateToHigherTier(gene.activation)) {
+            currentTier = std::min(currentTier + 1, static_cast<int>(tiers.size()) - 1);
+        } else if (shouldMutateToLowerTier(gene.activation)) {
+            currentTier = std::max(currentTier - 1, 0);
+        }
+    }
+    
+    // Select new activation from the determined tier
+    const auto& tierFunctions = tiers[currentTier].functions;
+    std::uniform_int_distribution<size_t> dist(0, tierFunctions.size() - 1);
+    auto newType = tierFunctions[dist(rng)];
+    
+    // Avoid selecting the same function
+    if (newType == currentType && tierFunctions.size() > 1) {
+        do {
+            newType = tierFunctions[dist(rng)];
+        } while (newType == currentType);
+    }
+    
+    gene.activation = core::ActivationGene(newType);
+}
+
+core::EActivationType MutationOperator::selectNewActivation(
+    core::EActivationType current, 
+    core::ENodeType targetType) {
+    
+    // For output nodes, restrict to basic tier
+    if (targetType == core::ENodeType::OUTPUT) {
+        const auto& basicFunctions = tiers[0].functions;
+        std::uniform_int_distribution<size_t> dist(0, basicFunctions.size() - 1);
+        
+        auto newType = basicFunctions[dist(rng)];
+        if (newType == current && basicFunctions.size() > 1) {
+            do {
+                newType = basicFunctions[dist(rng)];
+            } while (newType == current);
+        }
+        return newType;
+    }
+    
+    // For hidden nodes, use tier-based selection
+    double prob = weightDist(rng);
+    double cumProb = 0.0;
+    
+    for (const auto& tier : tiers) {
+        cumProb += tier.mutationProbability;
+        if (prob <= cumProb) {
+            std::uniform_int_distribution<size_t> dist(0, tier.functions.size() - 1);
+            return tier.functions[dist(rng)];
+        }
+    }
+    
+    // Fallback to basic tier
+    return tiers[0].functions[0];
+}
+
+bool MutationOperator::shouldMutateToHigherTier(const core::ActivationGene& current) {
+    int currentTier = getCurrentTierIndex(current.getType());
+    
+    // Only allow moving up if we're not in the highest tier
+    if (currentTier >= static_cast<int>(tiers.size()) - 1) {
+        return false;
+    }
+    
+    // Higher tiers require better fitness or specific conditions
+    double advancementProb = config.activationConfig.interTierMutationRate;
+    
+    // Adjust probability based on current tier
+    if (currentTier == 0) {
+        advancementProb *= 0.5;  // Harder to move from basic tier
+    }
+    
+    return weightDist(rng) < advancementProb;
+}
+
+bool MutationOperator::shouldMutateToLowerTier(const core::ActivationGene& current) {
+    int currentTier = getCurrentTierIndex(current.getType());
+    
+    // Only allow moving down if we're not in the lowest tier
+    if (currentTier <= 0) {
+        return false;
+    }
+    
+    // Higher chance to move down from experimental tier
+    double regressionProb = config.activationConfig.interTierMutationRate;
+    if (currentTier == 2) {
+        regressionProb *= 1.5;  // More likely to move down from experimental
+    }
+    
+    return weightDist(rng) < regressionProb;
+}
+
+int MutationOperator::getCurrentTierIndex(core::EActivationType type) {
+    for (size_t i = 0; i < tiers.size(); ++i) {
+        const auto& functions = tiers[i].functions;
+        if (std::find(functions.begin(), functions.end(), type) != functions.end()) {
+            return i;
+        }
+    }
+    return 0;  // Default to basic tier
 }
 
 }

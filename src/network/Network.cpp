@@ -6,8 +6,8 @@
 namespace neat {
 namespace network {
 
-void Network::addNode(int32_t id, core::ENodeType type, core::EActivationType actType) {
-    auto node = std::make_shared<Node>(id, type, actType);
+void Network::addNode(int32_t id, core::ENodeType type) {
+    auto node = std::make_shared<Node>(id, type);
     nodes[id] = node;
     
     switch (type) {
@@ -37,10 +37,10 @@ void Network::addNode(int32_t id, core::ENodeType type, core::EActivationType ac
 }
 
 void Network::addConnection(int32_t fromId, int32_t toId, double weight, bool enabled, core::EActivationType actType) {
-	auto from = fromId == -1 ? biasNode : nodes[fromId];
-	auto to = nodes[toId];
+	auto sourceNode = fromId == -1 ? biasNode : nodes[fromId];
+	auto targetNode = nodes[toId];
 	
-	if (!from || !to) {
+	if (!sourceNode || !targetNode) {
 		throw std::runtime_error("Invalid node IDs in addConnection");
 	}
 	
@@ -48,12 +48,10 @@ void Network::addConnection(int32_t fromId, int32_t toId, double weight, bool en
 		throw std::runtime_error("Attempting to create cycle in feed-forward network");
 	}
 	
-	from->addOutput(to, weight, enabled, actType);
-	to->addInput(from, weight, enabled, actType);
-	
-	if (enabled) {
-		connections.emplace_back(fromId, toId, weight, actType);
-	}
+    Connection conn(sourceNode, targetNode, weight, enabled, core::ActivationGene(actType));
+
+    sourceNode->addConnection(conn);
+    targetNode->addConnection(conn);
 }
 
 std::vector<double> Network::activate(const std::vector<double>& inputs) {
@@ -71,7 +69,7 @@ std::vector<double> Network::activate(const std::vector<double>& inputs) {
 	// Activate nodes in topological order
 	auto order = getTopologicalOrder();
 	for (const auto& nodeId : order) {
-		nodes[nodeId]->activate();
+		activateNode(nodes[nodeId]);
 	}
 	
 	// Collect outputs
@@ -84,6 +82,29 @@ std::vector<double> Network::activate(const std::vector<double>& inputs) {
 	return outputs;
 }
 
+void Network::activateNode(NodePtr node) {
+    // Skip activation for input nodes (including bias)
+    if (node->isInput()) {
+        return;
+    }
+    
+    double sum = 0.0;
+    for (const auto& conn : node->getIncoming()) {
+        if (conn.isEnabled()) {
+            double input = conn.getRawInput();
+            sum += conn.activate(input);
+        }
+    }
+    
+    node->setValue(sum);
+}
+
+double Network::activateConnection(const Connection& conn) {
+    double rawInput = conn.getRawInput();
+    auto activationFunc = core::ActivationFunction::getFunction(conn.getActivation().getType());
+    return activationFunc(rawInput);
+}
+
 bool Network::validate() const {
 	try {
 		// Verify node consistency
@@ -92,23 +113,20 @@ bool Network::validate() const {
 				return false;
 			}
 		}
-		
-		// Verify connection consistency
-		for (const auto& [fromId, toId, weight, actType] : connections) {
-			auto from = fromId == -1 ? biasNode : nodes.at(fromId);
-			auto to = nodes.at(toId);
-			
-			bool connectionFound = false;
-			for (const auto& conn : from->getOutputs()) {
-				if (conn.target == to && conn.weight == weight) {
-					connectionFound = true;
-					break;
-				}
-			}
-			
-			if (!connectionFound) return false;
-		}
-		
+        
+        // Get all connections for validation
+        auto allConnections = getAllConnections();
+        
+        // Verify connection consistency
+        for (const auto& conn : allConnections) {
+            auto from = conn.get().getSource();
+            auto to = conn.get().getTarget();
+            
+            // Verify nodes exist in our map
+            if (from->getId() != -1 && nodes.find(from->getId()) == nodes.end()) return false;
+            if (nodes.find(to->getId()) == nodes.end()) return false;
+        }
+        
 		// Verify no cycles (if feed-forward)
 		if (!config.allowRecurrent && hasCycles()) {
 			return false;
@@ -120,8 +138,31 @@ bool Network::validate() const {
 	}
 }
 
+// Helper method to get all connections in the network
+std::vector<std::reference_wrapper<Connection>> Network::getAllConnections() const {
+    std::vector<std::reference_wrapper<Connection>> allConnections;
+    
+    // Collect all connections from nodes
+    for (const auto& [id, node] : nodes) {
+        // Add outgoing connections
+        for (const auto& conn : node->getOutgoing()) {
+            // Only add each connection once (when it's outgoing from a node)
+            allConnections.push_back(std::ref(const_cast<Connection&>(conn)));
+        }
+    }
+    
+    // Also check bias node if it exists
+    if (biasNode) {
+        for (const auto& conn : biasNode->getOutgoing()) {
+            allConnections.push_back(std::ref(const_cast<Connection&>(conn)));
+        }
+    }
+    
+    return allConnections;
+}
+
 // Implement topological sorting using Kahn's algorithm
-std::vector<int32_t> neat::network::Network::getTopologicalOrder() const {
+std::vector<int32_t> Network::getTopologicalOrder() const {
     std::vector<int32_t> result;
     std::map<int32_t, int32_t> inDegree;
     std::queue<int32_t> queue;
@@ -131,11 +172,25 @@ std::vector<int32_t> neat::network::Network::getTopologicalOrder() const {
         inDegree[id] = 0;
     }
     
-    // Calculate in-degree for each node
-    for (const auto& conn : connections) {
-        if (conn.toId != -1) { // Skip bias node
-            inDegree[conn.toId]++;
+    // Calculate in-degree for each node using actual connections
+    auto allConnections = getAllConnections();
+    for (const auto& connRef : allConnections) {
+        const auto& conn = connRef.get();
+        if (conn.isEnabled()) {
+            int32_t targetId = conn.getTargetId();
+            int32_t sourceId = conn.getSourceId();
+            
+            // Only count connections that aren't from bias nodes
+            // when calculating in-degree
+            if (sourceId != -1) {  // -1 is the bias node ID
+                inDegree[targetId]++;
+            }
         }
+    }
+    
+    // Add bias node to result first (if it exists)
+    if (biasNode) {
+        result.push_back(-1);  // Bias node ID is -1
     }
     
     // Add nodes with no incoming edges to queue
@@ -151,19 +206,25 @@ std::vector<int32_t> neat::network::Network::getTopologicalOrder() const {
         queue.pop();
         result.push_back(current);
         
-        // Decrease in-degree for all neighbors
-        for (const auto& conn : connections) {
-            if (conn.fromId == current) {
-                inDegree[conn.toId]--;
-                if (inDegree[conn.toId] == 0) {
-                    queue.push(conn.toId);
+        // Get the current node
+        auto nodeIt = nodes.find(current);
+        if (nodeIt != nodes.end()) {
+            // Process outgoing connections
+            for (const auto& conn : nodeIt->second->getOutgoing()) {
+                if (conn.isEnabled()) {
+                    int32_t targetId = conn.getTargetId();
+                    inDegree[targetId]--;
+                    if (inDegree[targetId] == 0) {
+                        queue.push(targetId);
+                    }
                 }
             }
         }
     }
     
-    // If result size doesn't match node count, there's a cycle
-    return result.size() == nodes.size() ? result : std::vector<int32_t>();
+    // If result size doesn't match node count (+1 for bias if present), there's a cycle
+    size_t expectedSize = nodes.size() + (biasNode ? 1 : 0);
+    return result.size() == expectedSize ? result : std::vector<int32_t>();
 }
 
 // Check for cycles using DFS
@@ -176,18 +237,22 @@ bool Network::hasCycles() const {
         visited.insert(nodeId);
         recursionStack.insert(nodeId);
         
-        // Check all outgoing connections
-        for (const auto& conn : connections) {
-            if (conn.fromId == nodeId) {
-                int32_t neighbor = conn.toId;
-                
-                if (visited.find(neighbor) == visited.end()) {
-                    if (hasCycleUtil(neighbor)) {
+        // Get the node
+        auto nodeIt = nodes.find(nodeId);
+        if (nodeIt != nodes.end()) {
+            // Check all outgoing connections
+            for (const auto& conn : nodeIt->second->getOutgoing()) {
+                if (conn.isEnabled()) {
+                    int32_t neighbor = conn.getTargetId();
+                    
+                    if (visited.find(neighbor) == visited.end()) {
+                        if (hasCycleUtil(neighbor)) {
+                            return true;
+                        }
+                    }
+                    else if (recursionStack.find(neighbor) != recursionStack.end()) {
                         return true;
                     }
-                }
-                else if (recursionStack.find(neighbor) != recursionStack.end()) {
-                    return true;
                 }
             }
         }
@@ -225,11 +290,18 @@ bool Network::wouldCreateCycle(int32_t fromId, int32_t toId) const {
         
         visited.insert(start);
         
-        // Check all outgoing connections from current node
-        for (const auto& conn : connections) {
-            if (conn.fromId == start && visited.find(conn.toId) == visited.end()) {
-                if (hasPath(conn.toId, target)) {
-                    return true;
+        // Get the start node
+        auto nodeIt = nodes.find(start);
+        if (nodeIt != nodes.end()) {
+            // Check all outgoing connections
+            for (const auto& conn : nodeIt->second->getOutgoing()) {
+                if (conn.isEnabled()) {
+                    int32_t nextId = conn.getTargetId();
+                    if (visited.find(nextId) == visited.end()) {
+                        if (hasPath(nextId, target)) {
+                            return true;
+                        }
+                    }
                 }
             }
         }

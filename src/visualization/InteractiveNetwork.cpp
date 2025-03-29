@@ -37,7 +37,8 @@ void InteractiveNetwork::start() {
     
     for (const auto& gene : genome.getGenes()) {
         if (gene.enabled) {
-            net.addConnection(gene.inputNode, gene.outputNode, gene.weight);
+            net.addConnection(gene.inputNode, gene.outputNode, gene.weight,
+                gene.enabled, gene.activation.getType());
         }
     }
     
@@ -75,7 +76,8 @@ void InteractiveNetwork::step() {
     
     for (const auto& gene : genome.getGenes()) {
         if (gene.enabled) {
-            net.addConnection(gene.inputNode, gene.outputNode, gene.weight);
+            net.addConnection(gene.inputNode, gene.outputNode, gene.weight,
+                gene.enabled, gene.activation.getType());
         }
     }
     

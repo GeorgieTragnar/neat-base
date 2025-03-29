@@ -391,10 +391,12 @@ void Genome::addGene(const Gene& gene, bool validateAfter) {
         it->weight = gene.weight;
         it->enabled = gene.enabled;
         it->innovation = gene.innovation;
+        it->activation = gene.activation;
         
         // Update connection in network if enabled status or weight changed
         if (gene.enabled) {
-            network->addConnection(gene.inputNode, gene.outputNode, gene.weight);
+            network->addConnection(gene.inputNode, gene.outputNode, gene.weight,
+                gene.enabled, gene.activation.getType());
         }
     } else {
         // Add new gene
@@ -402,7 +404,8 @@ void Genome::addGene(const Gene& gene, bool validateAfter) {
         
         // Add to network if enabled
         if (gene.enabled) {
-            network->addConnection(gene.inputNode, gene.outputNode, gene.weight);
+            network->addConnection(gene.inputNode, gene.outputNode, gene.weight,
+                gene.enabled, gene.activation.getType());
         }
     }
     
@@ -422,15 +425,18 @@ void Genome::addConnection(NodeId from, NodeId to, double weight, bool validateA
     
     auto toType = nodes.find(to) != nodes.end() ? nodes[to] : ENodeType::HIDDEN;
     ensureNodeExists(to, toType);
+
+    // Create activation gene
+    ActivationGene activationGene(activation);
     
-    // Now add the connection
-    Gene gene(from, to, weight, true, InnovationTracker::getNextInnovation());
-    gene.activation = ActivationGene(activation);
+    // Now add the connection with the activation gene included directly in constructor
+    Gene gene(from, to, weight, true, InnovationTracker::getNextInnovation(), activationGene);
     genes.push_back(gene);
     
     // Update network
     if (gene.enabled) {
-        network->addConnection(gene.inputNode, gene.outputNode, gene.weight);
+        network->addConnection(gene.inputNode, gene.outputNode, gene.weight,
+            gene.enabled, gene.activation.getType());
     }
     
     if (validateAfter) {
@@ -670,7 +676,8 @@ void Genome::rebuildNetwork() {
     // Then add all connections
     for (const auto& gene : genes) {
         if (gene.enabled) {
-            network->addConnection(gene.inputNode, gene.outputNode, gene.weight);
+            network->addConnection(gene.inputNode, gene.outputNode, gene.weight,
+                gene.enabled, gene.activation.getType());
         }
     }
 }

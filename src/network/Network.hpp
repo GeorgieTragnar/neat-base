@@ -3,7 +3,6 @@
 #include <map>
 #include <stdexcept>
 #include "Node.hpp"
-#include "core/Gene.hpp"
 
 namespace neat {
 namespace network {
@@ -39,23 +38,17 @@ public:
         hiddenNodes.reserve(10);
     }
     
-    void addNode(int32_t id, core::ENodeType type, core::EActivationType actType = core::EActivationType::SIGMOID);
-    void addConnection(int32_t fromId, int32_t toId, double weight, bool enabled = true, core::EActivationType actType = core::EActivationType::SIGMOID);
+    void addNode(int32_t id, core::ENodeType type);
+    void addConnection(int32_t fromId, int32_t toId, double weight, bool enabled, core::EActivationType actType);
     std::vector<double> activate(const std::vector<double>& inputs);
     bool validate() const;
 
     const Config getConfig() const { return config; }
 
 private:
-    struct Connection {
-        int32_t fromId;
-        int32_t toId;
-        double weight;
-        core::EActivationType actType;
-        
-        Connection(int32_t f, int32_t t, double w, core::EActivationType type)
-            : fromId(f), toId(t), weight(w), actType(type) {}
-    };
+
+    void activateNode(NodePtr node);
+    double activateConnection(const Connection& conn);
     
     Config config;
     std::map<int32_t, NodePtr> nodes;
@@ -63,11 +56,13 @@ private:
     std::vector<NodePtr> hiddenNodes;
     std::vector<NodePtr> outputNodes;
     NodePtr biasNode;
-    std::vector<Connection> connections;
     
     std::vector<int32_t> getTopologicalOrder() const;
     bool hasCycles() const;
     bool wouldCreateCycle(int32_t fromId, int32_t toId) const;
+    
+    // Method to get all connections in the network
+    std::vector<std::reference_wrapper<Connection>> getAllConnections() const;
 };
 
 } // namespace network

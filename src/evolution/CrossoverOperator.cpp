@@ -63,12 +63,7 @@ core::Genome CrossoverOperator::crossover(
         
     // Create child genome with same config as parent
     core::Genome child(parent1.getConfig());
-    child.getGenes().clear();
-    
-    // Get fitness values to determine which parent is more fit
-    const double fitness1 = parent1.getFitness();
-    const double fitness2 = parent2.getFitness();
-    const bool parent1IsFitter = fitness1 >= fitness2;
+    const bool parent1IsFitter = parent1.getFitness() >= parent2.getFitness();
     
     LOG_DEBUG("Parent 1 {} fitter", (parent1IsFitter ? "is" : "is not"));
     

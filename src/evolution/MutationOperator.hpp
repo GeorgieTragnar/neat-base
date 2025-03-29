@@ -64,11 +64,45 @@ public:
     void mutate(core::Genome& genome);
 
 private:
+    void mutateConnectionActivation(core::Gene& gene, core::Genome& genome);
+    core::EActivationType selectNewActivation(core::EActivationType current, core::ENodeType targetType);
+    bool shouldMutateToHigherTier(const core::ActivationGene& current);
+    bool shouldMutateToLowerTier(const core::ActivationGene& current);
+    int getCurrentTierIndex(core::EActivationType type);
+    
     bool addNodeMutation(core::Genome& genome);
     bool addConnectionMutation(core::Genome& genome);
     void mutateActivations(core::Genome& genome);
     std::vector<std::pair<int32_t, int32_t>> findPossibleConnections(const core::Genome& genome);
 
+    struct TierData {
+        std::vector<core::EActivationType> functions;
+        double mutationProbability;
+    };
+    
+    // Cached tier data for quick access
+    const std::vector<TierData> tiers = {
+        // Basic Tier (80% probability)
+        {
+            {core::EActivationType::SIGMOID, 
+             core::EActivationType::TANH, 
+             core::EActivationType::RELU},
+            0.8
+        },
+        // Advanced Tier (15% probability)
+        {
+            {core::EActivationType::LEAKY_RELU, 
+             core::EActivationType::SOFTPLUS},
+            0.15
+        },
+        // Experimental Tier (5% probability)
+        {
+            {core::EActivationType::GAUSSIAN, 
+             core::EActivationType::SINE},
+            0.05
+        }
+    };
+    
     Config config;
     std::mt19937_64 rng;
     std::uniform_real_distribution<double> weightDist;    // For probability checks

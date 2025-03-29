@@ -1,6 +1,7 @@
 // ActivationFunction.hpp
 #pragma once
 #include <cmath>
+#include <functional>
 
 namespace neat {
 namespace core {
