@@ -155,10 +155,10 @@ public:
     NodeId getNextNodeId() noexcept { return ++maxNodeIdx; }
 
     // Core genome operations
-    void addNode(NodeId id, ENodeType type, bool validateAfter = true);
-    void addGene(const Gene& gene, bool validateAfter = true);
-    void addConnection(NodeId from, NodeId to, double weight, bool validateAfter = true,
-        core::EActivationType activation = core::EActivationType::SIGMOID);
+    void addNode(NodeId id, ENodeType type, bool validateAfter);
+    void addGene(const Gene& gene, bool validateAfter);
+    void addConnection(NodeId from, NodeId to, double weight, bool validateAfter,
+        core::EActivationType activation);
     bool addConnectionMutation();
     bool addNodeMutation();
     void mutateWeights();

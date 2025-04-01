@@ -53,14 +53,18 @@ void configureLoggers(int argc, char* argv[]) {
     }
 }
 
-// Sin function inputs/outputs
+// Proper sine function inputs/outputs
 const std::vector<std::vector<double>> SIN_INPUTS = {
-    {0.0}, {0.1}, {0.2}, {0.3}, {0.4}, {0.5}, {0.6}, {0.7}, {0.8}, {0.9}, {1.0}, {1.1}, {1.2}, {1.3}, {1.4}, {1.5},
-    {1.6}, {1.7}, {1.8}, {1.9}, {2.0}, {2.1}, {2.2}, {2.3}, {2.4}, {2.5}, {2.6}, {2.7}, {2.8}, {2.9}, {3.0}
+    {0.0}, {0.2}, {0.4}, {0.6}, {0.8}, {1.0}, {1.2}, {1.4}, {1.6}, {1.8}, {2.0},
+    {2.2}, {2.4}, {2.6}, {2.8}, {3.0}, {3.2}, {3.4}, {3.6}, {3.8}, {4.0}, {4.2},
+    {4.4}, {4.6}, {4.8}, {5.0}, {5.2}, {5.4}, {5.6}, {5.8}, {6.0}, {6.2}
 };
+
+// Precalculated sin values - no need to compute at runtime
 const std::vector<double> SIN_OUTPUTS = {
-    0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5,
-    0.4, 0.3, 0.2, 0.1, 0.0, -0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8, -0.9, -1.0
+    0.0, 0.199, 0.389, 0.565, 0.717, 0.841, 0.932, 0.985, 0.999, 0.973, 0.909,
+    0.808, 0.675, 0.515, 0.335, 0.141, -0.058, -0.256, -0.443, -0.616, -0.757,
+    -0.871, -0.951, -0.994, -0.997, -0.959, -0.883, -0.772, -0.631, -0.464, -0.279, -0.083
 };
 
 double evaluateSinFitness(core::Genome& genome) {
@@ -69,15 +73,15 @@ double evaluateSinFitness(core::Genome& genome) {
         throw std::runtime_error("Network must have 1 input and 1 output for sin function");
     }
     
-    // Initialize with maximum possible fitness
     double maxError = SIN_INPUTS.size() * 2.0; // Max error of 2.0 per point (-1 to 1 range)
     double totalError = 0.0;
     
-    std::vector<double> inputs(1); // Single input for sin function
+    std::vector<double> inputs(1);
     
     for (size_t i = 0; i < SIN_INPUTS.size(); i++) {
-        // Normalize inputs to [-1,1]
-        inputs[0] = SIN_INPUTS[i][0] / M_PI - 1.0;
+        // Scale inputs to a reasonable range for the network
+        // Most activation functions work well in [-1,1] range
+        inputs[0] = (SIN_INPUTS[i][0] / 3.0) - 1.0; // Scale to [-1,1] range
         
         auto outputs = genome.activate(inputs);
         if (outputs.empty()) return 0.0;
@@ -88,7 +92,6 @@ double evaluateSinFitness(core::Genome& genome) {
     }
     
     // Convert error to fitness (0 to 1 range)
-    // Perfect match = 1.0, worst possible = 0.0
     double fitness = 1.0 - (totalError / maxError);
     
     return std::max(0.0, fitness);

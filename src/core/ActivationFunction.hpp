@@ -45,7 +45,9 @@ public:
             case EActivationType::SOFTPLUS: return softplus;
             case EActivationType::GAUSSIAN: return gaussian;
             case EActivationType::SINE: return sine;
-            default: return sigmoid;
+            default:
+                throw std::runtime_error("Invalid activation function type: " + 
+                                        std::to_string(static_cast<int>(type)));
         }
     }
 };

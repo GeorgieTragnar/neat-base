@@ -486,8 +486,8 @@ bool Genome::addConnectionMutation() {
         
         LOG_DEBUG("Adding connection from {} to {} with weight {}", fromId, toId, weight);
                 
-        // Add new connection with validation
-        addConnection(fromId, toId, weight);
+        auto activation = core::ActivationGene::createRandom(config.activationConfig);
+        addConnection(fromId, toId, weight, true, activation.getType());
         
         validate();
 
@@ -566,8 +566,11 @@ bool Genome::addNodeMutation() {
         
         // Add new connections
         LOG_TRACE("Adding new connections");
-        addConnection(fromNode, newNodeId, 1.0, false);  // Weight 1.0 to the new node
-        addConnection(newNodeId, toNode, oldWeight, false);  // Keep old weight to output
+        auto inputActivation = core::ActivationGene::createRandom(config.activationConfig);
+        auto outputActivation = core::ActivationGene::createRandom(config.activationConfig);
+        
+        addConnection(fromNode, newNodeId, 1.0, false, inputActivation.getType());  // Weight 1.0 to the new node
+        addConnection(newNodeId, toNode, oldWeight, false, outputActivation.getType());  // Keep old weight to output
         
         LOG_DEBUG("Node mutation complete. New structure:");
         for (const auto& [id, type] : nodes) {

@@ -72,7 +72,7 @@ bool MutationOperator::addNodeMutation(core::Genome& genome) {
     auto outputActivation = core::ActivationGene::createRandom(config.activationConfig);
     
     // Add new node and connections
-    genome.addNode(newNodeId, core::ENodeType::HIDDEN);
+    genome.addNode(newNodeId, core::ENodeType::HIDDEN, true);
     
     // Add two new connections with appropriate activations
     genome.addConnection(
