@@ -18,7 +18,7 @@ enum class EActivationFunction {
 class ActivationFunctions {
 public:
     static double sigmoid(double x) {
-        return 1.0 / (1.0 + std::exp(-4.9 * x));
+        return 1.0 / (1.0 + std::exp(-4.6 * x));
     }
     
     static double tanh(double x) {
