@@ -24,6 +24,9 @@ public:
         double newLinkRate = 0.05;
         double weightPerturbationRange = 0.2;
         double newWeightRange = 2.0;
+        double excessCoefficient = 1.0;
+        double disjointCoefficient = 1.0;
+        double weightDiffCoefficient = 0.4;
         network::Network::Config networkConfig;
         
         Config() = default;
@@ -134,7 +137,7 @@ public:
     bool validate() const;
     
     // Genetic operations
-    static double compatibilityDistance(const Genome& genome1, const Genome& genome2);
+    static double compatibilityDistance(const Genome& genome1, const Genome& genome2, const Config& config);
     
     // Clone method for safe copying
     Genome clone() const;

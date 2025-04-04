@@ -1,6 +1,7 @@
 // gene.hpp
 #pragma once
 #include <cstdint>
+#include <limits>
 
 namespace neat {
 namespace core {
@@ -19,7 +20,7 @@ struct Gene {
     bool enabled;
     int32_t innovation;
     
-    Gene() = default;
+    Gene() = delete;
     Gene(int32_t input, int32_t output, double w, bool en, int32_t innov)
         : inputNode(input)
         , outputNode(output)

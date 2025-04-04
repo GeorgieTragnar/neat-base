@@ -14,6 +14,7 @@ namespace core {
 
 Population::Population(int32_t inputSize, int32_t outputSize, const Config& config)
     : config(config)
+    , nextSpeciesId(0)
     , rng(std::random_device{}()) {
     
     LOG_DEBUG("Creating population with {} inputs and {} outputs", inputSize, outputSize);
@@ -130,6 +131,8 @@ void Population::evolve(const std::function<double(const Genome&)>& fitnessFunct
     for (auto& genome : genomes) {
         genome.validate();
     }
+
+    selectSpeciesRepresentatives();
     
     LOG_TRACE("Evolution cycle complete");
 }
@@ -144,27 +147,56 @@ const std::vector<Species>& Population::getSpecies() const {
 }
 
 void Population::speciate() {
-    species.clear();
+    // Clear all species members but keep the species
+    for (auto& spec : species) {
+        spec.clearMembers();
+        // Don't reset representatives yet - we need them for comparison
+    }
     
+    // Mark all genomes as unassigned initially
+    for (size_t i = 0; i < genomes.size(); ++i) {
+        genomes[i].setSpecies(-1);
+    }
+    
+    // First pass: assign genomes to existing species using representatives
     for (size_t i = 0; i < genomes.size(); ++i) {
         bool found = false;
         
-        for (auto& spec : species) {
-            if (Genome::compatibilityDistance(genomes[i], genomes[spec.getRepresentative()]) 
-                < config.compatibilityThreshold) {
-                spec.addGenome(i);
-                found = true;
-                break;
+        for (size_t s = 0; s < species.size(); ++s) {
+            // Only consider species that have a representative
+            if (species[s].hasRepresentative()) {
+                if (Genome::compatibilityDistance(
+                        genomes[i], 
+                        genomes[species[s].getRepresentative()], 
+                        config.genomeConfig) < config.compatibilityThreshold) {
+                    
+                    species[s].addGenome(i);
+                    genomes[i].setSpecies(species[s].getId());
+                    found = true;
+                    break;
+                }
             }
         }
         
+        // If not found in any existing species, create a new one
         if (!found) {
             Species newSpecies;
-            newSpecies.setRepresentative(i);
+            int32_t newId = nextSpeciesId++;
+            
             newSpecies.addGenome(i);
+            newSpecies.setRepresentative(i);  // Set this genome as the representative
+            newSpecies.setId(newId);
+            genomes[i].setSpecies(newId);
+            
             species.push_back(std::move(newSpecies));
         }
     }
+    
+    // Remove empty species
+    species.erase(
+        std::remove_if(species.begin(), species.end(),
+            [](const Species& s) { return s.getMembers().empty(); }),
+        species.end());
 }
 
 void Population::adjustFitness() {
@@ -262,6 +294,21 @@ void Population::removeWeakSpecies() {
                 return (speciesAdjustedFitness / totalAdjustedFitness) * config.populationSize < 1.0;
             }),
         species.end());
+}
+
+void Population::selectSpeciesRepresentatives() {
+    for (auto& spec : species) {
+        if (!spec.getMembers().empty()) {
+            // Select a random member as representative for the next generation
+            std::uniform_int_distribution<size_t> dist(0, spec.getMembers().size() - 1);
+            size_t randomIdx = dist(rng);
+            size_t representativeGenomeIdx = spec.getMembers()[randomIdx];
+            spec.setRepresentative(representativeGenomeIdx);
+        } else {
+            // No members, so no representative
+            spec.resetRepresentative();
+        }
+    }
 }
 
 }

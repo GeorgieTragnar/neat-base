@@ -556,33 +556,93 @@ void Genome::mutateWeights() {
     }
 }
 
-double Genome::compatibilityDistance(const Genome& genome1, const Genome& genome2) {
+double Genome::compatibilityDistance(const Genome& genome1, const Genome& genome2, const Config& config) {
+    double excess = 0.0;
     double disjoint = 0.0;
     double weightDiff = 0.0;
-    int matching = 0;
+    int32_t matching = 0;
+    
+    // Find maximum innovation number in each genome
+    int32_t maxInnovation1 = 0;
+    int32_t maxInnovation2 = 0;
+    
+    if (!genome1.genes.empty()) {
+        maxInnovation1 = genome1.genes.back().innovation;
+    }
+    
+    if (!genome2.genes.empty()) {
+        maxInnovation2 = genome2.genes.back().innovation;
+    }
+    
+    // Determine the innovation range for distinguishing excess vs disjoint
+    int32_t innovationRange = std::min(maxInnovation1, maxInnovation2);
     
     size_t i = 0, j = 0;
     while (i < genome1.genes.size() && j < genome2.genes.size()) {
-        if (genome1.genes[i].innovation == genome2.genes[j].innovation) {
-            weightDiff += std::abs(genome1.genes[i].weight - genome2.genes[j].weight);
+        const Gene& gene1 = genome1.genes[i];
+        const Gene& gene2 = genome2.genes[j];
+        
+        if (gene1.innovation == gene2.innovation) {
+            // Matching genes - calculate weight difference
+            weightDiff += std::abs(gene1.weight - gene2.weight);
             matching++;
             i++;
             j++;
-        } else if (genome1.genes[i].innovation < genome2.genes[j].innovation) {
-            disjoint++;
+        } else if (gene1.innovation < gene2.innovation) {
+            // Gene present in genome1 but not in genome2
+            if (gene1.innovation > innovationRange) {
+                excess++;
+            } else {
+                disjoint++;
+            }
             i++;
         } else {
-            disjoint++;
+            // Gene present in genome2 but not in genome1
+            if (gene2.innovation > innovationRange) {
+                excess++;
+            } else {
+                disjoint++;
+            }
             j++;
         }
     }
     
-    disjoint += (genome1.genes.size() - i) + (genome2.genes.size() - j);
+    // Handle remaining genes in genome1
+    while (i < genome1.genes.size()) {
+        if (genome1.genes[i].innovation > innovationRange) {
+            excess++;
+        } else {
+            disjoint++;
+        }
+        i++;
+    }
+    
+    // Handle remaining genes in genome2
+    while (j < genome2.genes.size()) {
+        if (genome2.genes[j].innovation > innovationRange) {
+            excess++;
+        } else {
+            disjoint++;
+        }
+        j++;
+    }
+    
+    // Calculate average weight difference
     weightDiff = matching > 0 ? weightDiff / matching : 0;
     
-    const double c1 = 1.0, c2 = 1.0;
-    return (c1 * disjoint / std::max(genome1.genes.size(), genome2.genes.size())) + 
-           (c2 * weightDiff);
+    // Get genome size for normalization
+    size_t genomeSize = std::max(genome1.genes.size(), genome2.genes.size());
+    
+    // Skip normalization for small genomes as per the paper
+    double N = genomeSize < 20 ? 1.0 : static_cast<double>(genomeSize);
+    
+    // Apply coefficients from config
+    const double c1 = config.excessCoefficient;
+    const double c2 = config.disjointCoefficient;
+    const double c3 = config.weightDiffCoefficient;
+    
+    // Return compatibility distance using the formula from the paper
+    return (c1 * excess / N) + (c2 * disjoint / N) + (c3 * weightDiff);
 }
 
 bool Genome::isValidConnection(NodeId from, NodeId to) const {

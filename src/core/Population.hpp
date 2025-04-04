@@ -42,6 +42,8 @@ private:
     std::vector<Genome> genomes;
     std::vector<Species> species;
     Config config;
+
+    int32_t nextSpeciesId = 0;
     
     void speciate();
     void adjustFitness();
@@ -49,6 +51,7 @@ private:
     int32_t selectSpecies();
     void removeStaleSpecies();
     void removeWeakSpecies();
+    void selectSpeciesRepresentatives();
 
     std::mt19937 rng;
 };
