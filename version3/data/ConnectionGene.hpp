@@ -14,6 +14,11 @@ public:
 	ConnectionGene() = delete;
 	ConnectionGene(const uint32_t historyID, const NodeGene& sourceNodeGene, const NodeGene& targetNodeGene, 
 				const ConnectionGeneAttributes attributes);
+	// void* data constructor only for runtime evolution optimization purposes
+	// never use on crossplatform data
+	ConnectionGene(const void* data, const NodeGene& sourceNodeGene, const NodeGene& targetNodeGene);
+	static const uint32_t* getSourceNodeHistoryID(const void* data);
+	static const uint32_t* getTargetNodeHistoryID(const void* data);
 	
 	ConnectionGene(const ConnectionGene& other) = default;
 	ConnectionGene& operator=(const ConnectionGene& other) = default;
@@ -32,11 +37,16 @@ public:
 protected:
 	friend class Genome;
 
+	const void* get_rawData() const;
 	ConnectionGeneAttributes& get_attributes();
 
 private:
-	const uint32_t _historyID;
+	struct RawData {
+		const uint32_t _historyID;
+		const uint32_t _sourceNodeGeneHistoryID;
+		const uint32_t _targetNodeGeneHistoryID;
+		ConnectionGeneAttributes _attributes;
+	} _rawData;
 	const NodeGene& _sourceNodeGene;
 	const NodeGene& _targetNodeGene;
-	ConnectionGeneAttributes _attributes;
 };
