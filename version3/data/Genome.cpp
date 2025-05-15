@@ -4,6 +4,7 @@
 #include <cassert>
 
 Genome::Genome(const GenomeParams& params)
+	: _phenotype(nullptr)
 {
 	assert(params._nodeHistoryIDs.size() == params._nodeTypes.size() && 
 		params._nodeHistoryIDs.size() == params._nodeAttributes.size() && 
@@ -56,6 +57,7 @@ Genome::Genome(const GenomeParams& params)
 }
 
 Genome::Genome(const RawGenomeParams& params)
+	: _phenotype(nullptr)
 {
 	assert(!params._rawNodeGeneData.empty() && "Raw node gene data cannot be empty");
 	for (const void* nodeData : params._rawNodeGeneData) {
@@ -113,6 +115,7 @@ Genome::Genome(const RawGenomeParams& params)
 }
 
 Genome::Genome(const Genome& other)
+	: _phenotype(nullptr)
 {
 	_nodeGenes.reserve(other._nodeGenes.size());
 	_connectionGenes.reserve(other._connectionGenes.size());
@@ -163,6 +166,7 @@ Genome& Genome::operator=(const Genome& other)
 
 	_nodeGenes.clear();
 	_connectionGenes.clear();
+	_phenotype = nullptr;
 
 	_nodeGenes.reserve(other._nodeGenes.size());
 	_connectionGenes.reserve(other._connectionGenes.size());
@@ -191,4 +195,33 @@ Genome& Genome::operator=(const Genome& other)
 	}
 
 	return *this;
+}
+
+const std::vector<NodeGene>& Genome::get_nodeGenes() const
+{
+	return _nodeGenes;
+}
+
+const std::vector<ConnectionGene>& Genome::get_connectionGenes() const
+{
+	return _connectionGenes;
+}
+
+std::shared_ptr<const Phenotype> Genome::get_phenotype() const
+{
+	return std::const_pointer_cast<const Phenotype>(_phenotype);
+}
+
+std::vector<NodeGene>& Genome::get_nodeGenes()
+{
+	if (_phenotype)
+		_phenotype->_dirty = true;
+	return _nodeGenes;
+}
+
+std::vector<ConnectionGene>& Genome::get_connectionGenes()
+{
+	if (_phenotype)
+		_phenotype->_dirty = true;
+	return _connectionGenes;
 }

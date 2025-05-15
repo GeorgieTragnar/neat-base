@@ -1,6 +1,7 @@
 // Genome.h
 #pragma once
 #include <vector>
+#include <memory>
 
 #include "NodeGene.hpp"
 #include "ConnectionGene.hpp"
@@ -36,8 +37,38 @@ public:
 	static Genome Deserialize(const std::vector<uint8_t>& serializedData) = delete;
 	static const std::vector<uint8_t>& Serialize(const Genome& other) = delete;
 
+public:
+	class Phenotype {
+	public:	
+		bool							_dirty = true;
+		struct Connection {
+			size_t						_sourceNodeIndex;
+			size_t						_targetNodeIndex;
+			ConnectionGeneAttributes	_connectionGeneAttribute;
+		};
+		std::vector<NodeGeneAttributes>	_nodeGeneAttributes;
+		std::vector<Connection> 		_orderedConnections;
+	
+		std::vector<size_t>				_inputIndices;
+		std::vector<size_t>				_outputIndices;
+	};
+
+	const std::vector<NodeGene>& get_nodeGenes() const;
+	const std::vector<ConnectionGene>& get_connectionGenes() const;
+	std::shared_ptr<const Phenotype> get_phenotype() const;
+
+protected:
+	// potentional operators on genome data
+	// friend class GenomeEvolver;  
+	// friend class MutationOperator;
+
+	std::vector<NodeGene>& get_nodeGenes();
+	std::vector<ConnectionGene>& get_connectionGenes();
+
+	void constructPhenotype();
 
 private:
-	std::vector<NodeGene> _nodeGenes;
-	std::vector<ConnectionGene> _connectionGenes;
+	std::vector<NodeGene>			_nodeGenes;
+	std::vector<ConnectionGene>		_connectionGenes;
+	std::shared_ptr<Phenotype>		_phenotype;
 };
