@@ -1,6 +1,7 @@
 
 #include "Genome.hpp"
 #include <unordered_map>
+#include <unordered_set>
 #include <cassert>
 
 Genome::Genome(const GenomeParams& params)
@@ -207,7 +208,7 @@ const std::vector<ConnectionGene>& Genome::get_connectionGenes() const
 	return _connectionGenes;
 }
 
-std::shared_ptr<const Phenotype> Genome::get_phenotype() const
+std::shared_ptr<const Genome::Phenotype> Genome::get_phenotype() const
 {
 	return std::const_pointer_cast<const Phenotype>(_phenotype);
 }
@@ -224,4 +225,71 @@ std::vector<ConnectionGene>& Genome::get_connectionGenes()
 	if (_phenotype)
 		_phenotype->_dirty = true;
 	return _connectionGenes;
+}
+
+void Genome::constructPhenotype()
+{
+	auto newPhenotype = std::make_shared<Phenotype>();
+
+	std::unordered_set<uint32_t> includedNodeGeneHistoryIDs;
+
+	for (const auto& node : _nodeGenes) {
+		if (node.get_type() == NodeType::INPUT || 
+			node.get_type() == NodeType::OUTPUT || 
+			node.get_type() == NodeType::BIAS) {
+			includedNodeGeneHistoryIDs.insert(node.get_historyID());
+		}
+	}
+
+	for (const auto& conn : _connectionGenes) {
+		if (conn.get_attributes().enabled) {
+			includedNodeGeneHistoryIDs.insert(conn.get_sourceNodeGene().get_historyID());
+			includedNodeGeneHistoryIDs.insert(conn.get_targetNodeGene().get_historyID());
+		}
+	}
+
+	std::unordered_map<uint32_t, size_t> historyIDToIndex;
+	newPhenotype->_nodeGeneAttributes.reserve(includedNodeGeneHistoryIDs.size());
+
+	size_t nodeIndex = 0;
+	for (const auto& node : _nodeGenes) {
+		if (includedNodeGeneHistoryIDs.count(node.get_historyID()) > 0) {
+			historyIDToIndex[node.get_historyID()] = nodeIndex;
+			newPhenotype->_nodeGeneAttributes.push_back(node.get_attributes());
+
+			if (node.get_type() == NodeType::INPUT) {
+				newPhenotype->_inputIndices.push_back(nodeIndex);
+			} else if (node.get_type() == NodeType::OUTPUT) {
+				newPhenotype->_outputIndices.push_back(nodeIndex);
+			}
+			
+			nodeIndex++;
+		}
+	}
+
+	size_t enabledConnectionCount = 0;
+	for (const auto& conn : _connectionGenes) {
+		if (conn.get_attributes().enabled) {
+			enabledConnectionCount++;
+		}
+	}
+
+	newPhenotype->_orderedConnections.reserve(enabledConnectionCount);
+
+	for (const auto& conn : _connectionGenes) {
+		if (conn.get_attributes().enabled) {
+			uint32_t sourceID = conn.get_sourceNodeGene().get_historyID();
+			uint32_t targetID = conn.get_targetNodeGene().get_historyID();
+
+			Phenotype::Connection phenConn;
+			phenConn._sourceNodeIndex = historyIDToIndex[sourceID];
+			phenConn._targetNodeIndex = historyIDToIndex[targetID];
+			phenConn._connectionGeneAttribute = conn.get_attributes();
+
+			newPhenotype->_orderedConnections.push_back(std::move(phenConn));
+		}
+	}
+
+	newPhenotype->_dirty = false;
+	_phenotype = std::move(newPhenotype);
 }

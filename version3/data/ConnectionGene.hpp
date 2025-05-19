@@ -4,7 +4,7 @@
 
 #include "NodeGene.hpp"
 
-class ConnectionGeneAttributes {
+struct ConnectionGeneAttributes {
 	float weight;
 	bool enabled;
 };
