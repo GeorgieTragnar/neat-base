@@ -60,8 +60,8 @@ Genome::Genome(const GenomeParams& params)
 Genome::Genome(const RawGenomeParams& params)
 	: _phenotype(nullptr)
 {
-	assert(!params._rawNodeGeneData.empty() && "Raw node gene data cannot be empty");
-	for (const void* nodeData : params._rawNodeGeneData) {
+	assert(!params._nodeGenes.empty() && "Raw node gene data cannot be empty");
+	for (const void* nodeData : params._nodeGenes) {
 		assert(nodeData != nullptr && "Raw node data pointer cannot be null");
 	}
 
@@ -69,11 +69,11 @@ Genome::Genome(const RawGenomeParams& params)
 		assert(connData != nullptr && "Raw connection data pointer cannot be null");
 	}
 
-	_nodeGenes.reserve(params._rawNodeGeneData.size());
+	_nodeGenes.reserve(params._nodeGenes.size());
 	_connectionGenes.reserve(params._rawConnectionGeneData.size());
 	
-	for (const void* nodeData : params._rawNodeGeneData) {
-		_nodeGenes.emplace_back(nodeData);
+	for (const NodeGene* nodeGene : params._nodeGenes) {
+		_nodeGenes.emplace_back(*nodeGene);
 	}
 
 	std::unordered_map<uint32_t, const NodeGene*> nodeMap;
@@ -122,7 +122,7 @@ Genome::Genome(const Genome& other)
 	_connectionGenes.reserve(other._connectionGenes.size());
 
 	for (const NodeGene& node : other._nodeGenes) {
-		_nodeGenes.emplace_back(node.get_rawData());
+		_nodeGenes.emplace_back(node);
 	}
 
 	std::unordered_map<const NodeGene*, const NodeGene*> nodeMap;
@@ -173,7 +173,7 @@ Genome& Genome::operator=(const Genome& other)
 	_connectionGenes.reserve(other._connectionGenes.size());
 
 	for (const NodeGene& node : other._nodeGenes) {
-		_nodeGenes.emplace_back(node.get_rawData());
+		_nodeGenes.emplace_back(node);
 	}
 
 	std::unordered_map<uint32_t, const NodeGene*> nodeHistoryMap;

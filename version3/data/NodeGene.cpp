@@ -1,43 +1,30 @@
 
 #include "NodeGene.hpp"
 
-NodeGene::NodeGene(uint32_t historyID, NodeType type, NodeGeneAttributes attributes)
-	: _rawData(
-		historyID,
-		type,
-		attributes
-	)
-{
-
-}
-
-NodeGene::NodeGene(const void* data)
-	: _rawData(*reinterpret_cast<const RawData*>(data))
+NodeGene::NodeGene(const uint32_t historyID, const NodeType type, const NodeGeneAttributes attributes)
+	: _historyID(historyID)
+	, _type(type)
+	, _attributes(attributes)
 {
 
 }
 
 const uint32_t& NodeGene::get_historyID() const
 {
-	return _rawData._historyID;
+	return _historyID;
 }
 
 const NodeType& NodeGene::get_type() const
 {
-	return _rawData._type;
+	return _type;
 }
 
 const NodeGeneAttributes& NodeGene::get_attributes() const
 {
-	return _rawData._attributes;
-}
-
-const void* NodeGene::get_rawData() const
-{
-	return &_rawData;
+	return _attributes;
 }
 
 NodeGeneAttributes& NodeGene::get_attributes()
 {
-	return _rawData._attributes;
+	return _attributes;
 }

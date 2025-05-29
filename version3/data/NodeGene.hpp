@@ -10,6 +10,7 @@ enum class NodeType {
 };
 
 enum class ActivationType {
+	NONE,
 	SIGMOID,
 	TANH,
 	RELU,
@@ -17,7 +18,7 @@ enum class ActivationType {
 	STEP
 };
 
-class NodeGeneAttributes {
+struct NodeGeneAttributes {
 	ActivationType activationType;
 };
 
@@ -25,9 +26,6 @@ class NodeGene {
 public:
 	NodeGene() = delete;
 	NodeGene(const uint32_t historyID, const NodeType type, const NodeGeneAttributes attributes);
-	// void* data constructor only for runtime evolution optimization purposes
-	// never use on crossplatform data
-	NodeGene(const void* data);
 	
 	NodeGene(const NodeGene& other) = default;
 	NodeGene& operator=(const NodeGene&) = default;
@@ -38,16 +36,13 @@ public:
 	const NodeType& get_type() const;
 	const NodeGeneAttributes& get_attributes() const;
 
-protected:
+public:
 	friend class Genome;
 
-	const void* get_rawData() const;
 	NodeGeneAttributes& get_attributes();
 
 private:
-	struct RawData {
-		const uint32_t _historyID;
-		const NodeType _type;
-		NodeGeneAttributes _attributes;
-	} _rawData;
+	const uint32_t _historyID;
+	const NodeType _type;
+	NodeGeneAttributes _attributes;
 };

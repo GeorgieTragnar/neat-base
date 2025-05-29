@@ -18,8 +18,8 @@ struct GenomeParams {
 };
 
 struct RawGenomeParams {
-	std::vector<const void*>	_rawNodeGeneData;
-	std::vector<const void*>	_rawConnectionGeneData;
+	std::vector<const NodeGene*>	_nodeGenes;
+	std::vector<const void*>		_rawConnectionGeneData;
 };
 
 class Genome {

@@ -34,7 +34,7 @@ public:
 	bool operator==(const ConnectionGene& other) const;
 	bool operator!=(const ConnectionGene& other) const;
 
-protected:
+public:
 	friend class Genome;
 
 	const void* get_rawData() const;
