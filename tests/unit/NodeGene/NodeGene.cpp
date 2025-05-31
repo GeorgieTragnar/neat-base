@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <stdexcept>
 
+#include "tests/test_common.h"
 #include "version3/data/NodeGene.hpp"
 
 // =============================================================================

@@ -36,7 +36,7 @@ public:
 	const NodeType& get_type() const;
 	const NodeGeneAttributes& get_attributes() const;
 
-public:
+protected:
 	friend class Genome;
 
 	NodeGeneAttributes& get_attributes();
