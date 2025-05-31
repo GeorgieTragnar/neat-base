@@ -1,6 +1,7 @@
 // ConnectionGene.h
 #pragma once
 #include <cstdint>
+#include <vector>
 
 #include "NodeGene.hpp"
 
@@ -16,9 +17,8 @@ public:
 				const ConnectionGeneAttributes attributes);
 	// void* data constructor only for runtime evolution optimization purposes
 	// never use on crossplatform data
+	// INTERNAL USE ONLY
 	ConnectionGene(const void* data, const NodeGene& sourceNodeGene, const NodeGene& targetNodeGene);
-	static const uint32_t* getSourceNodeHistoryID(const void* data);
-	static const uint32_t* getTargetNodeHistoryID(const void* data);
 	
 	ConnectionGene(const ConnectionGene& other) = default;
 	ConnectionGene& operator=(const ConnectionGene& other) = default;
@@ -34,8 +34,10 @@ public:
 	bool operator==(const ConnectionGene& other) const;
 	bool operator!=(const ConnectionGene& other) const;
 
-public:
+protected:
 	friend class Genome;
+	static const uint32_t* getSourceNodeHistoryID(const void* data);
+	static const uint32_t* getTargetNodeHistoryID(const void* data);
 
 	const void* get_rawData() const;
 	ConnectionGeneAttributes& get_attributes();
