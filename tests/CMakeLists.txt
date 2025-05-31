@@ -12,10 +12,16 @@ foreach(SUBDIR ${UNIT_SUBDIRS})
         if(DEFINED NODE_GENE_TEST_FILE)
             list(APPEND ADDITIONAL_TEST_FILES ${NODE_GENE_TEST_FILE})
         endif()
+        if(DEFINED CONNECTION_GENE_TEST_FILE)
+            list(APPEND ADDITIONAL_TEST_FILES ${CONNECTION_GENE_TEST_FILE})
+        endif()
         
         # Collect any additional include directories
         if(DEFINED NODE_GENE_TEST_INCLUDE_DIR)
             list(APPEND ADDITIONAL_INCLUDE_DIRS ${NODE_GENE_TEST_INCLUDE_DIR})
+        endif()
+        if(DEFINED CONNECTION_GENE_TEST_INCLUDE_DIR)
+            list(APPEND ADDITIONAL_INCLUDE_DIRS ${CONNECTION_GENE_TEST_INCLUDE_DIR})
         endif()
     endif()
 endforeach()
@@ -30,10 +36,16 @@ foreach(SUBDIR ${INTEGRATION_SUBDIRS})
         if(DEFINED NODE_GENE_TEST_FILE)
             list(APPEND ADDITIONAL_TEST_FILES ${NODE_GENE_TEST_FILE})
         endif()
+        if(DEFINED CONNECTION_GENE_TEST_FILE)
+            list(APPEND ADDITIONAL_TEST_FILES ${CONNECTION_GENE_TEST_FILE})
+        endif()
         
         # Collect any additional include directories
         if(DEFINED NODE_GENE_TEST_INCLUDE_DIR)
             list(APPEND ADDITIONAL_INCLUDE_DIRS ${NODE_GENE_TEST_INCLUDE_DIR})
+        endif()
+        if(DEFINED CONNECTION_GENE_TEST_INCLUDE_DIR)
+            list(APPEND ADDITIONAL_INCLUDE_DIRS ${CONNECTION_GENE_TEST_INCLUDE_DIR})
         endif()
     endif()
 endforeach()
@@ -50,6 +62,7 @@ endforeach()
 
 add_executable(neat_tests 
     main.cpp
+    test_utilities.cpp
     ${UNIT_TEST_FILES}
     ${INTEGRATION_TEST_FILES}
     ${ADDITIONAL_TEST_FILES}
