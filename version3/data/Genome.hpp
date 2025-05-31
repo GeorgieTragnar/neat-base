@@ -57,7 +57,7 @@ public:
 	const std::vector<ConnectionGene>& get_connectionGenes() const;
 	std::shared_ptr<const Phenotype> get_phenotype() const;
 
-protected:
+public:
 	// potentional operators on genome data
 	// friend class GenomeEvolver;  
 	// friend class MutationOperator;
