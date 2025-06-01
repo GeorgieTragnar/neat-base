@@ -127,11 +127,15 @@ Genome Operator::nodeMutation(const Genome& genome,
     // Select random enabled connection to split
     size_t selectedIndex = enabledIndices[connDist(gen)];
     
-    // Store values BEFORE any vector modifications to avoid invalidation
-    uint32_t connectionToSplitID = connections[selectedIndex].get_historyID();
-    uint32_t sourceNodeID = connections[selectedIndex].get_sourceNodeGene().get_historyID();
-    uint32_t targetNodeID = connections[selectedIndex].get_targetNodeGene().get_historyID();
-    float originalWeight = connections[selectedIndex].get_attributes().weight;
+    // Ensure capacity to prevent reallocations: 1 potential new node + 2 new connections
+    mutatedGenome.ensureCapacity(1, 2);
+    
+    // Now safe to get references since no reallocations will occur
+    const ConnectionGene& connectionToSplit = connections[selectedIndex];
+    uint32_t connectionToSplitID = connectionToSplit.get_historyID();
+    uint32_t sourceNodeID = connectionToSplit.get_sourceNodeGene().get_historyID();
+    uint32_t targetNodeID = connectionToSplit.get_targetNodeGene().get_historyID();
+    float originalWeight = connectionToSplit.get_attributes().weight;
     
     // Determine which split node to use via innovation decision tree
     uint32_t splitNodeID = determineSplitNodeID(
@@ -147,7 +151,7 @@ Genome Operator::nodeMutation(const Genome& genome,
     bool createNewNode = !nodeExistsInGenome(nodes, splitNodeID);
     
     if (createNewNode) {
-        // Create new hidden node
+        // Create new hidden node (safe - capacity ensured)
         nodes.emplace_back(splitNodeID, NodeType::HIDDEN, params._nodeAttributes);
     }
     
@@ -178,44 +182,23 @@ Genome Operator::nodeMutation(const Genome& genome,
     }
     assert(sourceNode != nullptr && targetNode != nullptr);
     
-    // Create new connections vector to completely avoid reallocation issues
-    std::vector<ConnectionGene> newConnections;
-    newConnections.reserve(connections.size() + 2);
+    // Disable the original connection (safe - no reallocation)
+    ConnectionGeneAttributes& originalConnAttribs = const_cast<ConnectionGeneAttributes&>(
+        connections[selectedIndex].get_attributes());
+    originalConnAttribs.enabled = false;
     
-    // Copy all existing connections, modifying the split one
-    for (size_t i = 0; i < connections.size(); ++i) {
-        if (i == selectedIndex) {
-            // Disable the connection being split using stored values
-            ConnectionGeneAttributes disabledAttribs;
-            disabledAttribs.weight = originalWeight;
-            disabledAttribs.enabled = false;
-            newConnections.emplace_back(connectionToSplitID, *sourceNode, *targetNode, disabledAttribs);
-        } else {
-            // Copy other connections unchanged - this might be the issue if they're already corrupted
-            // Let's try to safely copy them using stored attributes
-            ConnectionGeneAttributes attrs = connections[i].get_attributes();
-            newConnections.emplace_back(connections[i].get_historyID(),
-                                       connections[i].get_sourceNodeGene(),
-                                       connections[i].get_targetNodeGene(),
-                                       attrs);
-        }
-    }
-    
-    // Add new connections with weight preservation strategy
+    // Add new connections (safe - capacity ensured)
     // Input connection: source → splitNode (weight = 1.0)
     ConnectionGeneAttributes inputConnAttribs;
     inputConnAttribs.weight = 1.0f;
     inputConnAttribs.enabled = true;
-    newConnections.emplace_back(inputConnID, *sourceNode, *splitNode, inputConnAttribs);
+    connections.emplace_back(inputConnID, *sourceNode, *splitNode, inputConnAttribs);
     
     // Output connection: splitNode → target (weight = original)
     ConnectionGeneAttributes outputConnAttribs;
     outputConnAttribs.weight = originalWeight;
     outputConnAttribs.enabled = true;
-    newConnections.emplace_back(outputConnID, *splitNode, *targetNode, outputConnAttribs);
-    
-    // Replace the connections vector
-    connections = std::move(newConnections);
+    connections.emplace_back(outputConnID, *splitNode, *targetNode, outputConnAttribs);
     
     return mutatedGenome;
 }

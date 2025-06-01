@@ -16,8 +16,12 @@ Genome::Genome(const GenomeParams& params)
 		params._connectionHistoryIDs.size() == params._connectionAttributes.size() && 
 		"Connection parameter arrays must be of equal size");
 
-	_nodeGenes.reserve(params._nodeHistoryIDs.size());
-	_connectionGenes.reserve(params._connectionHistoryIDs.size());
+	// Strategic pre-allocation to prevent reallocations during evolution
+	size_t nodeCapacity = calculateOptimalCapacity(params._nodeHistoryIDs.size(), 0);
+	size_t connCapacity = calculateOptimalCapacity(params._connectionHistoryIDs.size(), 0);
+	
+	_nodeGenes.reserve(nodeCapacity);
+	_connectionGenes.reserve(connCapacity);
 
 	for (size_t i = 0; i < params._nodeHistoryIDs.size(); ++i) {
 		_nodeGenes.emplace_back(
@@ -69,8 +73,12 @@ Genome::Genome(const RawGenomeParams& params)
 		assert(connData != nullptr && "Raw connection data pointer cannot be null");
 	}
 
-	_nodeGenes.reserve(params._nodeGenes.size());
-	_connectionGenes.reserve(params._rawConnectionGeneData.size());
+	// Strategic pre-allocation to prevent reallocations during evolution
+	size_t nodeCapacity = calculateOptimalCapacity(params._nodeGenes.size(), 0);
+	size_t connCapacity = calculateOptimalCapacity(params._rawConnectionGeneData.size(), 0);
+	
+	_nodeGenes.reserve(nodeCapacity);
+	_connectionGenes.reserve(connCapacity);
 	
 	for (const NodeGene* nodeGene : params._nodeGenes) {
 		_nodeGenes.emplace_back(*nodeGene);
@@ -118,8 +126,12 @@ Genome::Genome(const RawGenomeParams& params)
 Genome::Genome(const Genome& other)
 	: _phenotype(nullptr)
 {
-	_nodeGenes.reserve(other._nodeGenes.size());
-	_connectionGenes.reserve(other._connectionGenes.size());
+	// Strategic pre-allocation to prevent reallocations during evolution
+	size_t nodeCapacity = calculateOptimalCapacity(other._nodeGenes.size(), 0);
+	size_t connCapacity = calculateOptimalCapacity(other._connectionGenes.size(), 0);
+	
+	_nodeGenes.reserve(nodeCapacity);
+	_connectionGenes.reserve(connCapacity);
 
 	for (const NodeGene& node : other._nodeGenes) {
 		_nodeGenes.emplace_back(node);
@@ -169,8 +181,12 @@ Genome& Genome::operator=(const Genome& other)
 	_connectionGenes.clear();
 	_phenotype = nullptr;
 
-	_nodeGenes.reserve(other._nodeGenes.size());
-	_connectionGenes.reserve(other._connectionGenes.size());
+	// Strategic pre-allocation to prevent reallocations during evolution
+	size_t nodeCapacity = calculateOptimalCapacity(other._nodeGenes.size(), 0);
+	size_t connCapacity = calculateOptimalCapacity(other._connectionGenes.size(), 0);
+	
+	_nodeGenes.reserve(nodeCapacity);
+	_connectionGenes.reserve(connCapacity);
 
 	for (const NodeGene& node : other._nodeGenes) {
 		_nodeGenes.emplace_back(node);
@@ -292,4 +308,55 @@ void Genome::constructPhenotype()
 
 	newPhenotype->_dirty = false;
 	_phenotype = std::move(newPhenotype);
+}
+
+void Genome::ensureCapacity(size_t additionalNodes, size_t additionalConnections) {
+	// Check if we need to expand node capacity
+	size_t requiredNodeCapacity = _nodeGenes.size() + additionalNodes + SAFETY_MARGIN;
+	if (requiredNodeCapacity > _nodeGenes.capacity()) {
+		size_t newNodeCapacity = calculateOptimalCapacity(_nodeGenes.size(), additionalNodes);
+		_nodeGenes.reserve(newNodeCapacity);
+	}
+	
+	// Check if we need to expand connection capacity
+	size_t requiredConnCapacity = _connectionGenes.size() + additionalConnections + SAFETY_MARGIN;
+	if (requiredConnCapacity > _connectionGenes.capacity()) {
+		size_t newConnCapacity = calculateOptimalCapacity(_connectionGenes.size(), additionalConnections);
+		_connectionGenes.reserve(newConnCapacity);
+	}
+}
+
+size_t Genome::nextPowerOfTwo(size_t n) {
+	if (n == 0) return 1;
+	if (n == 1) return 2;
+	
+	// Find the most significant bit position
+	size_t msb = 0;
+	size_t temp = n - 1;
+	while (temp > 0) {
+		temp >>= 1;
+		msb++;
+	}
+	
+	return 1ULL << msb;
+}
+
+size_t Genome::calculateOptimalCapacity(size_t currentSize, size_t requestedAdditional) {
+	size_t minimumRequired = currentSize + requestedAdditional;
+	
+	// For small genomes, use fixed initial capacities
+	size_t minNodeCapacity = std::max(minimumRequired, INITIAL_NODE_CAPACITY);
+	size_t minConnCapacity = std::max(minimumRequired, INITIAL_CONN_CAPACITY);
+	
+	// Use appropriate minimum based on context (heuristic: connections usually outnumber nodes)
+	size_t effectiveMinimum = (minimumRequired < 100) ? minConnCapacity : minNodeCapacity;
+	
+	// For larger genomes, use power-of-two sizing with growth multiplier
+	if (minimumRequired > effectiveMinimum) {
+		size_t powerOfTwoSize = nextPowerOfTwo(minimumRequired);
+		// Apply growth multiplier for extra headroom
+		return powerOfTwoSize * GROWTH_MULTIPLIER;
+	}
+	
+	return effectiveMinimum;
 }

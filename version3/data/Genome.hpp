@@ -66,6 +66,19 @@ protected:
 	std::vector<ConnectionGene>& get_connectionGenes();
 
 	void constructPhenotype();
+	
+	// Capacity management for preventing vector reallocations
+	void ensureCapacity(size_t additionalNodes = 0, size_t additionalConnections = 0);
+
+private:
+	// Capacity management constants
+	static constexpr size_t INITIAL_NODE_CAPACITY = 64;
+	static constexpr size_t INITIAL_CONN_CAPACITY = 256;
+	static constexpr size_t GROWTH_MULTIPLIER = 2;
+	static constexpr size_t SAFETY_MARGIN = 8;
+	
+	static size_t nextPowerOfTwo(size_t n);
+	static size_t calculateOptimalCapacity(size_t currentSize, size_t requestedAdditional);
 
 private:
 	std::vector<NodeGene>			_nodeGenes;

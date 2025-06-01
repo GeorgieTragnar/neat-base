@@ -12,7 +12,7 @@ namespace Operator {
 
 class ConnectionMutationParams;
 
-Genome connectionMutation(const Genome& genome, std::unique_ptr<HistoryTracker> historyTracker, const ConnectionMutationParams& params);
+Genome connectionMutation(const Genome& genome, std::shared_ptr<HistoryTracker> historyTracker, const ConnectionMutationParams& params);
 
 class ConnectionMutationParams {
 public:
@@ -27,7 +27,7 @@ public:
                            NetworkTopology topology);
 
 protected:
-    friend Genome connectionMutation(const Genome& genome, std::unique_ptr<HistoryTracker> historyTracker, const ConnectionMutationParams& params);
+    friend Genome connectionMutation(const Genome& genome, std::shared_ptr<HistoryTracker> historyTracker, const ConnectionMutationParams& params);
     
     const double _connectionRate;        // Probability to add a connection [0.0, 1.0]
     const double _weightRange;           // Range for new connection weights [-range, +range] (> 0)
