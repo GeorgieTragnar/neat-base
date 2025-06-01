@@ -1,6 +1,6 @@
 #include "WeightMutation.hpp"
 #include <random>
-#include <stdexcept>
+#include <cassert>
 #include <algorithm>
 
 using namespace Operator;
@@ -17,18 +17,10 @@ WeightMutationParams::WeightMutationParams(double perturbationRate,
     , _mutationType(mutationType)
 {
     // Parameter validation
-    if (perturbationRate < 0.0 || perturbationRate > 1.0) {
-        throw std::invalid_argument("perturbationRate must be in range [0.0, 1.0]");
-    }
-    if (replacementRate < 0.0 || replacementRate > 1.0) {
-        throw std::invalid_argument("replacementRate must be in range [0.0, 1.0]");
-    }
-    if (perturbationStrength <= 0.0) {
-        throw std::invalid_argument("perturbationStrength must be greater than 0.0");
-    }
-    if (weightRange <= 0.0) {
-        throw std::invalid_argument("weightRange must be greater than 0.0");
-    }
+    assert(perturbationRate >= 0.0 && perturbationRate <= 1.0);
+    assert(replacementRate >= 0.0 && replacementRate <= 1.0);
+    assert(perturbationStrength > 0.0);
+    assert(weightRange > 0.0);
 }
 
 Genome Operator::weightMutation(const Genome& genome, const WeightMutationParams& params) {
