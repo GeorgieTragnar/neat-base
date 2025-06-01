@@ -21,6 +21,9 @@ foreach(SUBDIR ${UNIT_SUBDIRS})
         if(DEFINED WEIGHT_MUTATION_TEST_FILE)
             list(APPEND ADDITIONAL_TEST_FILES ${WEIGHT_MUTATION_TEST_FILE})
         endif()
+        if(DEFINED CONNECTION_MUTATION_TEST_FILE)
+            list(APPEND ADDITIONAL_TEST_FILES ${CONNECTION_MUTATION_TEST_FILE})
+        endif()
         
         # Collect any additional include directories
         if(DEFINED NODE_GENE_TEST_INCLUDE_DIR)
@@ -50,6 +53,9 @@ foreach(SUBDIR ${INTEGRATION_SUBDIRS})
         endif()
         if(DEFINED WEIGHT_MUTATION_TEST_FILE)
             list(APPEND ADDITIONAL_TEST_FILES ${WEIGHT_MUTATION_TEST_FILE})
+        endif()
+        if(DEFINED CONNECTION_MUTATION_TEST_FILE)
+            list(APPEND ADDITIONAL_TEST_FILES ${CONNECTION_MUTATION_TEST_FILE})
         endif()
         
         # Collect any additional include directories

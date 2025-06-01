@@ -93,7 +93,7 @@ protected:
         
         size_t differences = 0;
         for (size_t i = 0; i < conns1.size(); ++i) {
-            if (std::abs(conns1[i].get_attributes().weight - conns2[i].get_attributes().weight) > 1e-6f) {
+            if (conns1[i].get_attributes().weight != conns2[i].get_attributes().weight) {
                 differences++;
             }
         }

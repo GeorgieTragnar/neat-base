@@ -3,9 +3,9 @@
 #include <vector>
 #include <memory>
 
-#include "../data/NodeGene.hpp"
-#include "../data/ConnectionGene.hpp"
-#include "../data/Genome.hpp"
+#include "version3/data/NodeGene.hpp"
+#include "version3/data/ConnectionGene.hpp"
+#include "version3/data/Genome.hpp"
 
 namespace Operator {
 
