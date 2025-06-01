@@ -1,0 +1,3 @@
+add_executable(HistoryTracker_test HistoryTracker.cpp)
+target_link_libraries(HistoryTracker_test neat_lib gtest gtest_main)
+add_test(NAME HistoryTracker_test COMMAND HistoryTracker_test)
