@@ -1,4 +1,4 @@
-# Include the generation function
+# Include the generation functions
 include(${CMAKE_CURRENT_SOURCE_DIR}/generate_node_attributes_registration.cmake)
 
 # Generate the field registration code
@@ -16,7 +16,7 @@ set(NODE_GENE_TEST_FILE ${CMAKE_CURRENT_SOURCE_DIR}/NodeGene.cpp PARENT_SCOPE)
 # Add include directory for generated file
 set(NODE_GENE_TEST_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR} PARENT_SCOPE)
 
-# Create custom target to ensure regeneration when header changes
+# Create custom targets to ensure regeneration when headers change
 add_custom_command(
     OUTPUT ${GENERATED_REGISTRATION_FILE}
     COMMAND ${CMAKE_COMMAND} 

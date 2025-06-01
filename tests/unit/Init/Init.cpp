@@ -41,8 +41,8 @@ TEST_F(InitTest, CONNECT_TO_OUTPUTS_BasicFunctionality) {
     auto outputAttrs = createOutputAttributes(2);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     
@@ -55,8 +55,8 @@ TEST_F(InitTest, CONNECT_TO_OUTPUTS_AllInputsToAllOutputs) {
     auto outputAttrs = createOutputAttributes(2);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     
@@ -69,8 +69,8 @@ TEST_F(InitTest, CONNECT_TO_OUTPUTS_CorrectNodeTypes) {
     auto outputAttrs = createOutputAttributes(2);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     const auto& nodes = genome.get_nodeGenes();
@@ -96,8 +96,8 @@ TEST_F(InitTest, CONNECT_TO_OUTPUTS_CorrectNodeAttributes) {
     
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     const auto& nodes = genome.get_nodeGenes();
@@ -112,8 +112,8 @@ TEST_F(InitTest, CONNECT_TO_OUTPUTS_AllConnectionsEnabled) {
     auto outputAttrs = createOutputAttributes(2);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     const auto& connections = genome.get_connectionGenes();
@@ -128,8 +128,8 @@ TEST_F(InitTest, CONNECT_TO_OUTPUTS_WeightsInRange) {
     auto outputAttrs = createOutputAttributes(2);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     const auto& connections = genome.get_connectionGenes();
@@ -146,8 +146,8 @@ TEST_F(InitTest, CONNECT_TO_OUTPUTS_BiasDefaultAttributes) {
     auto outputAttrs = createOutputAttributes(2);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs; // Empty - use defaults
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     const auto& connections = genome.get_connectionGenes();
@@ -167,8 +167,8 @@ TEST_F(InitTest, CONNECT_TO_OUTPUTS_BiasCustomAttributes) {
     biasAttrs[0] = ConnectionGeneAttributes{2.5f, false}; // Custom weight and disabled
     biasAttrs[1] = ConnectionGeneAttributes{-1.5f, true}; // Custom weight and enabled
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     const auto& connections = genome.get_connectionGenes();
@@ -187,8 +187,8 @@ TEST_F(InitTest, CONNECT_TO_OUTPUTS_BiasPartialAttributes) {
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     biasAttrs[1] = ConnectionGeneAttributes{3.0f, false}; // Only middle output has custom bias
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     const auto& connections = genome.get_connectionGenes();
@@ -210,8 +210,8 @@ TEST_F(InitTest, CONNECT_TO_OUTPUTS_UniqueInnovationNumbers) {
     auto outputAttrs = createOutputAttributes(2);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     const auto& connections = genome.get_connectionGenes();
@@ -231,8 +231,8 @@ TEST_F(InitTest, NONE_Strategy_NoConnections) {
     auto outputAttrs = createOutputAttributes(2);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::NONE);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::NONE);
     
     Genome genome = init(historyTracker, params);
     
@@ -245,8 +245,8 @@ TEST_F(InitTest, EdgeCase_SingleInputSingleOutput) {
     auto outputAttrs = createOutputAttributes(1);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     
@@ -259,8 +259,8 @@ TEST_F(InitTest, EdgeCase_EmptyInputs) {
     auto outputAttrs = createOutputAttributes(2);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     
@@ -273,8 +273,8 @@ TEST_F(InitTest, EdgeCase_EmptyOutputs) {
     auto outputAttrs = createOutputAttributes(0);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     
@@ -287,8 +287,8 @@ TEST_F(InitTest, PhenotypeConstructionReadiness) {
     auto outputAttrs = createOutputAttributes(2);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     Genome genome = init(historyTracker, params);
     
@@ -307,8 +307,8 @@ TEST_F(InitTest, BiasAttributes_ExtraIndicesIgnored) {
     biasAttrs[0] = ConnectionGeneAttributes{2.0f, true};
     biasAttrs[5] = ConnectionGeneAttributes{99.0f, false}; // Non-existent output index
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     // Should not throw despite extra bias attribute
     EXPECT_NO_THROW({
@@ -321,8 +321,8 @@ TEST_F(InitTest, ConsistentHistoryIDs) {
     auto outputAttrs = createOutputAttributes(2);
     std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
     
-    InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                               InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+    InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                               InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
     
     // Create two genomes with same parameters using same history tracker
     Genome genome1 = init(historyTracker, params);

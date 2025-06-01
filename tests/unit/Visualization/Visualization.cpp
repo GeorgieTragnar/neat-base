@@ -42,8 +42,8 @@ protected:
         };
         std::unordered_map<size_t, ConnectionGeneAttributes> biasAttrs;
         
-        InitializationParams params(inputAttrs, outputAttrs, biasAttrs, 
-                                   InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
+        InitParams params(inputAttrs, outputAttrs, biasAttrs, 
+                                   InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS);
         
         return init(historyTracker, params);
     }
