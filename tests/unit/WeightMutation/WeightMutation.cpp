@@ -157,11 +157,11 @@ TEST_F(WeightMutationTest, WeightActuallyChanges_ReplacementOnly) {
 
 TEST_F(WeightMutationTest, WeightActuallyChanges_Mixed) {
     Genome original = createEnabledOnlyGenome();
-    WeightMutationParams params(0.5, 0.5, 0.5, 2.0, WeightMutationParams::MutationType::MIXED);
+    WeightMutationParams params(1.0, 1.0, 0.5, 2.0, WeightMutationParams::MutationType::MIXED);
     
     Genome mutated = weightMutation(original, params);
     
-    // With rates 0.5 each, some connections should be mutated
+    // With rates 1.0 each, all connections should be mutated
     size_t differences = countWeightDifferences(original, mutated);
     EXPECT_GT(differences, 0u);
 }

@@ -112,8 +112,24 @@ Genome Operator::connectionMutation(const Genome& genome,
     newConnAttribs.weight = static_cast<float>(weightDist(gen));
     newConnAttribs.enabled = true;
     
+    // Create new connections vector to completely avoid reallocation issues
+    std::vector<ConnectionGene> newConnections;
+    newConnections.reserve(connections.size() + 1);
+    
+    // Copy all existing connections
+    for (const auto& connection : connections) {
+        ConnectionGeneAttributes attrs = connection.get_attributes();
+        newConnections.emplace_back(connection.get_historyID(),
+                                   connection.get_sourceNodeGene(),
+                                   connection.get_targetNodeGene(),
+                                   attrs);
+    }
+    
     // Add the new connection
-    connections.emplace_back(innovationNumber, sourceNode, targetNode, newConnAttribs);
+    newConnections.emplace_back(innovationNumber, sourceNode, targetNode, newConnAttribs);
+    
+    // Replace the original connections vector
+    connections = std::move(newConnections);
     
     return mutatedGenome;
 }
