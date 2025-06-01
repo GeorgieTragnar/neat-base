@@ -3,7 +3,7 @@
 
 using namespace Operator;
 
-InitializationParams::InitializationParams(const std::vector<NodeGeneAttributes>& inputAttributes, 
+InitParams::InitParams(const std::vector<NodeGeneAttributes>& inputAttributes, 
 	const std::vector<NodeGeneAttributes>& outputAttributes,
 	const std::unordered_map<size_t, ConnectionGeneAttributes>& biasAttributes,
 	const InputConnectionStrategy& inputStrategy)
@@ -15,7 +15,7 @@ InitializationParams::InitializationParams(const std::vector<NodeGeneAttributes>
 
 }
 
-Genome Operator::init(std::unique_ptr<HistoryTracker>& historyTracker, const InitializationParams& params)
+Genome Operator::init(std::unique_ptr<HistoryTracker>& historyTracker, const InitParams& params)
 {
     const auto& inputAttributes = params._inputAttributes;
     const auto& outputAttributes = params._outputAttributes;
@@ -48,7 +48,7 @@ Genome Operator::init(std::unique_ptr<HistoryTracker>& historyTracker, const Ini
     }
     
     // Create connections according to the strategy
-    if (inputStrategy == InitializationParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS) {
+    if (inputStrategy == InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS) {
         // Connect all inputs to all outputs
         for (size_t inputIdx = 0; inputIdx < numInputs; inputIdx++) {
             uint32_t inputNodeID = historyTracker->get_input(inputIdx);

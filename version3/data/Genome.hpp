@@ -6,6 +6,9 @@
 #include "NodeGene.hpp"
 #include "ConnectionGene.hpp"
 
+// Auto-generated operator forward declarations
+#include "operator_forward_declarations.inc"
+
 struct GenomeParams {
 	std::vector<uint32_t> 					_nodeHistoryIDs;
 	std::vector<NodeType> 					_nodeTypes;
@@ -37,7 +40,6 @@ public:
 	static Genome Deserialize(const std::vector<uint8_t>& serializedData) = delete;
 	static const std::vector<uint8_t>& Serialize(const Genome& other) = delete;
 
-public:
 	class Phenotype {
 	public:	
 		bool							_dirty = true;
@@ -57,10 +59,8 @@ public:
 	const std::vector<ConnectionGene>& get_connectionGenes() const;
 	std::shared_ptr<const Phenotype> get_phenotype() const;
 
-public:
-	// potentional operators on genome data
-	// friend class GenomeEvolver;  
-	// friend class MutationOperator;
+protected:
+#include "operator_friend_declarations.inc"
 
 	std::vector<NodeGene>& get_nodeGenes();
 	std::vector<ConnectionGene>& get_connectionGenes();

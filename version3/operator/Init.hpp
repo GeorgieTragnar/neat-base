@@ -11,11 +11,11 @@
 
 namespace Operator {
 
-class InitializationParams;
+class InitParams;
 
-Genome init(std::unique_ptr<HistoryTracker>& historyTracker, const InitializationParams& params);
+Genome init(std::unique_ptr<HistoryTracker>& historyTracker, const InitParams& params);
 
-class InitializationParams {
+class InitParams {
 public:
 
 	enum class InputConnectionStrategy {
@@ -23,15 +23,15 @@ public:
 		CONNECT_TO_OUTPUTS
 	};
 
-	InitializationParams() = delete;
-	InitializationParams(const std::vector<NodeGeneAttributes>& inputAttributes, 
+	InitParams() = delete;
+	InitParams(const std::vector<NodeGeneAttributes>& inputAttributes, 
 		const std::vector<NodeGeneAttributes>& outputAttributes,
 		const std::unordered_map<size_t, ConnectionGeneAttributes>& biasAttributes,
 		const InputConnectionStrategy& inputStrategy);
 
 
 protected:
-	friend Genome init(std::unique_ptr<HistoryTracker>& historyTracker, const InitializationParams& params);
+	friend Genome init(std::unique_ptr<HistoryTracker>& historyTracker, const InitParams& params);
 
 	const std::vector<NodeGeneAttributes>							_inputAttributes;
 	const std::vector<NodeGeneAttributes>							_outputAttributes;

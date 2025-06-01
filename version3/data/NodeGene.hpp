@@ -1,6 +1,9 @@
 // NodeGene.h
 #pragma once
 #include <cstdint>
+#include <memory>
+
+#include "operator_forward_declarations.inc"
 
 enum class NodeType {
 	INPUT,
@@ -38,6 +41,7 @@ public:
 
 protected:
 	friend class Genome;
+#include "operator_friend_declarations.inc"
 
 	NodeGeneAttributes& get_attributes();
 

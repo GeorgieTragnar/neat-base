@@ -2,8 +2,11 @@
 #pragma once
 #include <cstdint>
 #include <vector>
+#include <memory>
 
 #include "NodeGene.hpp"
+
+#include "operator_forward_declarations.inc"
 
 struct ConnectionGeneAttributes {
 	float weight;
@@ -36,6 +39,8 @@ public:
 
 protected:
 	friend class Genome;
+#include "operator_friend_declarations.inc"
+
 	static const uint32_t* getSourceNodeHistoryID(const void* data);
 	static const uint32_t* getTargetNodeHistoryID(const void* data);
 
