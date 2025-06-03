@@ -22,21 +22,26 @@ function(generate_operator_friend_declarations OPERATOR_DIR OUTPUT_FILE)
             set(NAMESPACE_CONTENT "${CMAKE_MATCH_1}")
             
             # Find function declarations that return Genome
-            string(REGEX MATCHALL "Genome[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^)]*\\)" 
+            # Updated regex to handle multiline function declarations
+            string(REGEX MATCHALL "Genome[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^{;]*\\)" 
                    FUNCTION_MATCHES "${NAMESPACE_CONTENT}")
             
             foreach(FUNCTION_MATCH ${FUNCTION_MATCHES})
-                # Extract function signature
-                string(REGEX MATCH "Genome[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\(([^)]*)\\)" 
+                # Extract function signature with better multiline handling
+                string(REGEX MATCH "Genome[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\(([^{;]*)\\)" 
                        SIGNATURE_MATCH "${FUNCTION_MATCH}")
                 
                 if(SIGNATURE_MATCH)
                     set(FUNCTION_NAME "${CMAKE_MATCH_1}")
                     set(FUNCTION_PARAMS "${CMAKE_MATCH_2}")
                     
+                    # Clean up parameters (remove extra whitespace and newlines)
+                    string(REGEX REPLACE "[ \t\n\r]+" " " CLEAN_PARAMS "${FUNCTION_PARAMS}")
+                    string(STRIP "${CLEAN_PARAMS}" CLEAN_PARAMS)
+                    
                     # Add friend declaration (fully qualified with namespace)
                     string(APPEND FRIEND_DECLARATIONS 
-                           "\tfriend Genome Operator::${FUNCTION_NAME}(${FUNCTION_PARAMS});\n")
+                           "\tfriend Genome Operator::${FUNCTION_NAME}(${CLEAN_PARAMS});\n")
                 endif()
             endforeach()
         endif()
