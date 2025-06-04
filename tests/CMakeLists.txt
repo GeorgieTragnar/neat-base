@@ -30,6 +30,9 @@ foreach(SUBDIR ${UNIT_SUBDIRS})
         if(DEFINED NODE_MUTATION_TEST_FILE)
             list(APPEND ADDITIONAL_TEST_FILES ${NODE_MUTATION_TEST_FILE})
         endif()
+        if(DEFINED CROSSOVER_TEST_FILE)
+            list(APPEND ADDITIONAL_TEST_FILES ${CROSSOVER_TEST_FILE})
+        endif()
         
         # Collect any additional include directories
         if(DEFINED NODE_GENE_TEST_INCLUDE_DIR)

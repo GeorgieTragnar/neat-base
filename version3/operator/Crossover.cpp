@@ -131,6 +131,9 @@ Genome crossover(
         uint32_t id = conn.get_historyID();
         if (processedConnections.find(id) == processedConnections.end()) {
             disjointExcessConnections.push_back({id, &conn, conn.get_rawData(), false});
+        } else {
+            // This is a matching connection from parent B
+            matchingConnections.push_back({id, &conn, conn.get_rawData(), false});
         }
     }
     
@@ -152,21 +155,30 @@ Genome crossover(
     
     // Select inherited connection genes
     std::vector<const void*> selectedConnections;
+    std::vector<uint32_t> connectionsToReactivate;
     
-    // Matching connections: random selection (50/50)
+    // Matching connections: random selection (50/50) between parents
+    std::unordered_map<uint32_t, std::vector<ConnectionGeneInfo>> matchingByID;
     for (const auto& connInfo : matchingConnections) {
-        // For matching genes, randomly select from either parent
+        matchingByID[connInfo.innovationNumber].push_back(connInfo);
+    }
+    
+    for (const auto& [innovationID, connections] : matchingByID) {
+        // Should have exactly 2 connections (one from each parent)
+        assert(connections.size() == 2);
+        
+        // Randomly select from parent A or B
         bool selectFromA = uniform_dist(gen) < 0.5;
-        if (selectFromA == connInfo.fromParentA) {
-            selectedConnections.push_back(connInfo.rawDataPtr);
-            
-            // Apply disabled gene reactivation probability
-            if (!reinterpret_cast<const ConnectionGene::RawData*>(connInfo.rawDataPtr)->_attributes.enabled) {
-                if (uniform_dist(gen) < params._disabledGeneReactivationProbability) {
-                    // TODO: Handle disabled gene reactivation
-                    // This requires modifying the connection data, which needs a different approach
-                    // since we're working with const data here
-                }
+        const auto& selectedConn = selectFromA ? 
+            (connections[0].fromParentA ? connections[0] : connections[1]) :
+            (connections[0].fromParentA ? connections[1] : connections[0]);
+        
+        selectedConnections.push_back(selectedConn.rawDataPtr);
+        
+        // Apply disabled gene reactivation probability
+        if (!reinterpret_cast<const ConnectionGene::RawData*>(selectedConn.rawDataPtr)->_attributes.enabled) {
+            if (uniform_dist(gen) < params._disabledGeneReactivationProbability) {
+                connectionsToReactivate.push_back(selectedConn.innovationNumber);
             }
         }
     }
@@ -184,7 +196,20 @@ Genome crossover(
     rawParams._nodeGenes = selectedNodes;
     rawParams._rawConnectionGeneData = selectedConnections;
     
-    return Genome(rawParams);
+    Genome offspring(rawParams);
+    
+    // Apply disabled gene reactivation to the offspring
+    for (uint32_t historyID : connectionsToReactivate) {
+        auto& connections = offspring.get_connectionGenes();
+        for (auto& conn : connections) {
+            if (conn.get_historyID() == historyID) {
+                conn.get_attributes().enabled = true;
+                break;
+            }
+        }
+    }
+    
+    return offspring;
 }
 
 }
