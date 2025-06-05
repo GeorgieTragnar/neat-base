@@ -86,7 +86,7 @@ Genome Operator::weightMutation(const Genome& genome, const WeightMutationParams
         if (shouldMutate) {
             // Update the connection gene with modified attributes
             // Note: This requires friend access or a setter method
-            auto& mutableAttributes = const_cast<ConnectionGeneAttributes&>(connection.get_attributes());
+            auto& mutableAttributes = connection.get_attributes();
             mutableAttributes = attributes;
         }
     }

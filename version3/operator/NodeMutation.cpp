@@ -183,8 +183,7 @@ Genome Operator::nodeMutation(const Genome& genome,
     assert(sourceNode != nullptr && targetNode != nullptr);
     
     // Disable the original connection (safe - no reallocation)
-    ConnectionGeneAttributes& originalConnAttribs = const_cast<ConnectionGeneAttributes&>(
-        connections[selectedIndex].get_attributes());
+    ConnectionGeneAttributes& originalConnAttribs = connections[selectedIndex].get_attributes();
     originalConnAttribs.enabled = false;
     
     // Add new connections (safe - capacity ensured)

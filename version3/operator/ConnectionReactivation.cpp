@@ -90,7 +90,7 @@ Genome Operator::connectionReactivation(const Genome& genome, const ConnectionRe
     
     // Reactivate the selected connection
     auto& selectedConnection = connections[selectedIndex];
-    auto& mutableAttributes = const_cast<ConnectionGeneAttributes&>(selectedConnection.get_attributes());
+    auto& mutableAttributes = selectedConnection.get_attributes();
     mutableAttributes.enabled = true;
     
     return mutatedGenome;
