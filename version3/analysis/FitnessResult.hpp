@@ -1,29 +1,16 @@
 #pragma once
+#include <memory>
 
 namespace Analysis {
 
-class FitnessResult {
+class FitnessResultInterface {
 public:
-    FitnessResult(double value) : _value(value) {}
+    virtual ~FitnessResultInterface() = default;
     
-    bool isBetterThan(const FitnessResult& other) const {
-        return _value > other._value;
-    }
+    virtual bool isBetterThan(const FitnessResultInterface& other) const = 0;
+    virtual bool isEqualTo(const FitnessResultInterface& other) const = 0;
     
-    bool isEqualTo(const FitnessResult& other) const {
-        return _value == other._value;
-    }
-    
-    bool operator>(const FitnessResult& other) const {
-        return isBetterThan(other);
-    }
-    
-    bool operator==(const FitnessResult& other) const {
-        return isEqualTo(other);
-    }
-
-private:
-    double _value;
+    virtual std::unique_ptr<FitnessResultInterface> clone() const = 0;
 };
 
 }
