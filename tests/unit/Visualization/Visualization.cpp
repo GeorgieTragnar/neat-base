@@ -15,7 +15,7 @@ using namespace Operator;
 class VisualizationTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        historyTracker = std::make_unique<HistoryTracker>();
+        historyTracker = std::make_shared<HistoryTracker>();
         
         // Clean up any existing test output
         if (std::filesystem::exists("test_visualizations")) {
@@ -30,7 +30,7 @@ protected:
         }
     }
 
-    std::unique_ptr<HistoryTracker> historyTracker;
+    std::shared_ptr<HistoryTracker> historyTracker;
     
     Genome createSimpleGenome() {
         // Create a simple 2-input, 1-output genome
