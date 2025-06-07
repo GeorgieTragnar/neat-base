@@ -9,11 +9,37 @@
 #include "tests/test_common.h"
 #include "tests/test_utilities.h"
 #include "version3/operator/Crossover.hpp"
-#include "version3/analysis/GenomeAnalytics.hpp"
 #include "version3/analysis/FitnessResult.hpp"
 
 using namespace Operator;
 using namespace Analysis;
+
+// Test-specific fitness result implementation
+class TestFitnessResult : public FitnessResultInterface {
+public:
+    explicit TestFitnessResult(double fitness) : _fitness(fitness) {}
+    
+    bool isBetterThan(const FitnessResultInterface& other) const override {
+        const auto* otherTest = dynamic_cast<const TestFitnessResult*>(&other);
+        if (!otherTest) return false;
+        return _fitness > otherTest->_fitness;
+    }
+    
+    bool isEqualTo(const FitnessResultInterface& other) const override {
+        const auto* otherTest = dynamic_cast<const TestFitnessResult*>(&other);
+        if (!otherTest) return false;
+        return std::abs(_fitness - otherTest->_fitness) < 1e-9;
+    }
+    
+    std::unique_ptr<FitnessResultInterface> clone() const override {
+        return std::make_unique<TestFitnessResult>(_fitness);
+    }
+    
+    double getFitness() const { return _fitness; }
+
+private:
+    double _fitness;
+};
 
 class CrossoverTest : public ::testing::Test {
 protected:
@@ -153,14 +179,12 @@ TEST_F(CrossoverTest, FitterParentInheritsDisjointExcess_ClearCase) {
     
     // Test Case 1: Parent A is fitter - should get A's disjoint/excess genes
     {
-        FitnessResult fitnessA(0.9);
-        FitnessResult fitnessB(0.3);
-        GenomeAnalytics analyticsA(fitnessA);
-        GenomeAnalytics analyticsB(fitnessB);
+        TestFitnessResult fitnessA(0.9);
+        TestFitnessResult fitnessB(0.3);
         
         CrossoverParams params(0.0);
         
-        Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+        Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
         
         // Verify node inheritance
         std::set<uint32_t> offspringNodeIDs;
@@ -190,14 +214,12 @@ TEST_F(CrossoverTest, FitterParentInheritsDisjointExcess_ClearCase) {
     
     // Test Case 2: Parent B is fitter - should get B's disjoint/excess genes
     {
-        FitnessResult fitnessA(0.3);
-        FitnessResult fitnessB(0.9);
-        GenomeAnalytics analyticsA(fitnessA);
-        GenomeAnalytics analyticsB(fitnessB);
+        TestFitnessResult fitnessA(0.3);
+        TestFitnessResult fitnessB(0.9);
         
         CrossoverParams params(0.0);
         
-        Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+        Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
         
         // Verify node inheritance
         std::set<uint32_t> offspringNodeIDs;
@@ -269,10 +291,8 @@ TEST_F(CrossoverTest, EqualFitness_RandomGeneSelection) {
     Genome parentB(paramsB);
     
     // Equal fitness should trigger random selection for matching genes
-    FitnessResult fitnessA(0.75);
-    FitnessResult fitnessB(0.75);
-    GenomeAnalytics analyticsA(fitnessA);
-    GenomeAnalytics analyticsB(fitnessB);
+    TestFitnessResult fitnessA(0.75);
+    TestFitnessResult fitnessB(0.75);
     
     CrossoverParams params(0.0);
     
@@ -281,7 +301,7 @@ TEST_F(CrossoverTest, EqualFitness_RandomGeneSelection) {
     const int numRuns = 50;
     
     for (int run = 0; run < numRuns; ++run) {
-        Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+        Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
         
         // Check which parent's genes were selected based on weights
         for (const auto& conn : offspring.get_connectionGenes()) {
@@ -388,10 +408,8 @@ TEST_F(CrossoverTest, MatchingGenes_AlwaysInheritedWithRandomSelection) {
     };
     
     for (const auto& [fitnessA, fitnessB] : fitnessScenarios) {
-        FitnessResult resultA(fitnessA);
-        FitnessResult resultB(fitnessB);
-        GenomeAnalytics analyticsA(resultA);
-        GenomeAnalytics analyticsB(resultB);
+        TestFitnessResult resultA(fitnessA);
+        TestFitnessResult resultB(fitnessB);
         
         CrossoverParams params(0.0);
         
@@ -400,7 +418,7 @@ TEST_F(CrossoverTest, MatchingGenes_AlwaysInheritedWithRandomSelection) {
         const int numRuns = 40;
         
         for (int run = 0; run < numRuns; ++run) {
-            Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+            Genome offspring = crossover(parentA, resultA, parentB, resultB, params);
             
             // Verify all matching connections are present
             std::set<uint32_t> offspringConnIDs;
@@ -476,14 +494,12 @@ TEST_F(CrossoverTest, DisjointGenes_WithinOverlappingRanges) {
     Genome parentB(paramsB);
     
     // Make parent A fitter to get its disjoint genes
-    FitnessResult fitnessA(0.9);
-    FitnessResult fitnessB(0.5);
-    GenomeAnalytics analyticsA(fitnessA);
-    GenomeAnalytics analyticsB(fitnessB);
+    TestFitnessResult fitnessA(0.9);
+    TestFitnessResult fitnessB(0.5);
     
     CrossoverParams params(0.0);
     
-    Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+    Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
     
     std::set<uint32_t> offspringConnIDs;
     for (const auto& conn : offspring.get_connectionGenes()) {
@@ -539,14 +555,12 @@ TEST_F(CrossoverTest, ExcessGenes_BeyondOtherParentRange) {
     Genome parentB(paramsB);
     
     // Make parent B fitter to get its excess genes
-    FitnessResult fitnessA(0.4);
-    FitnessResult fitnessB(0.8);
-    GenomeAnalytics analyticsA(fitnessA);
-    GenomeAnalytics analyticsB(fitnessB);
+    TestFitnessResult fitnessA(0.4);
+    TestFitnessResult fitnessB(0.8);
     
     CrossoverParams params(0.0);
     
-    Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+    Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
     
     std::set<uint32_t> offspringConnIDs;
     for (const auto& conn : offspring.get_connectionGenes()) {
@@ -612,14 +626,12 @@ TEST_F(CrossoverTest, NoMatchingGenes_CompletelyDifferentRanges) {
     Genome parentB(paramsB);
     
     // Make parent B fitter to get all its genes
-    FitnessResult fitnessA(0.3);
-    FitnessResult fitnessB(0.9);
-    GenomeAnalytics analyticsA(fitnessA);
-    GenomeAnalytics analyticsB(fitnessB);
+    TestFitnessResult fitnessA(0.3);
+    TestFitnessResult fitnessB(0.9);
     
     CrossoverParams params(0.0);
     
-    Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+    Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
     
     // With no matching genes, offspring should get all genes from fitter parent B
     std::set<uint32_t> offspringConnIDs;
@@ -683,10 +695,8 @@ TEST_F(CrossoverTest, AllMatchingGenes_IdenticalStructure) {
     Genome parentB(paramsB);
     
     // Test with equal fitness to ensure random 50/50 selection
-    FitnessResult fitnessA(0.7);
-    FitnessResult fitnessB(0.7);
-    GenomeAnalytics analyticsA(fitnessA);
-    GenomeAnalytics analyticsB(fitnessB);
+    TestFitnessResult fitnessA(0.7);
+    TestFitnessResult fitnessB(0.7);
     
     CrossoverParams params(0.0); // No reactivation for this test
     
@@ -695,7 +705,7 @@ TEST_F(CrossoverTest, AllMatchingGenes_IdenticalStructure) {
     const int numRuns = 50;
     
     for (int i = 0; i < numRuns; ++i) {
-        Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+        Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
         
         // Check that all connections are present (all matching genes should be inherited)
         std::set<uint32_t> offspringConnIDs;
@@ -764,10 +774,8 @@ TEST_F(CrossoverTest, MatchingConnections_SingleSharedConnection) {
     Genome parentB(paramsB);
     
     // Equal fitness to ensure random 50/50 selection of the matching connection
-    FitnessResult fitnessA(0.7);
-    FitnessResult fitnessB(0.7);
-    GenomeAnalytics analyticsA(fitnessA);
-    GenomeAnalytics analyticsB(fitnessB);
+    TestFitnessResult fitnessA(0.7);
+    TestFitnessResult fitnessB(0.7);
     
     CrossoverParams params(0.0);
     
@@ -776,7 +784,7 @@ TEST_F(CrossoverTest, MatchingConnections_SingleSharedConnection) {
     std::set<bool> observedStates;
     
     for (int i = 0; i < 20; ++i) {
-        Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+        Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
         
         // Should always have exactly one connection (the matching one)
         std::set<uint32_t> offspringConnIDs;
@@ -837,14 +845,12 @@ TEST_F(CrossoverTest, OneParentEmptyConnections_NodesOnly) {
     Genome parentB(paramsB);
     
     // Make parent A fitter (has connections)
-    FitnessResult fitnessA(0.8);
-    FitnessResult fitnessB(0.4);
-    GenomeAnalytics analyticsA(fitnessA);
-    GenomeAnalytics analyticsB(fitnessB);
+    TestFitnessResult fitnessA(0.8);
+    TestFitnessResult fitnessB(0.4);
     
     CrossoverParams params(0.0);
     
-    Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+    Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
     
     // Should inherit from fitter parent A (all excess genes, no matching)
     std::set<uint32_t> offspringNodeIDs;
@@ -924,14 +930,12 @@ TEST_F(CrossoverTest, VastlyDifferentSizes_SmallVsLarge) {
     
     // Test case 1: Small parent is fitter (should get only small parent's genes)
     {
-        FitnessResult fitnessA(0.9);
-        FitnessResult fitnessB(0.2);
-        GenomeAnalytics analyticsA(fitnessA);
-        GenomeAnalytics analyticsB(fitnessB);
+        TestFitnessResult fitnessA(0.9);
+        TestFitnessResult fitnessB(0.2);
         
         CrossoverParams params(0.0);
         
-        Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+        Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
         
         // Should inherit only from fitter small parent A (no matching genes)
         std::set<uint32_t> offspringNodeIDs;
@@ -957,14 +961,12 @@ TEST_F(CrossoverTest, VastlyDifferentSizes_SmallVsLarge) {
     
     // Test case 2: Large parent is fitter (should get all large parent's genes)
     {
-        FitnessResult fitnessA(0.1);
-        FitnessResult fitnessB(0.9);
-        GenomeAnalytics analyticsA(fitnessA);
-        GenomeAnalytics analyticsB(fitnessB);
+        TestFitnessResult fitnessA(0.1);
+        TestFitnessResult fitnessB(0.9);
         
         CrossoverParams params(0.0);
         
-        Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+        Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
         
         // Should inherit all from fitter large parent B (no matching genes)
         std::set<uint32_t> offspringNodeIDs;
@@ -1031,14 +1033,12 @@ TEST_F(CrossoverTest, GapPatterns_NonConsecutiveInnovations) {
     Genome parentB(paramsB);
     
     // Make parent A fitter to test its disjoint/excess inheritance
-    FitnessResult fitnessA(0.8);
-    FitnessResult fitnessB(0.3);
-    GenomeAnalytics analyticsA(fitnessA);
-    GenomeAnalytics analyticsB(fitnessB);
+    TestFitnessResult fitnessA(0.8);
+    TestFitnessResult fitnessB(0.3);
     
     CrossoverParams params(0.0);
     
-    Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+    Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
     
     // Analyze inheritance patterns
     std::set<uint32_t> offspringConnIDs;
@@ -1125,14 +1125,12 @@ TEST_F(CrossoverTest, SharedNodesAlwaysInherited_IncludingIOBias) {
     
     // Test case 1: Parent A is fitter - shared nodes inherited, A's excess nodes inherited
     {
-        FitnessResult fitnessA(0.9);
-        FitnessResult fitnessB(0.3);
-        GenomeAnalytics analyticsA(fitnessA);
-        GenomeAnalytics analyticsB(fitnessB);
+        TestFitnessResult fitnessA(0.9);
+        TestFitnessResult fitnessB(0.3);
         
         CrossoverParams params(0.0);
         
-        Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+        Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
         
         std::set<uint32_t> offspringNodeIDs;
         for (const auto& node : offspring.get_nodeGenes()) {
@@ -1155,14 +1153,12 @@ TEST_F(CrossoverTest, SharedNodesAlwaysInherited_IncludingIOBias) {
     
     // Test case 2: Parent B is fitter - shared nodes inherited, B's excess nodes inherited
     {
-        FitnessResult fitnessA(0.2);
-        FitnessResult fitnessB(0.8);
-        GenomeAnalytics analyticsA(fitnessA);
-        GenomeAnalytics analyticsB(fitnessB);
+        TestFitnessResult fitnessA(0.2);
+        TestFitnessResult fitnessB(0.8);
         
         CrossoverParams params(0.0);
         
-        Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+        Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
         
         std::set<uint32_t> offspringNodeIDs;
         for (const auto& node : offspring.get_nodeGenes()) {
@@ -1201,14 +1197,12 @@ TEST_F(CrossoverTest, SharedNodesAlwaysInherited_IncludingIOBias) {
         Genome parentC(paramsC);
         
         // Parent A vs Parent C - no shared nodes (including different I/O/BIAS)
-        FitnessResult fitnessA(0.9);
-        FitnessResult fitnessC(0.1);
-        GenomeAnalytics analyticsA(fitnessA);
-        GenomeAnalytics analyticsC(fitnessC);
+        TestFitnessResult fitnessA(0.9);
+        TestFitnessResult fitnessC(0.1);
         
         CrossoverParams params(0.0);
         
-        Genome offspring = crossover(parentA, analyticsA, parentC, analyticsC, params);
+        Genome offspring = crossover(parentA, fitnessA, parentC, fitnessC, params);
         
         std::set<uint32_t> offspringNodeIDs;
         for (const auto& node : offspring.get_nodeGenes()) {
@@ -1272,10 +1266,8 @@ TEST_F(CrossoverTest, DisabledGeneReactivation_ZeroPercent) {
     Genome parentB(paramsB);
     
     // Equal fitness to get random 50/50 selection of matching connections
-    FitnessResult fitnessA(0.7);
-    FitnessResult fitnessB(0.7);
-    GenomeAnalytics analyticsA(fitnessA);
-    GenomeAnalytics analyticsB(fitnessB);
+    TestFitnessResult fitnessA(0.7);
+    TestFitnessResult fitnessB(0.7);
     
     // 0% reactivation probability - disabled genes should stay disabled
     CrossoverParams params(0.0);
@@ -1286,7 +1278,7 @@ TEST_F(CrossoverTest, DisabledGeneReactivation_ZeroPercent) {
     const int numRuns = 100;
     
     for (int run = 0; run < numRuns; ++run) {
-        Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+        Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
         
         for (const auto& conn : offspring.get_connectionGenes()) {
             uint32_t historyID = conn.get_historyID();
@@ -1361,10 +1353,8 @@ TEST_F(CrossoverTest, DisabledGeneReactivation_HundredPercent) {
     Genome parentB(paramsB);
     
     // Equal fitness to get random 50/50 selection of matching connections
-    FitnessResult fitnessA(0.7);
-    FitnessResult fitnessB(0.7);
-    GenomeAnalytics analyticsA(fitnessA);
-    GenomeAnalytics analyticsB(fitnessB);
+    TestFitnessResult fitnessA(0.7);
+    TestFitnessResult fitnessB(0.7);
     
     // 100% reactivation probability - disabled genes should be reactivated
     CrossoverParams params(1.0);
@@ -1375,7 +1365,7 @@ TEST_F(CrossoverTest, DisabledGeneReactivation_HundredPercent) {
     const int numRuns = 100;
     
     for (int run = 0; run < numRuns; ++run) {
-        Genome offspring = crossover(parentA, analyticsA, parentB, analyticsB, params);
+        Genome offspring = crossover(parentA, fitnessA, parentB, fitnessB, params);
         
         for (const auto& conn : offspring.get_connectionGenes()) {
             uint32_t historyID = conn.get_historyID();
