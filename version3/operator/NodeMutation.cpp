@@ -63,7 +63,7 @@ namespace {
     uint32_t determineSplitNodeID(uint32_t connectionID,
                                  const std::vector<NodeGene>& genomeNodes,
                                  const std::vector<ConnectionGene>& genomeConnections,
-                                 std::shared_ptr<HistoryTracker>& historyTracker,
+                                 std::shared_ptr<HistoryTracker> historyTracker,
                                  uint32_t sourceNodeID,
                                  uint32_t targetNodeID) {
         

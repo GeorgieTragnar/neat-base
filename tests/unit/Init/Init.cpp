@@ -13,11 +13,11 @@ using namespace Operator;
 class InitTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        historyTracker = std::make_unique<HistoryTracker>();
+        historyTracker = std::make_shared<HistoryTracker>();
         std::srand(static_cast<unsigned>(std::time(nullptr)));
     }
 
-    std::unique_ptr<HistoryTracker> historyTracker;
+    std::shared_ptr<HistoryTracker> historyTracker;
     
     std::vector<NodeGeneAttributes> createInputAttributes(size_t count) {
         std::vector<NodeGeneAttributes> attrs;
@@ -328,7 +328,7 @@ TEST_F(InitTest, ConsistentHistoryIDs) {
     Genome genome1 = init(historyTracker, params);
     
     // Reset history tracker to test consistency
-    historyTracker = std::make_unique<HistoryTracker>();
+    historyTracker = std::make_shared<HistoryTracker>();
     Genome genome2 = init(historyTracker, params);
     
     // Should have identical structure

@@ -13,7 +13,7 @@ namespace Operator {
 
 class InitParams;
 
-Genome init(std::unique_ptr<HistoryTracker>& historyTracker, const InitParams& params);
+Genome init(std::shared_ptr<HistoryTracker> historyTracker, const InitParams& params);
 
 class InitParams {
 public:
@@ -31,7 +31,7 @@ public:
 
 
 protected:
-	friend Genome init(std::unique_ptr<HistoryTracker>& historyTracker, const InitParams& params);
+	friend Genome init(std::shared_ptr<HistoryTracker> historyTracker, const InitParams& params);
 
 	const std::vector<NodeGeneAttributes>							_inputAttributes;
 	const std::vector<NodeGeneAttributes>							_outputAttributes;

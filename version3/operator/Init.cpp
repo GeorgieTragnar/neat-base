@@ -15,7 +15,7 @@ InitParams::InitParams(const std::vector<NodeGeneAttributes>& inputAttributes,
 
 }
 
-Genome Operator::init(std::unique_ptr<HistoryTracker>& historyTracker, const InitParams& params)
+Genome Operator::init(std::shared_ptr<HistoryTracker> historyTracker, const InitParams& params)
 {
     const auto& inputAttributes = params._inputAttributes;
     const auto& outputAttributes = params._outputAttributes;
