@@ -14,33 +14,6 @@
 using namespace Operator;
 using namespace Analysis;
 
-// Test-specific fitness result implementation
-class TestFitnessResult : public FitnessResultInterface {
-public:
-    explicit TestFitnessResult(double fitness) : _fitness(fitness) {}
-    
-    bool isBetterThan(const FitnessResultInterface& other) const override {
-        const auto* otherTest = dynamic_cast<const TestFitnessResult*>(&other);
-        if (!otherTest) return false;
-        return _fitness > otherTest->_fitness;
-    }
-    
-    bool isEqualTo(const FitnessResultInterface& other) const override {
-        const auto* otherTest = dynamic_cast<const TestFitnessResult*>(&other);
-        if (!otherTest) return false;
-        return std::abs(_fitness - otherTest->_fitness) < 1e-9;
-    }
-    
-    std::unique_ptr<FitnessResultInterface> clone() const override {
-        return std::make_unique<TestFitnessResult>(_fitness);
-    }
-    
-    double getFitness() const { return _fitness; }
-
-private:
-    double _fitness;
-};
-
 class CrossoverTest : public ::testing::Test {
 protected:
     void SetUp() override {

@@ -60,6 +60,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -P ${GENERATE_SCRIPT}
     DEPENDS ${CMAKE_SOURCE_DIR}/version3/operator/Init.hpp
             ${CMAKE_SOURCE_DIR}/version3/operator/WeightMutation.hpp
+            ${CMAKE_SOURCE_DIR}/version3/operator/CycleDetection.hpp
             ${CMAKE_SOURCE_DIR}/version3/generate_operator_forward_declarations.cmake
             ${CMAKE_SOURCE_DIR}/version3/generate_operator_friend_declarations.cmake
     COMMENT "Generating operator forward and friend declarations"
