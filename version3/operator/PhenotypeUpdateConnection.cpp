@@ -35,7 +35,8 @@ void phenotypeUpdateConnection(Genome& genome)
 	std::unordered_map<uint32_t, size_t> historyIDToIndex;
 	std::unordered_set<uint32_t> includedNodeHistoryIDs;
 	
-	// First pass: determine which nodes are currently included in phenotype
+	// First, determine which nodes are currently included by scanning the ENTIRE genome state
+	// (as if we were doing a full reconstruction, but excluding the new connection)
 	for (const auto& node : nodeGenes) {
 		if (node.get_type() == NodeType::INPUT || 
 			node.get_type() == NodeType::OUTPUT || 
@@ -45,7 +46,7 @@ void phenotypeUpdateConnection(Genome& genome)
 	}
 	
 	for (const auto& conn : connectionGenes) {
-		if (conn.get_attributes().enabled) {
+		if (conn.get_attributes().enabled && conn.get_historyID() != newConnectionHistoryID) {
 			includedNodeHistoryIDs.insert(conn.get_sourceNodeGene().get_historyID());
 			includedNodeHistoryIDs.insert(conn.get_targetNodeGene().get_historyID());
 		}
@@ -60,6 +61,7 @@ void phenotypeUpdateConnection(Genome& genome)
 		phenotype._nodeGeneAttributes.clear();
 		phenotype._inputIndices.clear();
 		phenotype._outputIndices.clear();
+		phenotype._orderedConnections.clear(); // Clear existing connections too!
 		
 		// Add the new connection nodes to included set
 		includedNodeHistoryIDs.insert(sourceHistoryID);
@@ -80,6 +82,21 @@ void phenotypeUpdateConnection(Genome& genome)
 				nodeIndex++;
 			}
 		}
+		
+		// Rebuild all enabled connections with new indices
+		for (const auto& conn : connectionGenes) {
+			if (conn.get_attributes().enabled) {
+				uint32_t connSourceID = conn.get_sourceNodeGene().get_historyID();
+				uint32_t connTargetID = conn.get_targetNodeGene().get_historyID();
+				
+				Genome::Phenotype::Connection phenConn;
+				phenConn._sourceNodeIndex = historyIDToIndex[connSourceID];
+				phenConn._targetNodeIndex = historyIDToIndex[connTargetID];
+				phenConn._connectionGeneAttribute = conn.get_attributes();
+				
+				phenotype._orderedConnections.push_back(std::move(phenConn));
+			}
+		}
 	} else {
 		// Nodes already exist, just build the mapping
 		size_t nodeIndex = 0;
@@ -89,15 +106,15 @@ void phenotypeUpdateConnection(Genome& genome)
 				nodeIndex++;
 			}
 		}
+		
+		// Add the new connection to phenotype
+		Genome::Phenotype::Connection phenConn;
+		phenConn._sourceNodeIndex = historyIDToIndex[sourceHistoryID];
+		phenConn._targetNodeIndex = historyIDToIndex[targetHistoryID];
+		phenConn._connectionGeneAttribute = newConnection->get_attributes();
+		
+		phenotype._orderedConnections.push_back(std::move(phenConn));
 	}
-	
-	// Add the new connection to phenotype
-	Genome::Phenotype::Connection phenConn;
-	phenConn._sourceNodeIndex = historyIDToIndex[sourceHistoryID];
-	phenConn._targetNodeIndex = historyIDToIndex[targetHistoryID];
-	phenConn._connectionGeneAttribute = newConnection->get_attributes();
-	
-	phenotype._orderedConnections.push_back(std::move(phenConn));
 	
 	// Clear connection deltas after update
 	connectionDeltas.clear();
