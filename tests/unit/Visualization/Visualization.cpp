@@ -7,6 +7,7 @@
 #include "tests/test_utilities.h"
 #include "version3/visualization/SVGGenerator.hpp"
 #include "version3/operator/Init.hpp"
+#include "version3/operator/PhenotypeConstruct.hpp"
 #include "version3/data/HistoryTracker.hpp"
 
 using namespace Visualization;
@@ -97,10 +98,10 @@ TEST_F(VisualizationTest, GenerateVisualizationCreatesValidHTMLFile) {
     
     // Create a simple genome and its phenotype
     Genome genome = createSimpleGenome();
-    genome.constructPhenotype();
-    auto phenotype = genome.get_phenotype();
+    Operator::phenotypeConstruct(genome);
+    const auto& phenotype = genome.get_phenotype();
     
-    EXPECT_NO_THROW(generateVisualization(*phenotype, 0, 0));
+    EXPECT_NO_THROW(generateVisualization(phenotype, 0, 0));
     
     // Check that file was created
     std::string expectedDir = "test_visualizations";
@@ -136,13 +137,13 @@ TEST_F(VisualizationTest, GenerateMultipleVisualizationsCreatesSeparateFiles) {
     initialize(config);
     
     Genome genome = createSimpleGenome();
-    genome.constructPhenotype();
-    auto phenotype = genome.get_phenotype();
+    Operator::phenotypeConstruct(genome);
+    const auto& phenotype = genome.get_phenotype();
     
     // Generate multiple visualizations
-    EXPECT_NO_THROW(generateVisualization(*phenotype, 0, 0));
-    EXPECT_NO_THROW(generateVisualization(*phenotype, 0, 1));
-    EXPECT_NO_THROW(generateVisualization(*phenotype, 1, 0));
+    EXPECT_NO_THROW(generateVisualization(phenotype, 0, 0));
+    EXPECT_NO_THROW(generateVisualization(phenotype, 0, 1));
+    EXPECT_NO_THROW(generateVisualization(phenotype, 1, 0));
     
     // Check that multiple files were created
     std::string expectedDir = "test_visualizations";
@@ -168,7 +169,6 @@ TEST_F(VisualizationTest, HandleEmptyPhenotype) {
     
     // Create minimal phenotype structure
     Genome::Phenotype emptyPhenotype;
-    emptyPhenotype._dirty = false;
     
     // Should not crash with empty phenotype
     EXPECT_NO_THROW(generateVisualization(emptyPhenotype, 0, 0));
@@ -176,11 +176,11 @@ TEST_F(VisualizationTest, HandleEmptyPhenotype) {
 
 TEST_F(VisualizationTest, ThrowsErrorWhenNotInitialized) {
     Genome genome = createSimpleGenome();
-    genome.constructPhenotype();
-    auto phenotype = genome.get_phenotype();
+    Operator::phenotypeConstruct(genome);
+    const auto& phenotype = genome.get_phenotype();
     
     // Should throw error if not initialized
-    EXPECT_THROW(generateVisualization(*phenotype, 0, 0), std::runtime_error);
+    EXPECT_THROW(generateVisualization(phenotype, 0, 0), std::runtime_error);
 }
 
 TEST_F(VisualizationTest, FilenameGenerationIsCorrect) {

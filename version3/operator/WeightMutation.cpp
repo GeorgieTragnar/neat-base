@@ -27,8 +27,13 @@ Genome Operator::weightMutation(const Genome& genome, const WeightMutationParams
     // Create a copy of the genome
     Genome mutatedGenome = genome;
     
-    // Get mutable reference to connection genes
+    // Assert that deltas are empty before operation
+    assert(mutatedGenome.get_connectionGeneDeltas().empty() && "Connection deltas must be empty before weight mutation");
+    assert(mutatedGenome.get_nodeGeneDeltas().empty() && "Node deltas must be empty before weight mutation");
+    
+    // Get mutable reference to connection genes and deltas
     auto& connectionGenes = mutatedGenome.get_connectionGenes();
+    auto& connectionDeltas = mutatedGenome.get_connectionGeneDeltas();
     
     if (connectionGenes.empty()) {
         return mutatedGenome; // No connections to mutate
@@ -88,6 +93,9 @@ Genome Operator::weightMutation(const Genome& genome, const WeightMutationParams
             // Note: This requires friend access or a setter method
             auto& mutableAttributes = connection.get_attributes();
             mutableAttributes = attributes;
+            
+            // Add connection history ID to deltas
+            connectionDeltas.push_back(connection.get_historyID());
         }
     }
     

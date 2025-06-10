@@ -28,6 +28,10 @@ function(generate_operator_forward_declarations OPERATOR_DIR OUTPUT_FILE)
             string(REGEX MATCHALL "(template[ \t]*<[^>]*>[ \t\n]*)?Genome[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^)]*\\)" 
                    FUNCTION_MATCHES "${NAMESPACE_CONTENT}")
             
+            # Also find void functions that take Genome& (phenotype operators)
+            string(REGEX MATCHALL "void[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^)]*Genome[ \t]*&[^)]*\\)" 
+                   VOID_FUNCTION_MATCHES "${NAMESPACE_CONTENT}")
+            
             foreach(FUNCTION_MATCH ${FUNCTION_MATCHES})
                 # Extract function signature (including template part)
                 string(REGEX MATCH "(template[ \t]*<[^>]*>[ \t\n]*)?Genome[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\(([^)]*)\\)" 
@@ -107,6 +111,30 @@ function(generate_operator_forward_declarations OPERATOR_DIR OUTPUT_FILE)
                             string(APPEND FORWARD_DECLARATIONS 
                                    "\tGenome ${FUNCTION_NAME}(${FUNCTION_PARAMS});\n")
                         endif()
+                    endif()
+                endif()
+            endforeach()
+            
+            # Process void functions that take Genome& (phenotype operators)
+            foreach(VOID_FUNCTION_MATCH ${VOID_FUNCTION_MATCHES})
+                # Extract function signature for void functions
+                string(REGEX MATCH "void[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\(([^)]*)\\)" 
+                       VOID_SIGNATURE_MATCH "${VOID_FUNCTION_MATCH}")
+                
+                if(VOID_SIGNATURE_MATCH)
+                    set(FUNCTION_NAME "${CMAKE_MATCH_1}")
+                    set(FUNCTION_PARAMS "${CMAKE_MATCH_2}")
+                    
+                    # Create unique key for this function
+                    set(FUNCTION_KEY "${FUNCTION_NAME}(${FUNCTION_PARAMS})")
+                    
+                    # Only add if not already processed
+                    string(FIND "${PROCESSED_FUNCTIONS}" "${FUNCTION_KEY};" FUNCTION_FOUND)
+                    if(FUNCTION_FOUND EQUAL -1)
+                        string(APPEND PROCESSED_FUNCTIONS "${FUNCTION_KEY};")
+                        # Add void function forward declaration
+                        string(APPEND FORWARD_DECLARATIONS 
+                               "\tvoid ${FUNCTION_NAME}(${FUNCTION_PARAMS});\n")
                     endif()
                 endif()
             endforeach()

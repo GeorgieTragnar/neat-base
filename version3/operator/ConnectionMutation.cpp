@@ -77,8 +77,13 @@ Genome Operator::connectionMutation(const Genome& genome,
     // Create a copy of the genome
     Genome mutatedGenome = genome;
     
+    // Assert that deltas are empty before operation
+    assert(mutatedGenome.get_connectionGeneDeltas().empty() && "Connection deltas must be empty before connection mutation");
+    assert(mutatedGenome.get_nodeGeneDeltas().empty() && "Node deltas must be empty before connection mutation");
+    
     const auto& nodes = mutatedGenome.get_nodeGenes();
     auto& connections = mutatedGenome.get_connectionGenes();
+    auto& connectionDeltas = mutatedGenome.get_connectionGeneDeltas();
     
     // Assert if insufficient nodes to create connection
     assert(nodes.size() >= 2);
@@ -117,6 +122,9 @@ Genome Operator::connectionMutation(const Genome& genome,
     
     // Now safe to add new connection directly (capacity ensured)
     connections.emplace_back(innovationNumber, sourceNode, targetNode, newConnAttribs);
+    
+    // Add new connection history ID to deltas
+    connectionDeltas.push_back(innovationNumber);
     
     return mutatedGenome;
 }

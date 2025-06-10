@@ -77,7 +77,12 @@ Genome Operator::connectionReactivation(const Genome& genome, const ConnectionRe
     // Create a copy of the genome
     Genome mutatedGenome = genome;
     
+    // Assert that deltas are empty before operation
+    assert(mutatedGenome.get_connectionGeneDeltas().empty() && "Connection deltas must be empty before connection reactivation");
+    assert(mutatedGenome.get_nodeGeneDeltas().empty() && "Node deltas must be empty before connection reactivation");
+    
     auto& connections = mutatedGenome.get_connectionGenes();
+    auto& connectionDeltas = mutatedGenome.get_connectionGeneDeltas();
     
     // Find all disabled connections
     auto disabledIndices = findDisabledConnectionIndices(connections);
@@ -92,6 +97,9 @@ Genome Operator::connectionReactivation(const Genome& genome, const ConnectionRe
     auto& selectedConnection = connections[selectedIndex];
     auto& mutableAttributes = selectedConnection.get_attributes();
     mutableAttributes.enabled = true;
+    
+    // Add reactivated connection history ID to deltas
+    connectionDeltas.push_back(selectedConnection.get_historyID());
     
     return mutatedGenome;
 }

@@ -26,6 +26,10 @@ function(generate_operator_friend_declarations OPERATOR_DIR OUTPUT_FILE)
             string(REGEX MATCHALL "(template[ \t]*<[^>]*>[ \t\n]*)?Genome[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^{;]*\\)" 
                    FUNCTION_MATCHES "${NAMESPACE_CONTENT}")
             
+            # Also find void functions that take Genome& (phenotype operators)
+            string(REGEX MATCHALL "void[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^{;]*Genome[ \t]*&[^{;]*\\)" 
+                   VOID_FUNCTION_MATCHES "${NAMESPACE_CONTENT}")
+            
             foreach(FUNCTION_MATCH ${FUNCTION_MATCHES})
                 # Extract function signature with better multiline handling (including template part)
                 string(REGEX MATCH "(template[ \t]*<[^>]*>[ \t\n]*)?Genome[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\(([^{;]*)\\)" 
@@ -51,6 +55,26 @@ function(generate_operator_friend_declarations OPERATOR_DIR OUTPUT_FILE)
                         string(APPEND FRIEND_DECLARATIONS 
                                "\tfriend Genome Operator::${FUNCTION_NAME}(${CLEAN_PARAMS});\n")
                     endif()
+                endif()
+            endforeach()
+            
+            # Process void functions that take Genome& (phenotype operators)
+            foreach(VOID_FUNCTION_MATCH ${VOID_FUNCTION_MATCHES})
+                # Extract function signature for void functions
+                string(REGEX MATCH "void[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\(([^{;]*)\\)" 
+                       VOID_SIGNATURE_MATCH "${VOID_FUNCTION_MATCH}")
+                
+                if(VOID_SIGNATURE_MATCH)
+                    set(FUNCTION_NAME "${CMAKE_MATCH_1}")
+                    set(FUNCTION_PARAMS "${CMAKE_MATCH_2}")
+                    
+                    # Clean up parameters (remove extra whitespace and newlines)
+                    string(REGEX REPLACE "[ \t\n\r]+" " " CLEAN_PARAMS "${FUNCTION_PARAMS}")
+                    string(STRIP "${CLEAN_PARAMS}" CLEAN_PARAMS)
+                    
+                    # Add friend declaration for void function
+                    string(APPEND FRIEND_DECLARATIONS 
+                           "\tfriend void Operator::${FUNCTION_NAME}(${CLEAN_PARAMS});\n")
                 endif()
             endforeach()
         endif()

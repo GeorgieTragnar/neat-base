@@ -9,6 +9,7 @@
 #include "tests/test_common.h"
 #include "tests/test_utilities.h"
 #include "version3/operator/ConnectionMutation.hpp"
+#include "version3/operator/PhenotypeConstruct.hpp"
 #include "version3/data/HistoryTracker.hpp"
 
 using namespace Operator;
@@ -347,9 +348,9 @@ TEST_F(ConnectionMutationTest, ValidConstruction) {
     
     // Should be able to construct phenotype without errors
     EXPECT_NO_THROW({
-        mutated.constructPhenotype();
-        auto phenotype = mutated.get_phenotype();
-        EXPECT_NE(phenotype, nullptr);
+        Operator::phenotypeConstruct(mutated);
+        const auto& phenotype = mutated.get_phenotype();
+        EXPECT_FALSE(phenotype._nodeGeneAttributes.empty());
     });
 }
 

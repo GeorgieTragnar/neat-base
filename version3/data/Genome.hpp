@@ -33,8 +33,8 @@ public:
 
 	Genome(const Genome& other);
 	Genome& operator=(const Genome& other);
-	Genome(Genome&& other) = default;
-	Genome& operator=(Genome&& other) = default;
+	Genome(Genome&& other) noexcept;
+	Genome& operator=(Genome&& other) noexcept;
 
 	// TODO: Implement when project-wide serialization is addressed
 	static Genome Deserialize(const std::vector<uint8_t>& serializedData) = delete;
@@ -42,7 +42,6 @@ public:
 
 	class Phenotype {
 	public:	
-		bool							_dirty = true;
 		struct Connection {
 			size_t						_sourceNodeIndex;
 			size_t						_targetNodeIndex;
@@ -57,15 +56,17 @@ public:
 
 	const std::vector<NodeGene>& get_nodeGenes() const;
 	const std::vector<ConnectionGene>& get_connectionGenes() const;
-	std::shared_ptr<const Phenotype> get_phenotype() const;
+	const Phenotype& get_phenotype() const;
 
 protected:
 #include "operator_friend_declarations.inc"
 
 	std::vector<NodeGene>& get_nodeGenes();
 	std::vector<ConnectionGene>& get_connectionGenes();
-
-	void constructPhenotype();
+	Phenotype& get_phenotype();
+	
+	std::vector<uint32_t>& get_connectionGeneDeltas();
+	std::vector<uint32_t>& get_nodeGeneDeltas();
 	
 	// Capacity management for preventing vector reallocations
 	void ensureCapacity(size_t additionalNodes = 0, size_t additionalConnections = 0);
@@ -83,5 +84,7 @@ private:
 private:
 	std::vector<NodeGene>			_nodeGenes;
 	std::vector<ConnectionGene>		_connectionGenes;
-	std::shared_ptr<Phenotype>		_phenotype;
+	Phenotype						_phenotype;
+	std::vector<uint32_t>			_connectionGeneDeltas;
+	std::vector<uint32_t>			_nodeGeneDeltas;
 };

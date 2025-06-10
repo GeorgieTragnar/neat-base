@@ -5,7 +5,6 @@
 #include <cassert>
 
 Genome::Genome(const GenomeParams& params)
-	: _phenotype(nullptr)
 {
 	assert(params._nodeHistoryIDs.size() == params._nodeTypes.size() && 
 		params._nodeHistoryIDs.size() == params._nodeAttributes.size() && 
@@ -62,7 +61,6 @@ Genome::Genome(const GenomeParams& params)
 }
 
 Genome::Genome(const RawGenomeParams& params)
-	: _phenotype(nullptr)
 {
 	assert(!params._nodeGenes.empty() && "Raw node gene data cannot be empty");
 	for (const void* nodeData : params._nodeGenes) {
@@ -124,14 +122,17 @@ Genome::Genome(const RawGenomeParams& params)
 }
 
 Genome::Genome(const Genome& other)
-	: _phenotype(nullptr)
 {
+	assert(other._connectionGeneDeltas.empty() && "Source genome must have empty connection deltas for copy construction");
+	assert(other._nodeGeneDeltas.empty() && "Source genome must have empty node deltas for copy construction");
+	
 	// Strategic pre-allocation to prevent reallocations during evolution
 	size_t nodeCapacity = calculateOptimalCapacity(other._nodeGenes.size(), 0);
 	size_t connCapacity = calculateOptimalCapacity(other._connectionGenes.size(), 0);
 	
 	_nodeGenes.reserve(nodeCapacity);
 	_connectionGenes.reserve(connCapacity);
+	_phenotype = other._phenotype;
 
 	for (const NodeGene& node : other._nodeGenes) {
 		_nodeGenes.emplace_back(node);
@@ -177,9 +178,14 @@ Genome& Genome::operator=(const Genome& other)
 		return *this;
 	}
 
+	assert(other._connectionGeneDeltas.empty() && "Source genome must have empty connection deltas for copy assignment");
+	assert(other._nodeGeneDeltas.empty() && "Source genome must have empty node deltas for copy assignment");
+
 	_nodeGenes.clear();
 	_connectionGenes.clear();
-	_phenotype = nullptr;
+	_connectionGeneDeltas.clear();
+	_nodeGeneDeltas.clear();
+	_phenotype = other._phenotype;
 
 	// Strategic pre-allocation to prevent reallocations during evolution
 	size_t nodeCapacity = calculateOptimalCapacity(other._nodeGenes.size(), 0);
@@ -214,6 +220,30 @@ Genome& Genome::operator=(const Genome& other)
 	return *this;
 }
 
+Genome::Genome(Genome&& other) noexcept
+	: _nodeGenes(std::move(other._nodeGenes))
+	, _connectionGenes(std::move(other._connectionGenes))
+	, _phenotype(std::move(other._phenotype))
+	, _connectionGeneDeltas(std::move(other._connectionGeneDeltas))
+	, _nodeGeneDeltas(std::move(other._nodeGeneDeltas))
+{
+}
+
+Genome& Genome::operator=(Genome&& other) noexcept
+{
+	if (this == &other) {
+		return *this;
+	}
+	
+	_nodeGenes = std::move(other._nodeGenes);
+	_connectionGenes = std::move(other._connectionGenes);
+	_phenotype = std::move(other._phenotype);
+	_connectionGeneDeltas = std::move(other._connectionGeneDeltas);
+	_nodeGeneDeltas = std::move(other._nodeGeneDeltas);
+	
+	return *this;
+}
+
 const std::vector<NodeGene>& Genome::get_nodeGenes() const
 {
 	return _nodeGenes;
@@ -224,91 +254,36 @@ const std::vector<ConnectionGene>& Genome::get_connectionGenes() const
 	return _connectionGenes;
 }
 
-std::shared_ptr<const Genome::Phenotype> Genome::get_phenotype() const
+const Genome::Phenotype& Genome::get_phenotype() const
 {
-	return std::const_pointer_cast<const Phenotype>(_phenotype);
+	return _phenotype;
 }
 
 std::vector<NodeGene>& Genome::get_nodeGenes()
 {
-	if (_phenotype)
-		_phenotype->_dirty = true;
 	return _nodeGenes;
 }
 
 std::vector<ConnectionGene>& Genome::get_connectionGenes()
 {
-	if (_phenotype)
-		_phenotype->_dirty = true;
 	return _connectionGenes;
 }
 
-void Genome::constructPhenotype()
+Genome::Phenotype& Genome::get_phenotype()
 {
-	auto newPhenotype = std::make_shared<Phenotype>();
-
-	std::unordered_set<uint32_t> includedNodeGeneHistoryIDs;
-
-	for (const auto& node : _nodeGenes) {
-		if (node.get_type() == NodeType::INPUT || 
-			node.get_type() == NodeType::OUTPUT || 
-			node.get_type() == NodeType::BIAS) {
-			includedNodeGeneHistoryIDs.insert(node.get_historyID());
-		}
-	}
-
-	for (const auto& conn : _connectionGenes) {
-		if (conn.get_attributes().enabled) {
-			includedNodeGeneHistoryIDs.insert(conn.get_sourceNodeGene().get_historyID());
-			includedNodeGeneHistoryIDs.insert(conn.get_targetNodeGene().get_historyID());
-		}
-	}
-
-	std::unordered_map<uint32_t, size_t> historyIDToIndex;
-	newPhenotype->_nodeGeneAttributes.reserve(includedNodeGeneHistoryIDs.size());
-
-	size_t nodeIndex = 0;
-	for (const auto& node : _nodeGenes) {
-		if (includedNodeGeneHistoryIDs.count(node.get_historyID()) > 0) {
-			historyIDToIndex[node.get_historyID()] = nodeIndex;
-			newPhenotype->_nodeGeneAttributes.push_back(node.get_attributes());
-
-			if (node.get_type() == NodeType::INPUT) {
-				newPhenotype->_inputIndices.push_back(nodeIndex);
-			} else if (node.get_type() == NodeType::OUTPUT) {
-				newPhenotype->_outputIndices.push_back(nodeIndex);
-			}
-			
-			nodeIndex++;
-		}
-	}
-
-	size_t enabledConnectionCount = 0;
-	for (const auto& conn : _connectionGenes) {
-		if (conn.get_attributes().enabled) {
-			enabledConnectionCount++;
-		}
-	}
-
-	newPhenotype->_orderedConnections.reserve(enabledConnectionCount);
-
-	for (const auto& conn : _connectionGenes) {
-		if (conn.get_attributes().enabled) {
-			uint32_t sourceID = conn.get_sourceNodeGene().get_historyID();
-			uint32_t targetID = conn.get_targetNodeGene().get_historyID();
-
-			Phenotype::Connection phenConn;
-			phenConn._sourceNodeIndex = historyIDToIndex[sourceID];
-			phenConn._targetNodeIndex = historyIDToIndex[targetID];
-			phenConn._connectionGeneAttribute = conn.get_attributes();
-
-			newPhenotype->_orderedConnections.push_back(std::move(phenConn));
-		}
-	}
-
-	newPhenotype->_dirty = false;
-	_phenotype = std::move(newPhenotype);
+	return _phenotype;
 }
+
+std::vector<uint32_t>& Genome::get_connectionGeneDeltas()
+{
+	return _connectionGeneDeltas;
+}
+
+std::vector<uint32_t>& Genome::get_nodeGeneDeltas()
+{
+	return _nodeGeneDeltas;
+}
+
 
 void Genome::ensureCapacity(size_t additionalNodes, size_t additionalConnections) {
 	// Check if we need to expand node capacity

@@ -6,6 +6,7 @@
 #include "tests/test_common.h"
 #include "tests/test_utilities.h"
 #include "version3/operator/Init.hpp"
+#include "version3/operator/PhenotypeConstruct.hpp"
 #include "version3/data/HistoryTracker.hpp"
 
 using namespace Operator;
@@ -294,8 +295,8 @@ TEST_F(InitTest, PhenotypeConstructionReadiness) {
     
     // Should be able to construct phenotype without throwing
     EXPECT_NO_THROW({
-        genome.constructPhenotype();
-        auto phenotype = genome.get_phenotype();
+        Operator::phenotypeConstruct(genome);
+        const auto& phenotype = genome.get_phenotype();
     });
 }
 

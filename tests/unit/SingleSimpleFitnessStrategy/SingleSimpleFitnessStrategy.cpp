@@ -8,6 +8,7 @@
 #include "version3/analysis/strategies/SingleSimpleFitnessStrategy.hpp"
 #include "version3/analysis/SpeciationControlUnit.hpp"
 #include "version3/operator/Init.hpp"
+#include "version3/operator/PhenotypeConstruct.hpp"
 #include "version3/data/HistoryTracker.hpp"
 
 using namespace Analysis;
@@ -154,8 +155,9 @@ protected:
     // Helper to create a test phenotype
     std::shared_ptr<const Phenotype> createTestPhenotype() {
         Genome genome = createTestGenome();
-        genome.constructPhenotype();
-        return genome.get_phenotype();
+        Operator::phenotypeConstruct(genome);
+        const auto& phenotype = genome.get_phenotype();
+        return std::make_shared<const Phenotype>(phenotype);
     }
 };
 

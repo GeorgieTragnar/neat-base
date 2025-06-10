@@ -110,8 +110,13 @@ Genome Operator::nodeMutation(const Genome& genome,
     // Create a copy of the genome
     Genome mutatedGenome = genome;
     
+    // Assert that deltas are empty before operation
+    assert(mutatedGenome.get_connectionGeneDeltas().empty() && "Connection deltas must be empty before node mutation");
+    assert(mutatedGenome.get_nodeGeneDeltas().empty() && "Node deltas must be empty before node mutation");
+    
     auto& nodes = mutatedGenome.get_nodeGenes();
     auto& connections = mutatedGenome.get_connectionGenes();
+    auto& connectionDeltas = mutatedGenome.get_connectionGeneDeltas();
     
     // Find all enabled connections
     auto enabledIndices = findEnabledConnectionIndices(connections);
@@ -198,6 +203,11 @@ Genome Operator::nodeMutation(const Genome& genome,
     outputConnAttribs.weight = originalWeight;
     outputConnAttribs.enabled = true;
     connections.emplace_back(outputConnID, *splitNode, *targetNode, outputConnAttribs);
+    
+    // Populate connection deltas: 1 disabled + 2 added (exactly 3 as per TODO spec)
+    connectionDeltas.push_back(connectionToSplitID);  // disabled connection
+    connectionDeltas.push_back(inputConnID);          // first added connection
+    connectionDeltas.push_back(outputConnID);         // second added connection
     
     return mutatedGenome;
 }

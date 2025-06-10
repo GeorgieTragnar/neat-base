@@ -3,6 +3,7 @@
 #include "tests/test_common.h"
 #include "tests/test_utilities.h"
 #include "version3/data/Genome.hpp"
+#include "version3/operator/PhenotypeConstruct.hpp"
 
 class GenomeTest : public ::testing::Test {
 protected:
@@ -547,12 +548,12 @@ TEST_F(GenomeTest, CopyAssignment_PhenotypeClearing) {
     Genome genome2(params);
     
     // Force phenotype construction on genome2
-    genome2.constructPhenotype();
-    EXPECT_NE(genome2.get_phenotype(), nullptr);
+    Operator::phenotypeConstruct(genome2);
+    EXPECT_FALSE(genome2.get_phenotype()._nodeGeneAttributes.empty());
     
-    // Assignment should clear phenotype
+    // Assignment should copy phenotype from genome1 (which is empty)
     genome2 = genome1;
-    EXPECT_EQ(genome2.get_phenotype(), nullptr);
+    EXPECT_TRUE(genome2.get_phenotype()._nodeGeneAttributes.empty());
 }
 
 TEST_F(GenomeTest, CopyAssignment_StateCleanup) {
