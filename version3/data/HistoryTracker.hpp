@@ -4,6 +4,15 @@
 #include <cstdint>
 #include <vector>
 #include <unordered_map>
+#include <memory>
+
+class Genome;
+class HistoryTracker;
+
+namespace Operator {
+	class CompatibilityDistanceParams;
+	uint32_t compatibilityDistance(const Genome& genome, std::shared_ptr<HistoryTracker> historyTracker, const CompatibilityDistanceParams& params);
+}
 
 class HistoryTracker {
 public:
@@ -18,6 +27,8 @@ public:
 	uint32_t create_splitBranch(uint32_t connectionID);
 
 private:
+	friend uint32_t Operator::compatibilityDistance(const Genome& genome, std::shared_ptr<HistoryTracker> historyTracker, const Operator::CompatibilityDistanceParams& params);
+
 	uint32_t register_newNode();
 	uint32_t register_newConnection();
 
@@ -31,6 +42,7 @@ private:
 
 	uint32_t	_nextNodeID = 1;
 	uint32_t	_nextConnectionID = 1;
+	uint32_t	_nextSpeciesID = 1;
 
 	std::vector<uint32_t>	_inputIDs;
 	std::vector<uint32_t>	_outputIDs;
@@ -39,4 +51,6 @@ private:
 	std::unordered_map<std::pair<uint32_t,uint32_t>, uint32_t, PairHash>	_connectionIDs;
 	std::unordered_map<uint32_t, uint32_t>									_splitNodeIDs;
 	std::unordered_map<uint32_t, std::vector<uint32_t>>						_splitNodeBranches;
+	
+	std::unordered_map<uint32_t, Genome>									_speciesRepresentatives;
 };

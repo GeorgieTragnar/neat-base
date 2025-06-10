@@ -3,6 +3,7 @@
 #include "tests/test_common.h"
 #include "tests/test_utilities.h"
 #include "version3/data/HistoryTracker.hpp"
+#include "version3/operator/Init.hpp"
 
 class HistoryTrackerTest : public ::testing::Test {
 protected:
