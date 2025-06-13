@@ -49,7 +49,7 @@ protected:
     friend void dynamicDataUpdate(
         std::map<FitnessResultType, DynamicGenomeData>& orderedGenomeData,
         std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
-        const EvolutionLoopFinishingOperatorParams& params
+        const DynamicDataUpdateParams& params
     );
 
     const uint32_t _maxProtectionLimit;           // Max protection counter before elimination
@@ -63,34 +63,62 @@ template<typename FitnessResultType>
 void dynamicDataUpdate(
     std::map<FitnessResultType, DynamicGenomeData>& orderedGenomeData,  // Best to worst fitness
     std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
-    const EvolutionLoopFinishingOperatorParams& params
+    const DynamicDataUpdateParams& params
 ) {
-    // 1. Species Performance Analysis
-    std::unordered_map<uint32_t, std::vector<size_t>> speciesMembers; // speciesId -> ranks
+    // 1. Species Performance Analysis - Single pass with running averages
+    std::unordered_map<uint32_t, double> speciesRankSum;
+    std::unordered_map<uint32_t, size_t> speciesCount;
     std::unordered_map<uint32_t, double> speciesAverageRanks;
+    
+    // Reset species population sizes at start of analysis
+    for (auto& [speciesId, data] : speciesData) {
+        data.currentPopulationSize = 0;
+        speciesRankSum[speciesId] = 0.0;
+        speciesCount[speciesId] = 0;
+    }
     
     size_t rank = 0;
     for (auto& [fitnessResult, genomeData] : orderedGenomeData) {
-        speciesMembers[genomeData.speciesId].push_back(rank);
+        const uint32_t speciesId = genomeData.speciesId;
+        
+        // Update species rank sum and count
+        speciesRankSum[speciesId] += static_cast<double>(rank);
+        speciesCount[speciesId]++;
+        
+        // Update species population size in single pass
+        if (speciesData.find(speciesId) != speciesData.end()) {
+            speciesData[speciesId].currentPopulationSize++;
+        }
+        
         ++rank;
     }
     
     // Calculate average rank per species
-    for (const auto& [speciesId, ranks] : speciesMembers) {
-        double sum = 0.0;
-        for (size_t r : ranks) {
-            sum += static_cast<double>(r);
+    for (const auto& [speciesId, count] : speciesCount) {
+        if (count > 0) {
+            speciesAverageRanks[speciesId] = speciesRankSum[speciesId] / count;
         }
-        speciesAverageRanks[speciesId] = sum / ranks.size();
     }
     
-    // Rank species from best to worst performing
+    // Find worst N species using partial sort for efficiency
     std::vector<std::pair<uint32_t, double>> speciesRankings;
     for (const auto& [speciesId, avgRank] : speciesAverageRanks) {
         speciesRankings.emplace_back(speciesId, avgRank);
     }
-    std::sort(speciesRankings.begin(), speciesRankings.end(),
-        [](const auto& a, const auto& b) { return a.second < b.second; });
+    
+    // Only need to identify worst N species, not full sort
+    const size_t worstSpeciesCount = std::min(
+        static_cast<size_t>(params._worstSpeciesCount), 
+        speciesRankings.size()
+    );
+    
+    if (worstSpeciesCount < speciesRankings.size()) {
+        // Partial sort: worst species will be at the end
+        std::nth_element(speciesRankings.begin(), 
+                        speciesRankings.end() - worstSpeciesCount,
+                        speciesRankings.end(),
+                        [](const auto& a, const auto& b) { return a.second < b.second; });
+    }
     
     // 2. Individual Genome Protection Updates
     const size_t totalPopulation = orderedGenomeData.size();
@@ -107,7 +135,7 @@ void dynamicDataUpdate(
         }
         
         // Check if genome is in protected tier (bottom X% by rank)
-        const bool isInProtectedTier = (totalPopulation - rank) <= protectedTierThreshold;
+        const bool isInProtectedTier = rank >= (totalPopulation - protectedTierThreshold);
         
         if (isInProtectedTier) {
             genomeData.protectionCounter++;
@@ -124,11 +152,6 @@ void dynamicDataUpdate(
     }
     
     // 3. Species Protection Rating Updates
-    const size_t worstSpeciesCount = std::min(
-        static_cast<size_t>(params._worstSpeciesCount), 
-        speciesRankings.size()
-    );
-    
     // Create set of worst species IDs for quick lookup
     std::unordered_set<uint32_t> worstSpeciesIds;
     for (size_t i = speciesRankings.size() - worstSpeciesCount; i < speciesRankings.size(); ++i) {
@@ -151,16 +174,7 @@ void dynamicDataUpdate(
         }
     }
     
-    // 4. Update Species Population Sizes
-    for (auto& [speciesId, data] : speciesData) {
-        data.currentPopulationSize = 0;
-    }
-    
-    for (const auto& [fitnessResult, genomeData] : orderedGenomeData) {
-        if (speciesData.find(genomeData.speciesId) != speciesData.end()) {
-            speciesData[genomeData.speciesId].currentPopulationSize++;
-        }
-    }
+    // 4. Species population sizes already updated in step 1
     
     // 5. State Consistency Validation (Debug assertions)
     #ifdef DEBUG
