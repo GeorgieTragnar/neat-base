@@ -3,47 +3,39 @@
 #include <vector>
 #include <unordered_map>
 #include <map>
-#include <optional>
 #include <cassert>
 #include "PopulationData.hpp"
 
 namespace Population {
 
-// Optional parameters for optimization
-struct SpeciesGroupingParams {
-    // Optional capacity hints for vector pre-sizing (species_id -> expected_size)
-    std::optional<std::unordered_map<uint32_t, size_t>> expectedSpeciesSizes;
-    
-    SpeciesGroupingParams() = default;
-    
-    explicit SpeciesGroupingParams(
-        const std::unordered_map<uint32_t, size_t>& speciesSizes
-    ) : expectedSpeciesSizes(speciesSizes) {}
-};
-
-// Core operator function - transforms ordered genome data into species-grouped indices
-// Preserves the iteration order of the input map while grouping by species ID
+// Main operator function - templated on fitness result type
 template<typename FitnessResultType>
 std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
-    const std::map<FitnessResultType, DynamicGenomeData>& orderedGenomeData,
-    const SpeciesGroupingParams& params = {}
+    const std::multimap<FitnessResultType, DynamicGenomeData>& orderedGenomeData,
+    std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
 ) {
     assert(!orderedGenomeData.empty());
     
     std::unordered_map<uint32_t, std::vector<size_t>> speciesIndices;
     
-    // Pre-allocate vectors if capacity hints provided
-    if (params.expectedSpeciesSizes.has_value()) {
-        for (const auto& [speciesId, expectedSize] : params.expectedSpeciesSizes.value()) {
-            speciesIndices[speciesId].reserve(expectedSize);
-        }
+    // Reset species population sizes at start of analysis
+    for (auto& [speciesId, data] : speciesData) {
+        data.currentPopulationSize = 0;
     }
     
     // Single pass through ordered genome data: O(n) time complexity
     size_t globalIndex = 0;
     for (const auto& [fitnessResult, genomeData] : orderedGenomeData) {
+        const uint32_t speciesId = genomeData.speciesId;
+        
         // Extract species ID from genome data and group indices
-        speciesIndices[genomeData.speciesId].push_back(globalIndex);
+        speciesIndices[speciesId].push_back(globalIndex);
+        
+        // Update species population size
+        if (speciesData.find(speciesId) != speciesData.end()) {
+            speciesData[speciesId].currentPopulationSize++;
+        }
+        
         ++globalIndex;
     }
     
@@ -64,53 +56,14 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
     for (const auto& [speciesId, indices] : speciesIndices) {
         assert(!indices.empty());
     }
+    
+    // Validate all species in result exist in species data
+    for (const auto& [speciesId, indices] : speciesIndices) {
+        assert(speciesData.find(speciesId) != speciesData.end());
+    }
     #endif
     
     return speciesIndices;
-}
-
-// Overload that accepts capacity hints directly
-template<typename FitnessResultType>
-std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
-    const std::map<FitnessResultType, DynamicGenomeData>& orderedGenomeData,
-    const std::unordered_map<uint32_t, size_t>& expectedSpeciesSizes
-) {
-    return speciesGrouping(orderedGenomeData, SpeciesGroupingParams(expectedSpeciesSizes));
-}
-
-// Utility function to extract species population counts from index map
-std::unordered_map<uint32_t, size_t> getSpeciesPopulationCounts(
-    const std::unordered_map<uint32_t, std::vector<size_t>>& speciesIndices
-) {
-    std::unordered_map<uint32_t, size_t> populationCounts;
-    populationCounts.reserve(speciesIndices.size());
-    
-    for (const auto& [speciesId, indices] : speciesIndices) {
-        populationCounts[speciesId] = indices.size();
-    }
-    
-    return populationCounts;
-}
-
-// Utility function to resolve global index from species relative index
-size_t resolveGlobalIndex(
-    const std::unordered_map<uint32_t, std::vector<size_t>>& speciesIndices,
-    uint32_t speciesId,
-    size_t relativeIndex
-) {
-    assert(speciesIndices.find(speciesId) != speciesIndices.end());
-    assert(relativeIndex < speciesIndices.at(speciesId).size());
-    
-    return speciesIndices.at(speciesId)[relativeIndex];
-}
-
-// Utility function to get the total number of genomes across all species
-size_t getTotalGenomeCount(const std::unordered_map<uint32_t, std::vector<size_t>>& speciesIndices) {
-    size_t totalCount = 0;
-    for (const auto& [speciesId, indices] : speciesIndices) {
-        totalCount += indices.size();
-    }
-    return totalCount;
 }
 
 }

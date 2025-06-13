@@ -34,7 +34,7 @@ public:
 protected:
     template<typename FitnessResultType>
     friend void dynamicDataUpdate(
-        std::map<FitnessResultType, DynamicGenomeData>& orderedGenomeData,
+        std::multimap<FitnessResultType, DynamicGenomeData>& orderedGenomeData,
         std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
         const DynamicDataUpdateParams& params
     );
@@ -48,7 +48,7 @@ protected:
 // Main operator function - templated on fitness result type
 template<typename FitnessResultType>
 void dynamicDataUpdate(
-    std::map<FitnessResultType, DynamicGenomeData>& orderedGenomeData,  // Best to worst fitness
+    std::multimap<FitnessResultType, DynamicGenomeData>& orderedGenomeData,  // Best to worst fitness
     std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
     const DynamicDataUpdateParams& params
 ) {

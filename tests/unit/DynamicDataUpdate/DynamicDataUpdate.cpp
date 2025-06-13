@@ -34,12 +34,12 @@ protected:
         }
     };
     
-    // Helper to create test genome data map with specified fitness values and species IDs
-    std::map<TestFitnessResult, DynamicGenomeData> createTestGenomeData(
+    // Helper to create test genome data multimap with specified fitness values and species IDs
+    std::multimap<TestFitnessResult, DynamicGenomeData> createTestGenomeData(
         const std::vector<double>& fitnessValues,
         const std::vector<uint32_t>& speciesIds) {
         
-        std::map<TestFitnessResult, DynamicGenomeData> genomeData;
+        std::multimap<TestFitnessResult, DynamicGenomeData> genomeData;
         
         for (size_t i = 0; i < fitnessValues.size(); ++i) {
             TestFitnessResult fitness{fitnessValues[i]};
@@ -49,7 +49,7 @@ protected:
             data.isUnderRepair = false;
             data.isMarkedForElimination = false;
             
-            genomeData[fitness] = data;
+            genomeData.insert({fitness, data});
         }
         
         return genomeData;
@@ -100,14 +100,14 @@ TEST_F(DynamicDataUpdateTest, ProtectionTier_10Genomes_30Percent) {
     EXPECT_EQ(protectedCount, 3) << "Exactly 3 genomes should be in protected tier";
     
     // Verify specific genomes are protected (worst 3: fitness 30, 20, 10)
-    EXPECT_GT(genomeData[TestFitnessResult{30}].protectionCounter, 0);
-    EXPECT_GT(genomeData[TestFitnessResult{20}].protectionCounter, 0);
-    EXPECT_GT(genomeData[TestFitnessResult{10}].protectionCounter, 0);
+    EXPECT_GT(genomeData.find(TestFitnessResult{30})->second.protectionCounter, 0);
+    EXPECT_GT(genomeData.find(TestFitnessResult{20})->second.protectionCounter, 0);
+    EXPECT_GT(genomeData.find(TestFitnessResult{10})->second.protectionCounter, 0);
     
     // Verify others are not protected
-    EXPECT_EQ(genomeData[TestFitnessResult{100}].protectionCounter, 0);
-    EXPECT_EQ(genomeData[TestFitnessResult{90}].protectionCounter, 0);
-    EXPECT_EQ(genomeData[TestFitnessResult{40}].protectionCounter, 0);
+    EXPECT_EQ(genomeData.find(TestFitnessResult{100})->second.protectionCounter, 0);
+    EXPECT_EQ(genomeData.find(TestFitnessResult{90})->second.protectionCounter, 0);
+    EXPECT_EQ(genomeData.find(TestFitnessResult{40})->second.protectionCounter, 0);
 }
 
 TEST_F(DynamicDataUpdateTest, ProtectionTier_BoundaryGenome) {
@@ -131,8 +131,8 @@ TEST_F(DynamicDataUpdateTest, ProtectionTier_BoundaryGenome) {
     }
     
     EXPECT_EQ(protectedCount, 1) << "Exactly 1 genome should be in protected tier";
-    EXPECT_GT(genomeData[TestFitnessResult{60}].protectionCounter, 0) << "Boundary genome should be protected";
-    EXPECT_EQ(genomeData[TestFitnessResult{70}].protectionCounter, 0) << "Genome just above boundary should not be protected";
+    EXPECT_GT(genomeData.find(TestFitnessResult{60})->second.protectionCounter, 0) << "Boundary genome should be protected";
+    EXPECT_EQ(genomeData.find(TestFitnessResult{70})->second.protectionCounter, 0) << "Genome just above boundary should not be protected";
 }
 
 TEST_F(DynamicDataUpdateTest, ProtectionTier_ZeroPercent) {
@@ -182,15 +182,15 @@ TEST_F(DynamicDataUpdateTest, ProtectionCounter_IncrementProtected) {
     auto speciesData = createTestSpeciesData({1});
     
     // Set initial counter values for testing increment
-    genomeData[TestFitnessResult{60}].protectionCounter = 2; // Worst genome, should increment to 3
-    genomeData[TestFitnessResult{100}].protectionCounter = 1; // Best genome, should reset to 0
+    genomeData.find(TestFitnessResult{60})->second.protectionCounter = 2; // Worst genome, should increment to 3
+    genomeData.find(TestFitnessResult{100})->second.protectionCounter = 1; // Best genome, should reset to 0
     
     // With 30% protection and 5 genomes: bottom 30% = 1 genome (fitness 60)
     dynamicDataUpdate(genomeData, speciesData, *params);
     
-    EXPECT_EQ(genomeData[TestFitnessResult{60}].protectionCounter, 3) 
+    EXPECT_EQ(genomeData.find(TestFitnessResult{60})->second.protectionCounter, 3) 
         << "Protected genome counter should increment from 2 to 3";
-    EXPECT_EQ(genomeData[TestFitnessResult{100}].protectionCounter, 0) 
+    EXPECT_EQ(genomeData.find(TestFitnessResult{100})->second.protectionCounter, 0) 
         << "Non-protected genome counter should reset to 0";
 }
 
@@ -204,21 +204,21 @@ TEST_F(DynamicDataUpdateTest, ProtectionCounter_ResetNonProtected) {
     auto speciesData = createTestSpeciesData({1});
     
     // Set initial counters
-    genomeData[TestFitnessResult{100}].protectionCounter = 3; // Rank 0, should reset to 0
-    genomeData[TestFitnessResult{95}].protectionCounter = 1;  // Rank 1, should reset to 0
-    genomeData[TestFitnessResult{65}].protectionCounter = 2;  // Rank 7, protected, should increment to 3
-    genomeData[TestFitnessResult{60}].protectionCounter = 1;  // Rank 8, protected, should increment to 2
+    genomeData.find(TestFitnessResult{100})->second.protectionCounter = 3; // Rank 0, should reset to 0
+    genomeData.find(TestFitnessResult{95})->second.protectionCounter = 1;  // Rank 1, should reset to 0
+    genomeData.find(TestFitnessResult{65})->second.protectionCounter = 2;  // Rank 7, protected, should increment to 3
+    genomeData.find(TestFitnessResult{60})->second.protectionCounter = 1;  // Rank 8, protected, should increment to 2
     
     // With 30% protection and 10 genomes: bottom 30% = 3 genomes (ranks 7, 8, 9)
     dynamicDataUpdate(genomeData, speciesData, *params);
     
-    EXPECT_EQ(genomeData[TestFitnessResult{100}].protectionCounter, 0) 
+    EXPECT_EQ(genomeData.find(TestFitnessResult{100})->second.protectionCounter, 0) 
         << "Non-protected genome counter should reset to 0";
-    EXPECT_EQ(genomeData[TestFitnessResult{95}].protectionCounter, 0) 
+    EXPECT_EQ(genomeData.find(TestFitnessResult{95})->second.protectionCounter, 0) 
         << "Non-protected genome counter should reset to 0";
-    EXPECT_EQ(genomeData[TestFitnessResult{65}].protectionCounter, 3) 
+    EXPECT_EQ(genomeData.find(TestFitnessResult{65})->second.protectionCounter, 3) 
         << "Protected genome counter should increment from 2 to 3";
-    EXPECT_EQ(genomeData[TestFitnessResult{60}].protectionCounter, 2) 
+    EXPECT_EQ(genomeData.find(TestFitnessResult{60})->second.protectionCounter, 2) 
         << "Protected genome counter should increment from 1 to 2";
 }
 
@@ -232,15 +232,15 @@ TEST_F(DynamicDataUpdateTest, ProtectionCounter_ExceedsLimitTriggersElimination)
     auto speciesData = createTestSpeciesData({1});
     
     // Set counter at limit (maxProtectionLimit = 5) for worst genome
-    genomeData[TestFitnessResult{55}].protectionCounter = 5; // Rank 9, at limit, will increment to 6
+    genomeData.find(TestFitnessResult{55})->second.protectionCounter = 5; // Rank 9, at limit, will increment to 6
     
     dynamicDataUpdate(genomeData, speciesData, *params);
     
-    EXPECT_EQ(genomeData[TestFitnessResult{55}].protectionCounter, 6) 
+    EXPECT_EQ(genomeData.find(TestFitnessResult{55})->second.protectionCounter, 6) 
         << "Protected genome counter should increment to 6";
-    EXPECT_TRUE(genomeData[TestFitnessResult{55}].isMarkedForElimination) 
+    EXPECT_TRUE(genomeData.find(TestFitnessResult{55})->second.isMarkedForElimination) 
         << "Genome should be marked for elimination when counter exceeds limit";
-    EXPECT_FALSE(genomeData[TestFitnessResult{100}].isMarkedForElimination) 
+    EXPECT_FALSE(genomeData.find(TestFitnessResult{100})->second.isMarkedForElimination) 
         << "Non-protected genome should not be marked for elimination";
 }
 
@@ -254,18 +254,18 @@ TEST_F(DynamicDataUpdateTest, ProtectionCounter_UnderRepairGenomesSkipped) {
     auto speciesData = createTestSpeciesData({1});
     
     // Mark worst genome as under repair
-    genomeData[TestFitnessResult{55}].isUnderRepair = true; // Rank 9, would be protected but under repair
-    genomeData[TestFitnessResult{55}].protectionCounter = 2; // Should remain unchanged
+    genomeData.find(TestFitnessResult{55})->second.isUnderRepair = true; // Rank 9, would be protected but under repair
+    genomeData.find(TestFitnessResult{55})->second.protectionCounter = 2; // Should remain unchanged
     
     dynamicDataUpdate(genomeData, speciesData, *params);
     
-    EXPECT_EQ(genomeData[TestFitnessResult{55}].protectionCounter, 2) 
+    EXPECT_EQ(genomeData.find(TestFitnessResult{55})->second.protectionCounter, 2) 
         << "Under repair genome counter should remain unchanged";
-    EXPECT_FALSE(genomeData[TestFitnessResult{55}].isMarkedForElimination) 
+    EXPECT_FALSE(genomeData.find(TestFitnessResult{55})->second.isMarkedForElimination) 
         << "Under repair genome should not be marked for elimination";
     
     // Verify other protected genomes still get updated
-    EXPECT_GT(genomeData[TestFitnessResult{60}].protectionCounter, 0) 
+    EXPECT_GT(genomeData.find(TestFitnessResult{60})->second.protectionCounter, 0) 
         << "Other protected genomes should still be updated";
 }
 
@@ -538,7 +538,7 @@ TEST_F(DynamicDataUpdateTest, PopulationSize_UnevenDistribution) {
 
 TEST_F(DynamicDataUpdateTest, EmptyData_NoOperations) {
     // Test basic robustness: empty inputs should not crash
-    std::map<TestFitnessResult, DynamicGenomeData> emptyGenomeData;
+    std::multimap<TestFitnessResult, DynamicGenomeData> emptyGenomeData;
     std::unordered_map<uint32_t, DynamicSpeciesData> emptySpeciesData;
     
     // Should not crash or throw
@@ -551,7 +551,7 @@ TEST_F(DynamicDataUpdateTest, EmptyData_NoOperations) {
 
 TEST_F(DynamicDataUpdateTest, EmptyGenomes_NonEmptySpecies) {
     // Test edge case: no genomes but species data exists
-    std::map<TestFitnessResult, DynamicGenomeData> emptyGenomeData;
+    std::multimap<TestFitnessResult, DynamicGenomeData> emptyGenomeData;
     auto speciesData = createTestSpeciesData({1, 2, 3});
     
     // Set initial population sizes to non-zero
@@ -693,24 +693,24 @@ TEST_F(DynamicDataUpdateTest, MixedRepairStatus_OnlyNonRepairUpdated) {
     auto speciesData = createTestSpeciesData({1, 2, 3});
     
     // Mark some genomes as under repair (including some that would be protected)
-    genomeData[TestFitnessResult{65}].isUnderRepair = true; // Rank 7, would be protected
-    genomeData[TestFitnessResult{65}].protectionCounter = 3; // Should remain unchanged
+    genomeData.find(TestFitnessResult{65})->second.isUnderRepair = true; // Rank 7, would be protected
+    genomeData.find(TestFitnessResult{65})->second.protectionCounter = 3; // Should remain unchanged
     
-    genomeData[TestFitnessResult{100}].isUnderRepair = true; // Rank 0, wouldn't be protected anyway
-    genomeData[TestFitnessResult{100}].protectionCounter = 1; // Should remain unchanged
+    genomeData.find(TestFitnessResult{100})->second.isUnderRepair = true; // Rank 0, wouldn't be protected anyway
+    genomeData.find(TestFitnessResult{100})->second.protectionCounter = 1; // Should remain unchanged
     
     dynamicDataUpdate(genomeData, speciesData, *params);
     
     // Under repair genomes should remain unchanged
-    EXPECT_EQ(genomeData[TestFitnessResult{65}].protectionCounter, 3) << "Under repair genome should remain unchanged";
-    EXPECT_EQ(genomeData[TestFitnessResult{100}].protectionCounter, 1) << "Under repair genome should remain unchanged";
+    EXPECT_EQ(genomeData.find(TestFitnessResult{65})->second.protectionCounter, 3) << "Under repair genome should remain unchanged";
+    EXPECT_EQ(genomeData.find(TestFitnessResult{100})->second.protectionCounter, 1) << "Under repair genome should remain unchanged";
     
     // Non-repair protected genomes should be updated (ranks 7, 8, 9 are protected)
-    EXPECT_GT(genomeData[TestFitnessResult{60}].protectionCounter, 0) << "Non-repair protected genome should be updated";
-    EXPECT_GT(genomeData[TestFitnessResult{55}].protectionCounter, 0) << "Non-repair protected genome should be updated";
+    EXPECT_GT(genomeData.find(TestFitnessResult{60})->second.protectionCounter, 0) << "Non-repair protected genome should be updated";
+    EXPECT_GT(genomeData.find(TestFitnessResult{55})->second.protectionCounter, 0) << "Non-repair protected genome should be updated";
     
     // Non-repair non-protected genomes should reset to 0
-    EXPECT_EQ(genomeData[TestFitnessResult{95}].protectionCounter, 0) << "Non-repair non-protected genome should reset";
+    EXPECT_EQ(genomeData.find(TestFitnessResult{95})->second.protectionCounter, 0) << "Non-repair non-protected genome should reset";
 }
 
 // =============================================================================
@@ -728,7 +728,7 @@ TEST_F(DynamicDataUpdateTest, SingleGenome_HandledCorrectly) {
     EXPECT_NO_THROW(dynamicDataUpdate(genomeData, speciesData, *params));
     
     // With 30% protection and 1 genome: 1 * 0.3 = 0.3 → 0 genomes protected
-    EXPECT_EQ(genomeData[TestFitnessResult{100}].protectionCounter, 0) 
+    EXPECT_EQ(genomeData.find(TestFitnessResult{100})->second.protectionCounter, 0) 
         << "Single genome should not be protected due to percentage truncation";
     
     // Population size should be correct
@@ -751,7 +751,7 @@ TEST_F(DynamicDataUpdateTest, SingleGenome_WithHighProtectionPercentage) {
     EXPECT_NO_THROW(dynamicDataUpdate(genomeData, speciesData, highProtectionParams));
     
     // With 100% protection and 1 genome: 1 * 1.0 = 1 genome protected
-    EXPECT_GT(genomeData[TestFitnessResult{100}].protectionCounter, 0) 
+    EXPECT_GT(genomeData.find(TestFitnessResult{100})->second.protectionCounter, 0) 
         << "Single genome should be protected with 100% protection";
     
     // Species should still be penalized (only species, so worst by default)
@@ -768,14 +768,14 @@ TEST_F(DynamicDataUpdateTest, SingleGenome_AtProtectionLimit) {
     
     // Set genome at protection limit with 100% protection to trigger increment
     DynamicDataUpdateParams fullProtectionParams(5, 3, 1.0, 1); // 100% protection
-    genomeData[TestFitnessResult{100}].protectionCounter = 5; // At limit
+    genomeData.find(TestFitnessResult{100})->second.protectionCounter = 5; // At limit
     
     dynamicDataUpdate(genomeData, speciesData, fullProtectionParams);
     
     // Should increment to 6 and be marked for elimination
-    EXPECT_EQ(genomeData[TestFitnessResult{100}].protectionCounter, 6) 
+    EXPECT_EQ(genomeData.find(TestFitnessResult{100})->second.protectionCounter, 6) 
         << "Single genome should increment beyond limit";
-    EXPECT_TRUE(genomeData[TestFitnessResult{100}].isMarkedForElimination) 
+    EXPECT_TRUE(genomeData.find(TestFitnessResult{100})->second.isMarkedForElimination) 
         << "Single genome should be marked for elimination when exceeding limit";
 }
 
@@ -788,15 +788,15 @@ TEST_F(DynamicDataUpdateTest, SingleGenome_UnderRepair) {
     auto speciesData = createTestSpeciesData({1});
     
     // Mark single genome as under repair
-    genomeData[TestFitnessResult{100}].isUnderRepair = true;
-    genomeData[TestFitnessResult{100}].protectionCounter = 3;
+    genomeData.find(TestFitnessResult{100})->second.isUnderRepair = true;
+    genomeData.find(TestFitnessResult{100})->second.protectionCounter = 3;
     
     EXPECT_NO_THROW(dynamicDataUpdate(genomeData, speciesData, *params));
     
     // Under repair genome should remain unchanged
-    EXPECT_EQ(genomeData[TestFitnessResult{100}].protectionCounter, 3) 
+    EXPECT_EQ(genomeData.find(TestFitnessResult{100})->second.protectionCounter, 3) 
         << "Under repair single genome should remain unchanged";
-    EXPECT_FALSE(genomeData[TestFitnessResult{100}].isMarkedForElimination) 
+    EXPECT_FALSE(genomeData.find(TestFitnessResult{100})->second.isMarkedForElimination) 
         << "Under repair single genome should not be marked for elimination";
     
     // Species should still be ranked and penalized (ranking doesn't depend on repair status)
