@@ -7,25 +7,12 @@
 #include <map>
 #include <algorithm>
 #include <cassert>
+#include "PopulationData.hpp"
 
 namespace Population {
 
 // Forward declarations
 class DynamicDataUpdateParams;
-
-// Dynamic data structures for genome and species tracking
-struct DynamicGenomeData {
-    uint32_t speciesId;
-    uint32_t protectionCounter = 0;
-    bool isUnderRepair = false;
-    bool isMarkedForElimination = false;
-};
-
-struct DynamicSpeciesData {
-    uint32_t protectionRating = 0;
-    uint32_t currentPopulationSize = 0;
-    bool isMarkedForElimination = false;
-};
 
 class DynamicDataUpdateParams {
 public:
