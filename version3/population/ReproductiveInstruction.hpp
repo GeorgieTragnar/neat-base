@@ -26,6 +26,7 @@ struct EvolutionParameters {
 struct ReproductiveInstruction {
     OperationType operationType;         // Type of reproductive operation to perform
     std::vector<uint32_t> relativeParentIndices; // Parent indices relative to species (0-based)
+    std::vector<uint32_t> globalParentIndices; // Global parent indices into the master multimap with fitness results
     EvolutionParameters evolutionParams; // Parameters for evolution operations
     
     // Constructor for PRESERVE operations (single parent, no evolution)
@@ -33,6 +34,7 @@ struct ReproductiveInstruction {
         return ReproductiveInstruction{
             OperationType::PRESERVE,
             {relativeParentIndex},
+            {},
             {0.0f, 0.0f, false, priority}
         };
     }
@@ -47,6 +49,7 @@ struct ReproductiveInstruction {
         return ReproductiveInstruction{
             OperationType::CROSSOVER,
             {relativeParent1Index, relativeParent2Index},
+            {},
             {0.0f, crossoverRate, false, priority}
         };
     }
@@ -60,6 +63,7 @@ struct ReproductiveInstruction {
         return ReproductiveInstruction{
             OperationType::MUTATE_UNPROTECTED,
             {relativeParentIndex},
+            {},
             {mutationRate, 0.0f, false, priority}
         };
     }
@@ -73,6 +77,7 @@ struct ReproductiveInstruction {
         return ReproductiveInstruction{
             OperationType::MUTATE_PROTECTED,
             {relativeParentIndex},
+            {},
             {mutationRate, 0.0f, true, priority}
         };
     }
