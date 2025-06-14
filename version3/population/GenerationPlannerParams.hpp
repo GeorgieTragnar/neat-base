@@ -5,11 +5,24 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <random>
 
 namespace Population {
 
-// Forward declaration
+// Behavior options for rank scaling when species rank exceeds array bounds
+enum class ScalingBoundaryBehavior {
+    USE_MINIMUM,        // Use minimum value from array (current behavior)
+    USE_LAST_VALUE,     // Repeat the last value in the array
+    LINEAR_DECAY,       // Continue with linear decay from last value
+    EXPONENTIAL_DECAY,  // Continue with exponential decay from last value
+    CONSTANT_MINIMUM    // Use a constant minimum value
+};
+
+// Forward declarations
 struct DynamicSpeciesData;
+struct ReproductiveInstruction;
+using SpeciesInstructionSet = std::vector<ReproductiveInstruction>;
+using GenerationInstructionSets = std::unordered_map<uint32_t, SpeciesInstructionSet>;
 
 // Configuration parameters for the GenerationPlanner operator
 class GenerationPlannerParams {
@@ -23,11 +36,17 @@ public:
         uint32_t baseEliteCount,
         const std::vector<float>& eliteScalingByRank,
         float maxElitePercentage,
+        ScalingBoundaryBehavior eliteBoundaryBehavior,
+        float eliteConstantMinimum,
+        float eliteDecayRate,
         
         // Crossover Allocation Parameters
         uint32_t baseCrossoverSlots,
         const std::vector<float>& crossoverScalingByRank,
         uint32_t minSpeciesSizeForCrossover,
+        ScalingBoundaryBehavior crossoverBoundaryBehavior,
+        float crossoverConstantMinimum,
+        float crossoverDecayRate,
         
         // Equilibrium Parameters
         uint32_t targetTotalPopulation,
@@ -37,49 +56,15 @@ public:
         // Protection Parameters
         float protectionPercentage,
         uint32_t protectionThreshold,
-        uint32_t speciesEliminationThreshold
-    ) : _baseEliteCount(baseEliteCount),
-        _eliteScalingByRank(eliteScalingByRank),
-        _maxElitePercentage(maxElitePercentage),
-        _baseCrossoverSlots(baseCrossoverSlots),
-        _crossoverScalingByRank(crossoverScalingByRank),
-        _minSpeciesSizeForCrossover(minSpeciesSizeForCrossover),
-        _targetTotalPopulation(targetTotalPopulation),
-        _equilibriumBias(equilibriumBias),
-        _minSpeciesSize(minSpeciesSize),
-        _protectionPercentage(protectionPercentage),
-        _protectionThreshold(protectionThreshold),
-        _speciesEliminationThreshold(speciesEliminationThreshold) {
+        uint32_t speciesEliminationThreshold,
         
-        // Parameter validation
-        assert(baseEliteCount > 0 && "Base elite count must be positive");
-        assert(!eliteScalingByRank.empty() && "Elite scaling array cannot be empty");
-        assert(maxElitePercentage >= 0.0f && maxElitePercentage <= 1.0f && "Max elite percentage must be [0.0, 1.0]");
-        
-        assert(baseCrossoverSlots >= 0 && "Base crossover slots must be non-negative");
-        assert(!crossoverScalingByRank.empty() && "Crossover scaling array cannot be empty");
-        assert(minSpeciesSizeForCrossover >= 2 && "Min species size for crossover must be at least 2");
-        
-        assert(targetTotalPopulation > 0 && "Target total population must be positive");
-        assert(equilibriumBias >= 0.0f && equilibriumBias <= 1.0f && "Equilibrium bias must be [0.0, 1.0]");
-        assert(minSpeciesSize > 0 && "Min species size must be positive");
-        
-        assert(protectionPercentage >= 0.0f && protectionPercentage <= 1.0f && "Protection percentage must be [0.0, 1.0]");
-        assert(protectionThreshold > 0 && "Protection threshold must be positive");
-        assert(speciesEliminationThreshold > 0 && "Species elimination threshold must be positive");
-        
-        // Validate scaling arrays have positive values
-        for (size_t i = 0; i < eliteScalingByRank.size(); ++i) {
-            assert(eliteScalingByRank[i] > 0.0f && "Elite scaling factors must be positive");
-        }
-        for (size_t i = 0; i < crossoverScalingByRank.size(); ++i) {
-            assert(crossoverScalingByRank[i] >= 0.0f && "Crossover scaling factors must be non-negative");
-        }
-    }
+        // Random Number Generation
+        uint32_t randomSeed
+    );
 
 protected:
     // Friend declaration for the main operator function
-    friend void generationPlanner(
+    friend GenerationInstructionSets generationPlanner(
         std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
         const GenerationPlannerParams& params
     );
@@ -88,11 +73,17 @@ protected:
     const uint32_t _baseEliteCount;           // Minimum elite preservation per species
     const std::vector<float> _eliteScalingByRank; // Rank-based multipliers [rank1: 3.0x, rank2: 2.5x, ...]
     const float _maxElitePercentage;          // Cap on elite percentage per species
+    const ScalingBoundaryBehavior _eliteBoundaryBehavior; // How to handle ranks beyond array bounds
+    const float _eliteConstantMinimum;        // Constant minimum for CONSTANT_MINIMUM behavior
+    const float _eliteDecayRate;              // Decay rate for decay behaviors
 
     // Crossover Allocation Parameters  
     const uint32_t _baseCrossoverSlots;       // Base crossover allocation per species
     const std::vector<float> _crossoverScalingByRank; // Rank-based crossover multipliers
     const uint32_t _minSpeciesSizeForCrossover; // Minimum instructionSetSize to enable crossover
+    const ScalingBoundaryBehavior _crossoverBoundaryBehavior; // How to handle ranks beyond array bounds
+    const float _crossoverConstantMinimum;    // Constant minimum for CONSTANT_MINIMUM behavior
+    const float _crossoverDecayRate;          // Decay rate for decay behaviors
 
     // Equilibrium Parameters
     const uint32_t _targetTotalPopulation;    // Desired total instruction sets across all species
@@ -103,6 +94,9 @@ protected:
     const float _protectionPercentage;        // Percentage of remaining genomes marked for protection
     const uint32_t _protectionThreshold;      // Protection counter limit before instruction set denial
     const uint32_t _speciesEliminationThreshold; // Species protection rating limit
+
+    // Random Number Generation (mutable for state-changing operations)
+    mutable std::mt19937 _randomGenerator;    // Mersenne Twister generator for parent selection
 
 public:
     // Accessor methods for parameter validation and debugging
@@ -128,113 +122,39 @@ public:
     uint32_t getSpeciesEliminationThreshold() const { return _speciesEliminationThreshold; }
     
     // Utility methods for scaling factor retrieval
-    float getEliteScalingFactor(uint32_t rank) const {
-        if (rank == 0 || rank > _eliteScalingByRank.size()) {
-            // Use minimum scaling factor for ranks beyond array or invalid rank
-            return *std::min_element(_eliteScalingByRank.begin(), _eliteScalingByRank.end());
-        }
-        return _eliteScalingByRank[rank - 1]; // Convert 1-based rank to 0-based index
-    }
-    
-    float getCrossoverScalingFactor(uint32_t rank) const {
-        if (rank == 0 || rank > _crossoverScalingByRank.size()) {
-            // Use minimum scaling factor for ranks beyond array or invalid rank
-            return *std::min_element(_crossoverScalingByRank.begin(), _crossoverScalingByRank.end());
-        }
-        return _crossoverScalingByRank[rank - 1]; // Convert 1-based rank to 0-based index
-    }
+    float getEliteScalingFactor(uint32_t rank) const;
+    float getCrossoverScalingFactor(uint32_t rank) const;
     
     // Validation methods
-    bool isValidRank(uint32_t rank) const {
-        return rank > 0; // Ranks are 1-based
-    }
+    bool isValidRank(uint32_t rank) const;
+    bool isValidSpeciesSize(uint32_t size) const;
+    bool canEnableCrossover(uint32_t speciesSize) const;
     
-    bool isValidSpeciesSize(uint32_t size) const {
-        return size >= _minSpeciesSize;
-    }
+    // Random number generation for parent selection
+    std::mt19937& getRandomGenerator() const;
     
-    bool canEnableCrossover(uint32_t speciesSize) const {
-        return speciesSize >= _minSpeciesSizeForCrossover;
-    }
+    // Helper method for fitness-proportional parent selection from top half of species
+    std::pair<uint32_t, uint32_t> selectCrossoverParents(uint32_t speciesSize) const;
+
+private:
+    // Helper method to calculate scaling factors for ranks beyond array bounds
+    float calculateBoundaryScalingFactor(const std::vector<float>& scalingArray, 
+                                       ScalingBoundaryBehavior behavior,
+                                       float constantMinimum, float decayRate, 
+                                       uint32_t rank) const;
 };
 
 // Factory function for creating common parameter configurations
 class GenerationPlannerParamsFactory {
 public:
     // Conservative configuration - emphasizes stability and diversity preservation
-    static GenerationPlannerParams createConservative(uint32_t targetPopulation) {
-        return GenerationPlannerParams(
-            // Elite parameters - conservative preservation
-            2,                                    // baseEliteCount
-            {2.0f, 1.8f, 1.6f, 1.4f, 1.2f},     // eliteScalingByRank (moderate scaling)
-            0.5f,                                 // maxElitePercentage (up to 50% can be elite)
-            
-            // Crossover parameters - moderate crossover
-            1,                                    // baseCrossoverSlots
-            {1.5f, 1.3f, 1.1f, 1.0f, 0.8f},     // crossoverScalingByRank
-            3,                                    // minSpeciesSizeForCrossover
-            
-            // Equilibrium parameters - strong equilibrium force
-            targetPopulation,                     // targetTotalPopulation
-            0.8f,                                 // equilibriumBias (strong equilibrium)
-            2,                                    // minSpeciesSize
-            
-            // Protection parameters - high protection
-            0.4f,                                 // protectionPercentage (40% protected)
-            3,                                    // protectionThreshold
-            5                                     // speciesEliminationThreshold
-        );
-    }
+    static GenerationPlannerParams createConservative(uint32_t targetPopulation, uint32_t randomSeed);
     
     // Aggressive configuration - emphasizes performance and rapid convergence
-    static GenerationPlannerParams createAggressive(uint32_t targetPopulation) {
-        return GenerationPlannerParams(
-            // Elite parameters - aggressive preservation of top performers
-            1,                                    // baseEliteCount
-            {4.0f, 3.0f, 2.0f, 1.5f, 1.0f},     // eliteScalingByRank (strong scaling)
-            0.3f,                                 // maxElitePercentage (up to 30% can be elite)
-            
-            // Crossover parameters - high crossover activity
-            2,                                    // baseCrossoverSlots
-            {3.0f, 2.5f, 2.0f, 1.5f, 1.0f},     // crossoverScalingByRank
-            2,                                    // minSpeciesSizeForCrossover
-            
-            // Equilibrium parameters - moderate equilibrium force
-            targetPopulation,                     // targetTotalPopulation
-            0.5f,                                 // equilibriumBias (moderate equilibrium)
-            1,                                    // minSpeciesSize
-            
-            // Protection parameters - low protection (high selection pressure)
-            0.2f,                                 // protectionPercentage (20% protected)
-            2,                                    // protectionThreshold
-            3                                     // speciesEliminationThreshold
-        );
-    }
+    static GenerationPlannerParams createAggressive(uint32_t targetPopulation, uint32_t randomSeed);
     
     // Balanced configuration - balanced exploration and exploitation
-    static GenerationPlannerParams createBalanced(uint32_t targetPopulation) {
-        return GenerationPlannerParams(
-            // Elite parameters - balanced preservation
-            1,                                    // baseEliteCount
-            {2.5f, 2.0f, 1.7f, 1.4f, 1.1f},     // eliteScalingByRank
-            0.4f,                                 // maxElitePercentage (up to 40% can be elite)
-            
-            // Crossover parameters - balanced crossover
-            1,                                    // baseCrossoverSlots
-            {2.0f, 1.7f, 1.4f, 1.2f, 1.0f},     // crossoverScalingByRank
-            2,                                    // minSpeciesSizeForCrossover
-            
-            // Equilibrium parameters - balanced equilibrium force
-            targetPopulation,                     // targetTotalPopulation
-            0.6f,                                 // equilibriumBias (moderate-strong equilibrium)
-            1,                                    // minSpeciesSize
-            
-            // Protection parameters - moderate protection
-            0.3f,                                 // protectionPercentage (30% protected)
-            3,                                    // protectionThreshold
-            4                                     // speciesEliminationThreshold
-        );
-    }
+    static GenerationPlannerParams createBalanced(uint32_t targetPopulation, uint32_t randomSeed);
 };
 
 } // namespace Population
