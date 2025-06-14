@@ -1927,3 +1927,51 @@ TEST_F(DynamicDataUpdateTest, SpeciesRanking_TiedAverageRanksOrdinalHandling) {
     // When average ranks are equal, the ordering depends on std::sort implementation details
     // This is acceptable behavior as long as all species get valid, unique ordinal ranks
 }
+
+// =============================================================================
+// TEST 10: SPECIES DISCOVERY THROUGH GENOME DATA ONLY
+// =============================================================================
+
+TEST_F(DynamicDataUpdateTest, SpeciesDiscovery_ThroughGenomeDataOnly) {
+    // Test: Verify species referenced only in genome data (not instruction sets) gets created
+    // This tests the fix for circular dependency - new species emerge during evolution
+    
+    std::vector<double> fitness = {100, 90, 80};
+    std::vector<uint32_t> species = {1, 2, 777}; // Species 777 appears only in genome data
+    
+    auto genomeData = createTestGenomeData(fitness, species);
+    auto speciesData = createTestSpeciesData({1, 2}); // Only species 1 and 2 exist initially
+    
+    // Create instruction sets that do NOT include species 777
+    GenerationInstructionSets instructionSets;
+    instructionSets[1] = SpeciesInstructionSet{ReproductiveInstruction::preserve(0)};
+    instructionSets[2] = SpeciesInstructionSet{ReproductiveInstruction::preserve(0)};
+    // Species 777 NOT in instruction sets - purely discovered through genome data
+    
+    // Should not crash even though species 777 has no instruction sets or existing data
+    EXPECT_NO_THROW(dynamicDataUpdate(genomeData, speciesData, instructionSets, *params));
+    
+    // Verify species 777 was discovered and created
+    auto discoveredSpeciesIt = speciesData.find(777);
+    EXPECT_NE(discoveredSpeciesIt, speciesData.end()) << "Species 777 should be discovered through genome data";
+    
+    if (discoveredSpeciesIt != speciesData.end()) {
+        const auto& discoveredData = discoveredSpeciesIt->second;
+        
+        // Verify proper initialization of discovered species
+        EXPECT_EQ(discoveredData.currentPopulationSize, 1) << "Should reflect the one genome in this species";
+        EXPECT_EQ(discoveredData.instructionSetsSize, 0) << "Should be 0 since not in instruction sets";
+        EXPECT_EQ(discoveredData.protectionRating, 1) << "Should be penalized as worst performing species";
+        EXPECT_GT(discoveredData.speciesRank, 0) << "Should get valid ordinal rank based on performance";
+        EXPECT_FALSE(discoveredData.isMarkedForElimination) << "Should not be marked for elimination initially";
+        
+        // Verify it gets worst rank (rank 3) since it has worst individual performance
+        EXPECT_EQ(discoveredData.speciesRank, 3) << "Species with worst genome should get worst rank";
+    }
+    
+    // Verify existing species still work correctly  
+    EXPECT_EQ(speciesData[1].currentPopulationSize, 1) << "Existing species 1 should be updated";
+    EXPECT_EQ(speciesData[2].currentPopulationSize, 1) << "Existing species 2 should be updated";
+    EXPECT_EQ(speciesData[1].speciesRank, 1) << "Species 1 should get best rank";
+    EXPECT_EQ(speciesData[2].speciesRank, 2) << "Species 2 should get middle rank";
+}

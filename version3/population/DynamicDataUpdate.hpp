@@ -79,20 +79,26 @@ void dynamicDataUpdate(
     for (auto& [fitnessResult, genomeData] : orderedGenomeData) {
         const uint32_t speciesId = genomeData.speciesId;
         
-        // Validate genome references known species
-        #ifdef DEBUG
-        bool hasInstructionSets = instructionSets.find(speciesId) != instructionSets.end();
-        bool hasSpeciesData = speciesData.find(speciesId) != speciesData.end();
-        assert((hasInstructionSets || hasSpeciesData) && "GenerationPlanner error: genome references completely unknown species");
-        #endif
+        // Note: Species discovery happens below - genome can reference previously unknown species
+        // This is valid when new species emerge during evolution
         
         // Update species rank sum and count
         speciesRankSum[speciesId] += static_cast<double>(rank);
         speciesCount[speciesId]++;
         
         // Update species population size in single pass
-        if (speciesData.find(speciesId) != speciesData.end()) {
-            speciesData[speciesId].currentPopulationSize++;
+        auto speciesIt = speciesData.find(speciesId);
+        if (speciesIt != speciesData.end()) {
+            speciesIt->second.currentPopulationSize++;
+        } else {
+            // Create new species data entry for species discovered in genome data
+            DynamicSpeciesData newSpecies;
+            newSpecies.currentPopulationSize = 1;     // First genome for this species
+            newSpecies.instructionSetsSize = 0;       // Will be set by Phase 1 if instruction sets exist
+            newSpecies.protectionRating = 0;          // Default protection rating
+            newSpecies.speciesRank = 0;               // Will be calculated in ranking phase
+            newSpecies.isMarkedForElimination = false; // Default elimination status
+            speciesData[speciesId] = newSpecies;
         }
         
         ++rank;
