@@ -12,7 +12,9 @@
 namespace Population {
 
 // Forward declarations
-class DynamicDataUpdateParams;
+struct ReproductiveInstruction;
+using SpeciesInstructionSet = std::vector<ReproductiveInstruction>;
+using GenerationInstructionSets = std::unordered_map<uint32_t, SpeciesInstructionSet>;
 
 class DynamicDataUpdateParams {
 public:
@@ -22,20 +24,14 @@ public:
         uint32_t maxSpeciesProtectionRating,
         double protectedTierPercentage,
         uint32_t worstSpeciesCount = 1
-    ) : _maxProtectionLimit(maxProtectionLimit),
-        _maxSpeciesProtectionRating(maxSpeciesProtectionRating),
-        _protectedTierPercentage(protectedTierPercentage),
-        _worstSpeciesCount(worstSpeciesCount) {
-        
-        assert(protectedTierPercentage >= 0.0 && protectedTierPercentage <= 1.0);
-        assert(worstSpeciesCount > 0);
-    }
+    );
 
 protected:
     template<typename FitnessResultType>
     friend void dynamicDataUpdate(
         std::multimap<FitnessResultType, DynamicGenomeData>& orderedGenomeData,
         std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
+        const GenerationInstructionSets& instructionSets,
         const DynamicDataUpdateParams& params
     );
 
@@ -45,14 +41,29 @@ protected:
     const uint32_t _worstSpeciesCount;           // Number of worst species to penalize each generation
 };
 
+// Helper function declarations
+void updateInstructionSetSizes(
+    std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
+    const GenerationInstructionSets& instructionSets
+);
+
+void updateSpeciesRanking(
+    std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
+    const std::unordered_map<uint32_t, double>& speciesAverageRanks
+);
+
 // Main operator function - templated on fitness result type
 template<typename FitnessResultType>
 void dynamicDataUpdate(
     std::multimap<FitnessResultType, DynamicGenomeData>& orderedGenomeData,  // Best to worst fitness
     std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
+    const GenerationInstructionSets& instructionSets,                       // NEW: Instruction sets from GenerationPlanner
     const DynamicDataUpdateParams& params
 ) {
-    // 1. Species Performance Analysis - Single pass with running averages
+    // Phase 1: Instruction Set Counting and Size Updates (NEW)
+    updateInstructionSetSizes(speciesData, instructionSets);
+    
+    // Phase 2: Species Performance Analysis - Single pass with running averages
     std::unordered_map<uint32_t, double> speciesRankSum;
     std::unordered_map<uint32_t, size_t> speciesCount;
     std::unordered_map<uint32_t, double> speciesAverageRanks;
@@ -67,6 +78,13 @@ void dynamicDataUpdate(
     size_t rank = 0;
     for (auto& [fitnessResult, genomeData] : orderedGenomeData) {
         const uint32_t speciesId = genomeData.speciesId;
+        
+        // Validate genome references known species
+        #ifdef DEBUG
+        bool hasInstructionSets = instructionSets.find(speciesId) != instructionSets.end();
+        bool hasSpeciesData = speciesData.find(speciesId) != speciesData.end();
+        assert((hasInstructionSets || hasSpeciesData) && "GenerationPlanner error: genome references completely unknown species");
+        #endif
         
         // Update species rank sum and count
         speciesRankSum[speciesId] += static_cast<double>(rank);
@@ -86,6 +104,9 @@ void dynamicDataUpdate(
             speciesAverageRanks[speciesId] = speciesRankSum[speciesId] / count;
         }
     }
+    
+    // Update species rankings based on performance (NEW)
+    updateSpeciesRanking(speciesData, speciesAverageRanks);
     
     // Find worst N species using partial sort for efficiency
     std::vector<std::pair<uint32_t, double>> speciesRankings;
@@ -107,7 +128,7 @@ void dynamicDataUpdate(
                         [](const auto& a, const auto& b) { return a.second < b.second; });
     }
     
-    // 2. Individual Genome Protection Updates
+    // Phase 3: Individual Genome Protection Updates
     const size_t totalPopulation = orderedGenomeData.size();
     const size_t protectedTierThreshold = static_cast<size_t>(
         totalPopulation * params._protectedTierPercentage
@@ -138,7 +159,7 @@ void dynamicDataUpdate(
         ++rank;
     }
     
-    // 3. Species Protection Rating Updates
+    // Phase 4: Species Protection Rating Updates
     // Create set of worst species IDs for quick lookup
     std::unordered_set<uint32_t> worstSpeciesIds;
     for (size_t i = speciesRankings.size() - worstSpeciesCount; i < speciesRankings.size(); ++i) {
@@ -161,9 +182,7 @@ void dynamicDataUpdate(
         }
     }
     
-    // 4. Species population sizes already updated in step 1
-    
-    // 5. State Consistency Validation (Debug assertions)
+    // Phase 5: State Consistency Validation (Debug assertions)
     #ifdef DEBUG
     for (const auto& [fitnessResult, genomeData] : orderedGenomeData) {
         assert(genomeData.protectionCounter <= params._maxProtectionLimit + 1); // +1 for the elimination frame
@@ -172,14 +191,25 @@ void dynamicDataUpdate(
     
     for (const auto& [speciesId, data] : speciesData) {
         assert(data.protectionRating <= params._maxSpeciesProtectionRating + 1); // +1 for the elimination frame
+        assert(data.speciesRank > 0); // Species rank should be assigned
+        
         // Population size should match actual count
         size_t actualCount = 0;
         for (const auto& [fr, gd] : orderedGenomeData) {
             if (gd.speciesId == speciesId) actualCount++;
         }
         assert(data.currentPopulationSize == actualCount);
+        
+        // Instruction set size validation
+        auto instructionIt = instructionSets.find(speciesId);
+        if (instructionIt != instructionSets.end()) {
+            assert(data.instructionSetsSize == instructionIt->second.size());
+        } else {
+            // Species not in instruction sets should have 0 instruction sets
+            assert(data.instructionSetsSize == 0);
+        }
     }
     #endif
 }
 
-}
+} // namespace Population
