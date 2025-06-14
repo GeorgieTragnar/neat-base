@@ -355,7 +355,7 @@ GenerationInstructionSets generateInstructionSets(
     GenerationInstructionSets instructionSets;
     
     for (const auto& [speciesId, data] : speciesData) {
-        if (data.isMarkedForElimination || data.instructionSetsSize == 0) {
+        if (data.isMarkedForElimination || data.currentPopulationSize == 0) {
             // Eliminated species or empty species get empty instruction sets
             instructionSets[speciesId] = SpeciesInstructionSet{};
             continue;
