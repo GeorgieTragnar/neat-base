@@ -432,6 +432,28 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             // instruction set end of loop
         }
 
+        // Handle species that exist in _speciesData but not in instruction sets
+        // These are new/rediscovered species that should be copied as-is
+        for (const auto& [speciesId, speciesData] : _speciesData) {
+            if (_instructionSets[_lastGeneration].find(speciesId) == _instructionSets[_lastGeneration].end()) {
+                // This species has no instruction sets, copy its genomes from last generation
+                for (const auto& [fitness, genomeData] : _genomeData[_lastGeneration]) {
+                    if (genomeData.speciesId == speciesId) {
+                        // Copy the genome
+                        Genome genomeCopy = _population[_lastGeneration][genomeData.genomeIndex];
+                        
+                        // Create new genome data with updated index
+                        Population::DynamicGenomeData newGenomeData = genomeData;
+                        newGenomeData.genomeIndex = static_cast<uint32_t>(_population[_currentGeneration].size());
+                        
+                        // Add to current generation
+                        _population[_currentGeneration].push_back(std::move(genomeCopy));
+                        _genomeData[_currentGeneration].insert({fitness, newGenomeData});
+                    }
+                }
+            }
+        }
+
         // Population operations
         // 1. Generate instruction sets for next generation based on current species data
         _instructionSets[_currentGeneration] = Population::generationPlanner(_speciesData, _plannerParams);
