@@ -10,14 +10,11 @@ namespace Population {
 // Shared across population operators for consistent data management
 
 struct DynamicGenomeData {
-    uint32_t speciesId;
+    uint32_t speciesId = UINT32_MAX;
     uint32_t protectionCounter = 0;
     bool isUnderRepair = false;
     bool isMarkedForElimination = false;
-
-    // TODO: refactor this struct into a class where this raw pointer becomes protected
-    // with friend access for the main evolution loop
-    Genome* actualGenome = nullptr;
+    uint32_t genomeIndex = UINT32_MAX;
 };
 
 struct DynamicSpeciesData {
