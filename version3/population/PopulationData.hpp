@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+class Genome;
+
 namespace Population {
 
 // Dynamic data structures for genome and species tracking
@@ -12,6 +14,10 @@ struct DynamicGenomeData {
     uint32_t protectionCounter = 0;
     bool isUnderRepair = false;
     bool isMarkedForElimination = false;
+
+    // TODO: refactor this struct into a class where this raw pointer becomes protected
+    // with friend access for the main evolution loop
+    Genome* actualGenome = nullptr;
 };
 
 struct DynamicSpeciesData {
