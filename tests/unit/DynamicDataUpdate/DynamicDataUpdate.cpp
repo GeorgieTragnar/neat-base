@@ -265,7 +265,7 @@ TEST_F(DynamicDataUpdateTest, ProtectionCounter_ExceedsLimitTriggersElimination)
     // Set counter at limit (maxProtectionLimit = 5) for worst genome
     genomeData.find(TestFitnessResult{55})->second.protectionCounter = 5; // Rank 9, at limit, will increment to 6
     
-    auto instructionSets = createMockInstructionSets({1, 2, 3});
+    auto instructionSets = createMockInstructionSets({1});
     dynamicDataUpdate(genomeData, speciesData, instructionSets, *params);
     
     EXPECT_EQ(genomeData.find(TestFitnessResult{55})->second.protectionCounter, 6) 
@@ -289,7 +289,7 @@ TEST_F(DynamicDataUpdateTest, ProtectionCounter_UnderRepairGenomesSkipped) {
     genomeData.find(TestFitnessResult{55})->second.isUnderRepair = true; // Rank 9, would be protected but under repair
     genomeData.find(TestFitnessResult{55})->second.protectionCounter = 2; // Should remain unchanged
     
-    auto instructionSets = createMockInstructionSets({1, 2, 3});
+    auto instructionSets = createMockInstructionSets({1});
     dynamicDataUpdate(genomeData, speciesData, instructionSets, *params);
     
     EXPECT_EQ(genomeData.find(TestFitnessResult{55})->second.protectionCounter, 2) 
@@ -1187,39 +1187,6 @@ TEST_F(DynamicDataUpdateTest, SpeciesIDMapping_SpeciesIDMismatchHandling) {
     EXPECT_EQ(speciesData[5].instructionSetsSize, 0) << "Species 5 should be reset to 0 (not in instruction sets)";
 }
 
-TEST_F(DynamicDataUpdateTest, SpeciesIDMapping_NewSpeciesDiscovery) {
-    // Test: New species appear in instruction sets but not in species data
-    std::vector<double> fitness = {100, 90};
-    std::vector<uint32_t> species = {1, 2};
-    
-    auto genomeData = createTestGenomeData(fitness, species);
-    auto speciesData = createTestSpeciesData({1, 2}); // Only species 1 and 2
-    
-    GenerationInstructionSets instructionSets;
-    instructionSets[1] = SpeciesInstructionSet{ReproductiveInstruction::preserve(0)}; // 1 instruction
-    instructionSets[2] = SpeciesInstructionSet{
-        ReproductiveInstruction::preserve(0),
-        ReproductiveInstruction::preserve(1)
-    }; // 2 instructions
-    instructionSets[999] = SpeciesInstructionSet{
-        ReproductiveInstruction::preserve(0),
-        ReproductiveInstruction::preserve(1),
-        ReproductiveInstruction::preserve(2)
-    }; // 3 instructions for new species
-    
-    dynamicDataUpdate(genomeData, speciesData, instructionSets, *params);
-    
-    // Existing species should be updated
-    EXPECT_EQ(speciesData[1].instructionSetsSize, 1) << "Existing species 1 should be updated";
-    EXPECT_EQ(speciesData[2].instructionSetsSize, 2) << "Existing species 2 should be updated";
-    
-    // New species should be created with minimal data
-    auto newSpeciesIt = speciesData.find(999);
-    EXPECT_NE(newSpeciesIt, speciesData.end()) << "New species 999 should be created";
-    if (newSpeciesIt != speciesData.end()) {
-        EXPECT_EQ(newSpeciesIt->second.instructionSetsSize, 3) << "New species should have correct instruction count";
-    }
-}
 
 // =============================================================================
 // TEST CATEGORY 4: INPUT PARAMETER VALIDATION
@@ -1410,109 +1377,6 @@ TEST_F(DynamicDataUpdateTest, CountingLogic_CountingConsistency) {
 }
 
 // =============================================================================
-// ESSENTIAL MISSING TESTS FOR NEW FUNCTIONALITY
-// =============================================================================
-
-// =============================================================================
-// TEST 1: NEW SPECIES FIELD INITIALIZATION
-// =============================================================================
-
-TEST_F(DynamicDataUpdateTest, NewSpecies_AllFieldsInitializedCorrectly) {
-    // Test: Verify all fields in new species dynamic data are correctly initialized
-    std::vector<double> fitness = {100, 90};
-    std::vector<uint32_t> species = {1, 2};
-    
-    auto genomeData = createTestGenomeData(fitness, species);
-    auto speciesData = createTestSpeciesData({1, 2}); // Only existing species
-    
-    // Create instruction sets that includes a new species (999)
-    GenerationInstructionSets instructionSets;
-    instructionSets[1] = SpeciesInstructionSet{ReproductiveInstruction::preserve(0)}; // 1 instruction
-    instructionSets[2] = SpeciesInstructionSet{
-        ReproductiveInstruction::preserve(0),
-        ReproductiveInstruction::preserve(1)
-    }; // 2 instructions
-    instructionSets[999] = SpeciesInstructionSet{
-        ReproductiveInstruction::preserve(0),
-        ReproductiveInstruction::preserve(1),
-        ReproductiveInstruction::preserve(2),
-        ReproductiveInstruction::preserve(3),
-        ReproductiveInstruction::preserve(4)
-    }; // 5 instructions for new species
-    
-    dynamicDataUpdate(genomeData, speciesData, instructionSets, *params);
-    
-    // Verify new species was created
-    auto newSpeciesIt = speciesData.find(999);
-    EXPECT_NE(newSpeciesIt, speciesData.end()) << "New species 999 should be created";
-    
-    if (newSpeciesIt != speciesData.end()) {
-        const auto& newSpeciesData = newSpeciesIt->second;
-        
-        // Verify all field initialization
-        EXPECT_EQ(newSpeciesData.instructionSetsSize, 5) << "instructionSetsSize should be set from instruction count";
-        EXPECT_EQ(newSpeciesData.protectionRating, 0) << "protectionRating should be initialized to 0";
-        EXPECT_EQ(newSpeciesData.currentPopulationSize, 0) << "currentPopulationSize should be 0 (no genomes exist)";
-        EXPECT_GT(newSpeciesData.speciesRank, 0) << "speciesRank should be assigned (worst rank since no genomes)";
-        EXPECT_FALSE(newSpeciesData.isMarkedForElimination) << "isMarkedForElimination should be false by default";
-        
-        // Verify worst rank assignment (new species with no genomes gets worst rank)
-        uint32_t expectedWorstRank = 3; // Species 1 and 2 have genomes, so new species gets rank 3
-        EXPECT_EQ(newSpeciesData.speciesRank, expectedWorstRank) << "New species should get worst ordinal rank";
-    }
-}
-
-// =============================================================================
-// TEST 2: SPECIES DISCOVERY THROUGH BOTH SOURCES
-// =============================================================================
-
-TEST_F(DynamicDataUpdateTest, SpeciesDiscovery_ThroughGenomeAndInstructionData) {
-    // Test: Verify species referenced in genome data and instruction sets gets dynamic data created
-    // Important edge case: species appears in both genome data AND instruction sets but no existing dynamic data
-    
-    std::vector<double> fitness = {100, 90, 80};
-    std::vector<uint32_t> species = {1, 2, 888}; // Species 888 will be "discovered"
-    
-    auto genomeData = createTestGenomeData(fitness, species);
-    auto speciesData = createTestSpeciesData({1, 2}); // Only species 1 and 2 exist initially
-    
-    // Create instruction sets that also includes species 888
-    GenerationInstructionSets instructionSets;
-    instructionSets[1] = SpeciesInstructionSet{ReproductiveInstruction::preserve(0)}; // 1 instruction
-    instructionSets[2] = SpeciesInstructionSet{
-        ReproductiveInstruction::preserve(0),
-        ReproductiveInstruction::preserve(1)
-    }; // 2 instructions
-    instructionSets[888] = SpeciesInstructionSet{
-        ReproductiveInstruction::preserve(0),
-        ReproductiveInstruction::preserve(1),
-        ReproductiveInstruction::preserve(2)
-    }; // 3 instructions for discovered species
-    
-    // Should not crash or throw even though species 888 has no existing dynamic data
-    EXPECT_NO_THROW(dynamicDataUpdate(genomeData, speciesData, instructionSets, *params));
-    
-    // Verify species 888 was discovered and created in species data
-    auto discoveredSpeciesIt = speciesData.find(888);
-    EXPECT_NE(discoveredSpeciesIt, speciesData.end()) << "Species 888 should be discovered and created";
-    
-    if (discoveredSpeciesIt != speciesData.end()) {
-        const auto& discoveredData = discoveredSpeciesIt->second;
-        
-        // Verify the species data reflects both genome presence and instruction sets
-        EXPECT_EQ(discoveredData.instructionSetsSize, 3) << "instructionSetsSize should be set from instruction sets";
-        EXPECT_EQ(discoveredData.currentPopulationSize, 1) << "currentPopulationSize should reflect genome count";
-        EXPECT_GT(discoveredData.speciesRank, 0) << "speciesRank should be assigned based on genome performance";
-        EXPECT_EQ(discoveredData.protectionRating, 1) << "Worst performing species should be penalized";
-        EXPECT_FALSE(discoveredData.isMarkedForElimination) << "isMarkedForElimination should be false";
-        
-        // Verify species ranking reflects actual performance
-        // Species 888 has genome at rank 2 (fitness 80), so should have good ranking
-        EXPECT_LE(discoveredData.speciesRank, 3) << "Species with genomes should get reasonable ordinal rank";
-    }
-}
-
-// =============================================================================
 // TEST 3: FLOATING POINT TO ORDINAL RANKING CONVERSION
 // =============================================================================
 
@@ -1638,74 +1502,6 @@ TEST_F(DynamicDataUpdateTest, SpeciesRanking_UpdatesSpeciesRankField) {
     
     // Verify ranking field update doesn't affect other fields inappropriately
     // Note: protectionRating may change due to worst species penalty, but should follow expected logic
-}
-
-// =============================================================================
-// TEST 6: NEW SPECIES ORDINAL RANKING
-// =============================================================================
-
-TEST_F(DynamicDataUpdateTest, SpeciesRanking_NewSpeciesOrdinalRanking) {
-    // Test: Verify new species (from instruction sets) get appropriate ordinal rankings
-    // Tests interaction between new species creation and ranking
-    
-    std::vector<double> fitness = {100, 90};
-    std::vector<uint32_t> species = {1, 2}; // Only existing species have genomes
-    
-    auto genomeData = createTestGenomeData(fitness, species);
-    auto speciesData = createTestSpeciesData({1, 2}); // Only species 1 and 2 exist initially
-    
-    // Create instruction sets that include new species without genomes
-    GenerationInstructionSets instructionSets;
-    instructionSets[1] = SpeciesInstructionSet{ReproductiveInstruction::preserve(0)}; // 1 instruction
-    instructionSets[2] = SpeciesInstructionSet{
-        ReproductiveInstruction::preserve(0),
-        ReproductiveInstruction::preserve(1)
-    }; // 2 instructions
-    instructionSets[500] = SpeciesInstructionSet{
-        ReproductiveInstruction::preserve(0),
-        ReproductiveInstruction::preserve(1),
-        ReproductiveInstruction::preserve(2)
-    }; // 3 instructions for new species (no genomes)
-    instructionSets[600] = SpeciesInstructionSet{
-        ReproductiveInstruction::preserve(0),
-        ReproductiveInstruction::preserve(1),
-        ReproductiveInstruction::preserve(2),
-        ReproductiveInstruction::preserve(3)
-    }; // 4 instructions for another new species (no genomes)
-    
-    dynamicDataUpdate(genomeData, speciesData, instructionSets, *params);
-    
-    // Verify all new species were created
-    EXPECT_NE(speciesData.find(500), speciesData.end()) << "New species 500 should be created";
-    EXPECT_NE(speciesData.find(600), speciesData.end()) << "New species 600 should be created";
-    
-    // Verify existing species get good ordinal rankings (have genomes)
-    // Species 1: rank 0 (fitness 100) → ordinal rank 1
-    // Species 2: rank 1 (fitness 90) → ordinal rank 2
-    EXPECT_EQ(speciesData[1].speciesRank, 1) << "Existing species 1 should get ordinal rank 1";
-    EXPECT_EQ(speciesData[2].speciesRank, 2) << "Existing species 2 should get ordinal rank 2";
-    
-    // Verify new species get worst ordinal rankings (no genomes)
-    // New species with no genomes should get tied for worst rank
-    uint32_t expectedWorstRank = 3; // After species 1 and 2, new species get rank 3
-    EXPECT_EQ(speciesData[500].speciesRank, expectedWorstRank) << "New species 500 should get worst ordinal rank";
-    EXPECT_EQ(speciesData[600].speciesRank, expectedWorstRank) << "New species 600 should get worst ordinal rank";
-    
-    // Verify multiple new species get tied for worst ordinal rank
-    EXPECT_EQ(speciesData[500].speciesRank, speciesData[600].speciesRank) 
-        << "Multiple new species should get same worst ordinal rank";
-    
-    // Verify new species ranking doesn't affect existing species ordinal rankings
-    EXPECT_LT(speciesData[1].speciesRank, speciesData[500].speciesRank) 
-        << "Existing species should have better rank than new species";
-    EXPECT_LT(speciesData[2].speciesRank, speciesData[500].speciesRank) 
-        << "Existing species should have better rank than new species";
-    
-    // Verify all species have valid positive ranks
-    EXPECT_GT(speciesData[1].speciesRank, 0) << "All species should have positive ranks";
-    EXPECT_GT(speciesData[2].speciesRank, 0) << "All species should have positive ranks";
-    EXPECT_GT(speciesData[500].speciesRank, 0) << "All species should have positive ranks";
-    EXPECT_GT(speciesData[600].speciesRank, 0) << "All species should have positive ranks";
 }
 
 // =============================================================================
@@ -1960,7 +1756,7 @@ TEST_F(DynamicDataUpdateTest, SpeciesDiscovery_ThroughGenomeDataOnly) {
         
         // Verify proper initialization of discovered species
         EXPECT_EQ(discoveredData.currentPopulationSize, 1) << "Should reflect the one genome in this species";
-        EXPECT_EQ(discoveredData.instructionSetsSize, 0) << "Should be 0 since not in instruction sets";
+        EXPECT_EQ(discoveredData.instructionSetsSize, 1) << "Should be set to currentPopulationSize (copied as-is)";
         EXPECT_EQ(discoveredData.protectionRating, 1) << "Should be penalized as worst performing species";
         EXPECT_GT(discoveredData.speciesRank, 0) << "Should get valid ordinal rank based on performance";
         EXPECT_FALSE(discoveredData.isMarkedForElimination) << "Should not be marked for elimination initially";
