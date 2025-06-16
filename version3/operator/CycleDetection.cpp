@@ -83,8 +83,8 @@ bool Operator::hasCycles(const Genome& genome, const CycleDetectionParams& param
             continue;
         }
         
-        uint32_t sourceId = conn.get_sourceNodeGene().get_historyID();
-        uint32_t targetId = conn.get_targetNodeGene().get_historyID();
+        uint32_t sourceId = nodes[conn.get_sourceNodeIndex()].get_historyID();
+        uint32_t targetId = nodes[conn.get_targetNodeIndex()].get_historyID();
         
         // Only add edge if both nodes are included in our analysis
         if (graphNodes.find(sourceId) != graphNodes.end() && 

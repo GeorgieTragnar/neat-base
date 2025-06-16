@@ -175,26 +175,19 @@ protected:
         return {0, 1, 42, 1000, std::numeric_limits<uint32_t>::max()};
     }
     
-    // Helper to create various node gene pairs for testing
-    std::vector<std::pair<NodeGene, NodeGene>> getTestNodeGenePairs() {
-        std::vector<std::pair<NodeGene, NodeGene>> pairs;
+    // Helper to create various index pairs for testing
+    std::vector<std::pair<size_t, size_t>> getTestIndexPairs() {
+        std::vector<std::pair<size_t, size_t>> pairs;
         
-        // Different combinations of node types
-        auto input1 = create_test_node_gene(1, NodeType::INPUT);
-        auto input2 = create_test_node_gene(2, NodeType::INPUT);
-        auto hidden1 = create_test_node_gene(10, NodeType::HIDDEN);
-        auto hidden2 = create_test_node_gene(11, NodeType::HIDDEN);
-        auto output1 = create_test_node_gene(20, NodeType::OUTPUT);
-        auto output2 = create_test_node_gene(21, NodeType::OUTPUT);
-        auto bias = create_test_node_gene(30, NodeType::BIAS);
-        
-        // Valid connection combinations (non-OUTPUT -> non-INPUT)
-        pairs.emplace_back(input1, hidden1);
-        pairs.emplace_back(input1, output1);
-        pairs.emplace_back(hidden1, hidden2);
-        pairs.emplace_back(hidden1, output1);
-        pairs.emplace_back(bias, hidden1);
-        pairs.emplace_back(bias, output1);
+        // Various index combinations for testing
+        pairs.emplace_back(0, 1);   // input -> hidden
+        pairs.emplace_back(0, 2);   // input -> output  
+        pairs.emplace_back(1, 3);   // hidden -> hidden
+        pairs.emplace_back(1, 2);   // hidden -> output
+        pairs.emplace_back(4, 1);   // bias -> hidden
+        pairs.emplace_back(4, 2);   // bias -> output
+        pairs.emplace_back(5, 10);  // larger indices
+        pairs.emplace_back(0, 100); // edge case indices
         
         return pairs;
     }
@@ -232,23 +225,23 @@ TEST_F(ConnectionGeneTest, RuntimeValidation_FieldSize) {
 
 TEST_F(ConnectionGeneTest, Construction_AllValidCombinations) {
     auto historyIDs = getTestHistoryIDs();
-    auto nodeGenePairs = getTestNodeGenePairs();
+    auto indexPairs = getTestIndexPairs();
     auto attributeCombinations = generate_runtime_attribute_combinations<ConnectionGeneAttributes, ConnectionAttributesRegistry>();
     
     EXPECT_GT(attributeCombinations.size(), 0) << "No attribute combinations generated";
-    EXPECT_GT(nodeGenePairs.size(), 0) << "No node gene pairs available";
+    EXPECT_GT(indexPairs.size(), 0) << "No index pairs available";
     
     size_t total_combinations = 0;
     
     for (uint32_t historyID : historyIDs) {
-        for (const auto& [sourceNode, targetNode] : nodeGenePairs) {
+        for (const auto& [sourceIndex, targetIndex] : indexPairs) {
             for (const auto& attrs : attributeCombinations) {
-                ConnectionGene conn(historyID, sourceNode, targetNode, attrs);
+                ConnectionGene conn(historyID, sourceIndex, targetIndex, attrs);
                 
                 // Verify all values stored correctly
                 EXPECT_EQ(conn.get_historyID(), historyID);
-                EXPECT_EQ(&conn.get_sourceNodeGene(), &sourceNode);
-                EXPECT_EQ(&conn.get_targetNodeGene(), &targetNode);
+                EXPECT_EQ(conn.get_sourceNodeIndex(), sourceIndex);
+                EXPECT_EQ(conn.get_targetNodeIndex(), targetIndex);
                 EXPECT_TRUE((runtime_attributes_equal<ConnectionGeneAttributes, ConnectionAttributesRegistry>(conn.get_attributes(), attrs)));
                 
                 ++total_combinations;
@@ -257,8 +250,8 @@ TEST_F(ConnectionGeneTest, Construction_AllValidCombinations) {
     }
     
     std::cout << "Tested " << total_combinations << " construction combinations ("
-              << historyIDs.size() << " historyIDs × " << nodeGenePairs.size() 
-              << " node pairs × " << attributeCombinations.size() << " attribute combinations)" << std::endl;
+              << historyIDs.size() << " historyIDs × " << indexPairs.size() 
+              << " index pairs × " << attributeCombinations.size() << " attribute combinations)" << std::endl;
 }
 
 TEST_F(ConnectionGeneTest, Construction_ImmutabilityContract) {
@@ -267,18 +260,18 @@ TEST_F(ConnectionGeneTest, Construction_ImmutabilityContract) {
         GTEST_SKIP() << "No attribute combinations available for testing";
     }
     
-    auto nodeGenePairs = getTestNodeGenePairs();
-    if (nodeGenePairs.empty()) {
-        GTEST_SKIP() << "No node gene pairs available for testing";
+    auto indexPairs = getTestIndexPairs();
+    if (indexPairs.empty()) {
+        GTEST_SKIP() << "No index pairs available for testing";
     }
     
-    const auto& [sourceNode, targetNode] = nodeGenePairs[0];
-    ConnectionGene conn(42, sourceNode, targetNode, attributeCombinations[0]);
+    const auto& [sourceIndex, targetIndex] = indexPairs[0];
+    ConnectionGene conn(42, sourceIndex, targetIndex, attributeCombinations[0]);
     
     // Store original values
     uint32_t original_id = conn.get_historyID();
-    const NodeGene* original_source = &conn.get_sourceNodeGene();
-    const NodeGene* original_target = &conn.get_targetNodeGene();
+    size_t original_source = conn.get_sourceNodeIndex();
+    size_t original_target = conn.get_targetNodeIndex();
     
     // Modify attributes (this should be allowed)
     size_t field_count = ConnectionAttributesRegistry::field_count();
@@ -288,8 +281,8 @@ TEST_F(ConnectionGeneTest, Construction_ImmutabilityContract) {
         
         // Verify immutable fields unchanged
         EXPECT_EQ(conn.get_historyID(), original_id) << "historyID should be immutable";
-        EXPECT_EQ(&conn.get_sourceNodeGene(), original_source) << "source node reference should be immutable";
-        EXPECT_EQ(&conn.get_targetNodeGene(), original_target) << "target node reference should be immutable";
+        EXPECT_EQ(conn.get_sourceNodeIndex(), original_source) << "source node index should be immutable";
+        EXPECT_EQ(conn.get_targetNodeIndex(), original_target) << "target node index should be immutable";
     }
 }
 
@@ -299,24 +292,24 @@ TEST_F(ConnectionGeneTest, Construction_ImmutabilityContract) {
 
 TEST_F(ConnectionGeneTest, CopyConstructor_ExactReplication) {
     auto historyIDs = getTestHistoryIDs();
-    auto nodeGenePairs = getTestNodeGenePairs();
+    auto indexPairs = getTestIndexPairs();
     auto attributeCombinations = generate_runtime_attribute_combinations<ConnectionGeneAttributes, ConnectionAttributesRegistry>();
     
     size_t test_count = 0;
     constexpr size_t max_tests = 50;
     
     for (uint32_t historyID : historyIDs) {
-        for (const auto& [sourceNode, targetNode] : nodeGenePairs) {
+        for (const auto& [sourceIndex, targetIndex] : indexPairs) {
             for (const auto& attrs : attributeCombinations) {
                 if (test_count >= max_tests) break;
                 
-                ConnectionGene original(historyID, sourceNode, targetNode, attrs);
+                ConnectionGene original(historyID, sourceIndex, targetIndex, attrs);
                 ConnectionGene copy(original);
                 
                 // Verify exact replication
                 EXPECT_EQ(copy.get_historyID(), original.get_historyID());
-                EXPECT_EQ(copy.get_sourceNodeGene().get_historyID(), original.get_sourceNodeGene().get_historyID());
-                EXPECT_EQ(copy.get_targetNodeGene().get_historyID(), original.get_targetNodeGene().get_historyID());
+                EXPECT_EQ(copy.get_sourceNodeIndex(), original.get_sourceNodeIndex());
+                EXPECT_EQ(copy.get_targetNodeIndex(), original.get_targetNodeIndex());
                 EXPECT_TRUE((runtime_attributes_equal<ConnectionGeneAttributes, ConnectionAttributesRegistry>(copy.get_attributes(), original.get_attributes())));
                 
                 ++test_count;
@@ -335,13 +328,13 @@ TEST_F(ConnectionGeneTest, CopyConstructor_Independence) {
         GTEST_SKIP() << "No attribute combinations available for testing";
     }
     
-    auto nodeGenePairs = getTestNodeGenePairs();
-    if (nodeGenePairs.empty()) {
-        GTEST_SKIP() << "No node gene pairs available for testing";
+    auto indexPairs = getTestIndexPairs();
+    if (indexPairs.empty()) {
+        GTEST_SKIP() << "No index pairs available for testing";
     }
     
-    const auto& [sourceNode, targetNode] = nodeGenePairs[0];
-    ConnectionGene original(100, sourceNode, targetNode, attributeCombinations[0]);
+    const auto& [sourceIndex, targetIndex] = indexPairs[0];
+    ConnectionGene original(100, sourceIndex, targetIndex, attributeCombinations[0]);
     ConnectionGene copy(original);
     
     // Modify copy's attributes if possible
@@ -363,9 +356,9 @@ TEST_F(ConnectionGeneTest, CopyConstructor_Independence) {
 // =============================================================================
 
 TEST_F(ConnectionGeneTest, ComparisonOperators_Equality) {
-    auto nodeGenePairs = getTestNodeGenePairs();
-    if (nodeGenePairs.empty()) {
-        GTEST_SKIP() << "No node gene pairs available for testing";
+    auto indexPairs = getTestIndexPairs();
+    if (indexPairs.empty()) {
+        GTEST_SKIP() << "No index pairs available for testing";
     }
     
     auto attributeCombinations = generate_runtime_attribute_combinations<ConnectionGeneAttributes, ConnectionAttributesRegistry>();
@@ -373,24 +366,24 @@ TEST_F(ConnectionGeneTest, ComparisonOperators_Equality) {
         GTEST_SKIP() << "No attribute combinations available for testing";
     }
     
-    const auto& [sourceNode, targetNode] = nodeGenePairs[0];
+    const auto& [sourceIndex, targetIndex] = indexPairs[0];
     const auto& attrs = attributeCombinations[0];
     
     // Test self-equality
-    ConnectionGene conn1(42, sourceNode, targetNode, attrs);
+    ConnectionGene conn1(42, sourceIndex, targetIndex, attrs);
     EXPECT_TRUE(conn1 == conn1) << "Connection should be equal to itself";
     EXPECT_FALSE(conn1 != conn1) << "Connection should not be unequal to itself";
     
     // Test equality with identical construction
-    ConnectionGene conn2(42, sourceNode, targetNode, attrs);
+    ConnectionGene conn2(42, sourceIndex, targetIndex, attrs);
     EXPECT_TRUE(conn1 == conn2) << "Identical connections should be equal";
     EXPECT_FALSE(conn1 != conn2) << "Identical connections should not be unequal";
 }
 
 TEST_F(ConnectionGeneTest, ComparisonOperators_DifferentHistoryIDs) {
-    auto nodeGenePairs = getTestNodeGenePairs();
-    if (nodeGenePairs.empty()) {
-        GTEST_SKIP() << "No node gene pairs available for testing";
+    auto indexPairs = getTestIndexPairs();
+    if (indexPairs.empty()) {
+        GTEST_SKIP() << "No index pairs available for testing";
     }
     
     auto attributeCombinations = generate_runtime_attribute_combinations<ConnectionGeneAttributes, ConnectionAttributesRegistry>();
@@ -398,20 +391,20 @@ TEST_F(ConnectionGeneTest, ComparisonOperators_DifferentHistoryIDs) {
         GTEST_SKIP() << "No attribute combinations available for testing";
     }
     
-    const auto& [sourceNode, targetNode] = nodeGenePairs[0];
+    const auto& [sourceIndex, targetIndex] = indexPairs[0];
     const auto& attrs = attributeCombinations[0];
     
-    ConnectionGene conn1(42, sourceNode, targetNode, attrs);
-    ConnectionGene conn2(43, sourceNode, targetNode, attrs);
+    ConnectionGene conn1(42, sourceIndex, targetIndex, attrs);
+    ConnectionGene conn2(43, sourceIndex, targetIndex, attrs);
     
     EXPECT_FALSE(conn1 == conn2) << "Connections with different history IDs should not be equal";
     EXPECT_TRUE(conn1 != conn2) << "Connections with different history IDs should be unequal";
 }
 
-TEST_F(ConnectionGeneTest, ComparisonOperators_SameHistoryIDsButDifferentNodeReferences) {
-    auto nodeGenePairs = getTestNodeGenePairs();
-    if (nodeGenePairs.size() < 2) {
-        GTEST_SKIP() << "Need at least 2 node gene pairs for testing";
+TEST_F(ConnectionGeneTest, ComparisonOperators_SameHistoryIDDifferentIndices) {
+    auto indexPairs = getTestIndexPairs();
+    if (indexPairs.size() < 2) {
+        GTEST_SKIP() << "Need at least 2 index pairs for testing";
     }
     
     auto attributeCombinations = generate_runtime_attribute_combinations<ConnectionGeneAttributes, ConnectionAttributesRegistry>();
@@ -419,97 +412,71 @@ TEST_F(ConnectionGeneTest, ComparisonOperators_SameHistoryIDsButDifferentNodeRef
         GTEST_SKIP() << "No attribute combinations available for testing";
     }
     
-    // Create nodes with SAME history IDs but different references
-    // This simulates cross-genome comparison where nodes have same IDs but are different objects
-    auto sourceNode1 = create_test_node_gene(100, NodeType::INPUT);  // historyID = 100
-    auto targetNode1 = create_test_node_gene(200, NodeType::OUTPUT); // historyID = 200
-    auto sourceNode2 = create_test_node_gene(100, NodeType::INPUT);  // historyID = 100 (same as sourceNode1)
-    auto targetNode2 = create_test_node_gene(200, NodeType::OUTPUT); // historyID = 200 (same as targetNode1)
-    
     const auto& attrs = attributeCombinations[0];
     
-    ConnectionGene conn1(42, sourceNode1, targetNode1, attrs);
-    ConnectionGene conn2(42, sourceNode2, targetNode2, attrs);
+    // Find two pairs with different indices
+    size_t pair1_idx = 0;
+    size_t pair2_idx = 1;
     
-    // Even though node references are different, the connections should be equal
-    // because they have the same historyID and the nodes have the same historyIDs
-    EXPECT_TRUE(conn1 == conn2) << "Connections with same history ID should be equal regardless of node references";
+    // Look for pairs with different source or target indices
+    for (size_t i = 1; i < indexPairs.size(); ++i) {
+        if (indexPairs[0].first != indexPairs[i].first || indexPairs[0].second != indexPairs[i].second) {
+            pair2_idx = i;
+            break;
+        }
+    }
+    
+    // Create connections with same history ID but different indices
+    ConnectionGene conn1(42, indexPairs[pair1_idx].first, indexPairs[pair1_idx].second, attrs);
+    ConnectionGene conn2(42, indexPairs[pair2_idx].first, indexPairs[pair2_idx].second, attrs);  // Different indices
+    
+    // Connections should be equal because comparison is based on connection history ID only
+    EXPECT_TRUE(conn1 == conn2) << "Connections with same history ID should be equal regardless of indices";
     EXPECT_FALSE(conn1 != conn2) << "Connections with same history ID should not be unequal";
     
-    // Verify the node references are indeed different objects but have same history IDs
-    EXPECT_NE(&sourceNode1, &sourceNode2) << "Source node references should be different";
-    EXPECT_NE(&targetNode1, &targetNode2) << "Target node references should be different";
-    EXPECT_EQ(sourceNode1.get_historyID(), sourceNode2.get_historyID()) << "Source nodes should have same history ID";
-    EXPECT_EQ(targetNode1.get_historyID(), targetNode2.get_historyID()) << "Target nodes should have same history ID";
+    // Verify at least one index is different
+    EXPECT_TRUE(conn1.get_sourceNodeIndex() != conn2.get_sourceNodeIndex() || 
+               conn1.get_targetNodeIndex() != conn2.get_targetNodeIndex()) 
+               << "At least one index should be different";
 }
 
-TEST_F(ConnectionGeneTest, ComparisonOperators_DifferentNodeHistoryIDs) {
-    auto attributeCombinations = generate_runtime_attribute_combinations<ConnectionGeneAttributes, ConnectionAttributesRegistry>();
-    if (attributeCombinations.empty()) {
-        GTEST_SKIP() << "No attribute combinations available for testing";
-    }
-    
-    // Create nodes with DIFFERENT history IDs
-    auto sourceNode1 = create_test_node_gene(100, NodeType::INPUT);  // historyID = 100
-    auto targetNode1 = create_test_node_gene(200, NodeType::OUTPUT); // historyID = 200
-    auto sourceNode2 = create_test_node_gene(101, NodeType::INPUT);  // historyID = 101 (different)
-    auto targetNode2 = create_test_node_gene(201, NodeType::OUTPUT); // historyID = 201 (different)
-    
-    const auto& attrs = attributeCombinations[0];
-    
-    // Note: Using SAME connection history ID (42) to test that comparison is based on connection history ID only
-    ConnectionGene conn1(42, sourceNode1, targetNode1, attrs);
-    ConnectionGene conn2(42, sourceNode2, targetNode2, attrs);
-    
-    // Connections should still be equal because comparison is based on connection history ID only,
-    // not on the node history IDs. This is the key insight from the implementation.
-    EXPECT_TRUE(conn1 == conn2) << "Connections with same connection history ID should be equal regardless of node history IDs";
-    EXPECT_FALSE(conn1 != conn2) << "Connections with same connection history ID should not be unequal";
-    
-    // But let's also test with different connection history IDs to show the difference
-    ConnectionGene conn3(43, sourceNode1, targetNode1, attrs); // Different connection history ID
-    EXPECT_FALSE(conn1 == conn3) << "Connections with different connection history IDs should not be equal";
-    EXPECT_TRUE(conn1 != conn3) << "Connections with different connection history IDs should be unequal";
-}
-
-TEST_F(ConnectionGeneTest, ComparisonOperators_DifferentAttributes) {
-    auto nodeGenePairs = getTestNodeGenePairs();
-    if (nodeGenePairs.empty()) {
-        GTEST_SKIP() << "No node gene pairs available for testing";
-    }
-    
+TEST_F(ConnectionGeneTest, ComparisonOperators_SameHistoryIDDifferentAttributes) {
     auto attributeCombinations = generate_runtime_attribute_combinations<ConnectionGeneAttributes, ConnectionAttributesRegistry>();
     if (attributeCombinations.size() < 2) {
         GTEST_SKIP() << "Need at least 2 attribute combinations for testing";
     }
     
-    const auto& [sourceNode, targetNode] = nodeGenePairs[0];
-    
-    ConnectionGene conn1(42, sourceNode, targetNode, attributeCombinations[0]);
-    ConnectionGene conn2(42, sourceNode, targetNode, attributeCombinations[1]);
-    
-    // ConnectionGene comparison is based on historyID only, not attributes
-    // This is correct behavior for NEAT - connections with same innovation number are considered the same
-    EXPECT_TRUE(conn1 == conn2) << "Connections with same history ID should be equal regardless of attributes";
-    EXPECT_FALSE(conn1 != conn2) << "Connections with same history ID should not be unequal";
-    
-    // Verify that attributes are actually different but comparison still succeeds
-    bool attributes_different = !runtime_attributes_equal<ConnectionGeneAttributes, ConnectionAttributesRegistry>(attributeCombinations[0], attributeCombinations[1]);
-    if (attributes_different) {
-        std::cout << "✓ Verified: Attributes are different but connections are still considered equal (correct NEAT behavior)" << std::endl;
-    } else {
-        std::cout << "Note: Generated attribute combinations happened to be identical" << std::endl;
+    auto indexPairs = getTestIndexPairs();
+    if (indexPairs.empty()) {
+        GTEST_SKIP() << "No index pairs available for testing";
     }
+    
+    const auto& [sourceIndex, targetIndex] = indexPairs[0];
+    
+    // Note: Using SAME connection history ID (42) to test that comparison is based on connection history ID only
+    ConnectionGene conn1(42, sourceIndex, targetIndex, attributeCombinations[0]);
+    ConnectionGene conn2(42, sourceIndex, targetIndex, attributeCombinations[1]);  // Different attributes
+    
+    // Connections should be equal because comparison is based on connection history ID only,
+    // not on the attributes. This is correct NEAT behavior.
+    EXPECT_TRUE(conn1 == conn2) << "Connections with same connection history ID should be equal regardless of attributes";
+    EXPECT_FALSE(conn1 != conn2) << "Connections with same connection history ID should not be unequal";
+    
+    // But let's also test with different connection history IDs to show the difference
+    ConnectionGene conn3(43, sourceIndex, targetIndex, attributeCombinations[0]); // Different connection history ID
+    EXPECT_FALSE(conn1 == conn3) << "Connections with different connection history IDs should not be equal";
+    EXPECT_TRUE(conn1 != conn3) << "Connections with different connection history IDs should be unequal";
 }
+
 
 // =============================================================================
 // ATTRIBUTE MODIFICATION TESTS
 // =============================================================================
 
 TEST_F(ConnectionGeneTest, AttributeModification_MutabilityMatrix) {
-    auto nodeGenePairs = getTestNodeGenePairs();
-    if (nodeGenePairs.empty()) {
-        GTEST_SKIP() << "No node gene pairs available for testing";
+    auto indexPairs = getTestIndexPairs();
+    if (indexPairs.empty()) {
+        GTEST_SKIP() << "No index pairs available for testing";
     }
     
     auto attributeCombinations = generate_runtime_attribute_combinations<ConnectionGeneAttributes, ConnectionAttributesRegistry>();
@@ -517,8 +484,8 @@ TEST_F(ConnectionGeneTest, AttributeModification_MutabilityMatrix) {
         GTEST_SKIP() << "No attribute combinations available for testing";
     }
     
-    const auto& [sourceNode, targetNode] = nodeGenePairs[0];
-    ConnectionGene conn(800, sourceNode, targetNode, attributeCombinations[0]);
+    const auto& [sourceIndex, targetIndex] = indexPairs[0];
+    ConnectionGene conn(800, sourceIndex, targetIndex, attributeCombinations[0]);
     size_t field_count = ConnectionAttributesRegistry::field_count();
     
     // Test each field can be modified
@@ -531,17 +498,17 @@ TEST_F(ConnectionGeneTest, AttributeModification_MutabilityMatrix) {
         
         // Verify immutable fields still unchanged
         EXPECT_EQ(conn.get_historyID(), 800u);
-        EXPECT_EQ(&conn.get_sourceNodeGene(), &sourceNode);
-        EXPECT_EQ(&conn.get_targetNodeGene(), &targetNode);
+        EXPECT_EQ(conn.get_sourceNodeIndex(), sourceIndex);
+        EXPECT_EQ(conn.get_targetNodeIndex(), targetIndex);
     }
     
     std::cout << "Tested modification of " << field_count << " field(s)" << std::endl;
 }
 
 TEST_F(ConnectionGeneTest, AttributeModification_ConstCorrectness) {
-    auto nodeGenePairs = getTestNodeGenePairs();
-    if (nodeGenePairs.empty()) {
-        GTEST_SKIP() << "No node gene pairs available for testing";
+    auto indexPairs = getTestIndexPairs();
+    if (indexPairs.empty()) {
+        GTEST_SKIP() << "No index pairs available for testing";
     }
     
     auto attributeCombinations = generate_runtime_attribute_combinations<ConnectionGeneAttributes, ConnectionAttributesRegistry>();
@@ -549,8 +516,8 @@ TEST_F(ConnectionGeneTest, AttributeModification_ConstCorrectness) {
         GTEST_SKIP() << "No attribute combinations available for testing";
     }
     
-    const auto& [sourceNode, targetNode] = nodeGenePairs[0];
-    const ConnectionGene const_conn(900, sourceNode, targetNode, attributeCombinations[0]);
+    const auto& [sourceIndex, targetIndex] = indexPairs[0];
+    const ConnectionGene const_conn(900, sourceIndex, targetIndex, attributeCombinations[0]);
     
     // Const getter should return const reference
     const auto& const_attrs = const_conn.get_attributes();

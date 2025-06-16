@@ -88,21 +88,21 @@ protected:
             if (conn.get_historyID() == originalConnectionID) {
                 conn.get_attributes().enabled = false;
                 
-                // Get source and target for the new connections
-                const NodeGene& sourceNode = conn.get_sourceNodeGene();
-                const NodeGene& targetNode = conn.get_targetNodeGene();
+                // Get source and target indices for the new connections
+                size_t sourceIndex = conn.get_sourceNodeIndex();
+                size_t targetIndex = conn.get_targetNodeIndex();
                 
                 // Add new hidden node
                 nodeGenes.emplace_back(newNodeID, NodeType::HIDDEN, NodeGeneAttributes{ActivationType::SIGMOID});
-                const NodeGene& newNode = nodeGenes.back();
+                size_t newNodeIndex = nodeGenes.size() - 1; // Index of the newly added node
                 
                 // Add first connection: source -> new node
                 ConnectionGeneAttributes firstAttrs{1.0f, true};
-                connectionGenes.emplace_back(firstConnectionID, sourceNode, newNode, firstAttrs);
+                connectionGenes.emplace_back(firstConnectionID, sourceIndex, newNodeIndex, firstAttrs);
                 
                 // Add second connection: new node -> target
                 ConnectionGeneAttributes secondAttrs{conn.get_attributes().weight, true};
-                connectionGenes.emplace_back(secondConnectionID, newNode, targetNode, secondAttrs);
+                connectionGenes.emplace_back(secondConnectionID, newNodeIndex, targetIndex, secondAttrs);
                 
                 break;
             }
@@ -155,8 +155,8 @@ protected:
         
         for (const auto& conn : genome.get_connectionGenes()) {
             if (conn.get_attributes().enabled) {
-                includedHistoryIDs.insert(conn.get_sourceNodeGene().get_historyID());
-                includedHistoryIDs.insert(conn.get_targetNodeGene().get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_sourceNodeIndex()].get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_targetNodeIndex()].get_historyID());
             }
         }
         
@@ -221,8 +221,8 @@ protected:
         
         for (const auto& conn : genome.get_connectionGenes()) {
             if (conn.get_attributes().enabled) {
-                expectedIncludedNodes.insert(conn.get_sourceNodeGene().get_historyID());
-                expectedIncludedNodes.insert(conn.get_targetNodeGene().get_historyID());
+                expectedIncludedNodes.insert(nodeGenes[conn.get_sourceNodeIndex()].get_historyID());
+                expectedIncludedNodes.insert(nodeGenes[conn.get_targetNodeIndex()].get_historyID());
             }
         }
         
@@ -279,33 +279,37 @@ TEST_F(PhenotypeUpdateNodeTest, IncorrectConnectionStates_Fails) {
     setNodeMutationDeltas(genome, 11, 13, 14);
     EXPECT_NO_THROW(Operator::phenotypeUpdateNode(genome));
     
-    // Reset for next test
-    genome = createBasicGenome();
-    simulateNodeMutation(genome, 11, 4, 13, 14);
-    
-    // Manually enable the "disabled" connection - should fail
-    for (auto& conn : genome.get_connectionGenes()) {
-        if (conn.get_historyID() == 11) {
-            conn.get_attributes().enabled = true;
-            break;
+    // Test 2: Manually enable the "disabled" connection - should fail
+    {
+        Genome testGenome = createBasicGenome();
+        simulateNodeMutation(testGenome, 11, 4, 13, 14);
+        
+        // Manually enable the "disabled" connection - should fail
+        for (auto& conn : testGenome.get_connectionGenes()) {
+            if (conn.get_historyID() == 11) {
+                conn.get_attributes().enabled = true;
+                break;
+            }
         }
+        setNodeMutationDeltas(testGenome, 11, 13, 14);
+        EXPECT_DEATH(Operator::phenotypeUpdateNode(testGenome), "Disabled connection must be disabled");
     }
-    setNodeMutationDeltas(genome, 11, 13, 14);
-    EXPECT_DEATH(Operator::phenotypeUpdateNode(genome), "Disabled connection must be disabled");
     
-    // Reset for next test
-    genome = createBasicGenome();
-    simulateNodeMutation(genome, 11, 4, 13, 14);
-    
-    // Manually disable one of the "enabled" connections - should fail
-    for (auto& conn : genome.get_connectionGenes()) {
-        if (conn.get_historyID() == 13) {
-            conn.get_attributes().enabled = false;
-            break;
+    // Test 3: Manually disable one of the "enabled" connections - should fail
+    {
+        Genome testGenome = createBasicGenome();
+        simulateNodeMutation(testGenome, 11, 4, 13, 14);
+        
+        // Manually disable one of the "enabled" connections - should fail
+        for (auto& conn : testGenome.get_connectionGenes()) {
+            if (conn.get_historyID() == 13) {
+                conn.get_attributes().enabled = false;
+                break;
+            }
         }
+        setNodeMutationDeltas(testGenome, 11, 13, 14);
+        EXPECT_DEATH(Operator::phenotypeUpdateNode(testGenome), "First new connection must be enabled");
     }
-    setNodeMutationDeltas(genome, 11, 13, 14);
-    EXPECT_DEATH(Operator::phenotypeUpdateNode(genome), "First new connection must be enabled");
 }
 
 // Node Mutation Pattern Tests

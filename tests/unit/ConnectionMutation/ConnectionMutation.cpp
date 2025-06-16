@@ -90,9 +90,10 @@ protected:
     // Helper to count unique connection pairs in a genome
     std::set<std::pair<uint32_t, uint32_t>> getConnectionPairs(const Genome& genome) {
         std::set<std::pair<uint32_t, uint32_t>> pairs;
+        const auto& nodes = genome.get_nodeGenes();
         for (const auto& conn : genome.get_connectionGenes()) {
-            pairs.insert({conn.get_sourceNodeGene().get_historyID(), 
-                         conn.get_targetNodeGene().get_historyID()});
+            pairs.insert({nodes[conn.get_sourceNodeIndex()].get_historyID(), 
+                         nodes[conn.get_targetNodeIndex()].get_historyID()});
         }
         return pairs;
     }
@@ -121,10 +122,12 @@ protected:
             bool found = false;
             for (const auto& mutConn : mutConns) {
                 if (origConn.get_historyID() == mutConn.get_historyID()) {
-                    EXPECT_EQ(origConn.get_sourceNodeGene().get_historyID(), 
-                             mutConn.get_sourceNodeGene().get_historyID());
-                    EXPECT_EQ(origConn.get_targetNodeGene().get_historyID(), 
-                             mutConn.get_targetNodeGene().get_historyID());
+                    const auto& origNodes = original.get_nodeGenes();
+                    const auto& mutNodes = mutated.get_nodeGenes();
+                    EXPECT_EQ(origNodes[origConn.get_sourceNodeIndex()].get_historyID(), 
+                             mutNodes[mutConn.get_sourceNodeIndex()].get_historyID());
+                    EXPECT_EQ(origNodes[origConn.get_targetNodeIndex()].get_historyID(), 
+                             mutNodes[mutConn.get_targetNodeIndex()].get_historyID());
                     EXPECT_FLOAT_EQ(origConn.get_attributes().weight, mutConn.get_attributes().weight);
                     EXPECT_EQ(origConn.get_attributes().enabled, mutConn.get_attributes().enabled);
                     found = true;
@@ -228,8 +231,9 @@ TEST_F(ConnectionMutationTest, NoSelfConnections) {
         Genome mutated = connectionMutation(original, std::move(historyTracker), params);
         
         const auto& newConn = mutated.get_connectionGenes()[0];
-        EXPECT_NE(newConn.get_sourceNodeGene().get_historyID(), 
-                 newConn.get_targetNodeGene().get_historyID());
+        const auto& nodes = mutated.get_nodeGenes();
+        EXPECT_NE(nodes[newConn.get_sourceNodeIndex()].get_historyID(), 
+                 nodes[newConn.get_targetNodeIndex()].get_historyID());
     }
 }
 
@@ -271,8 +275,9 @@ TEST_F(ConnectionMutationTest, MultiplePossibleOutcomes_CanProduceDifferent) {
         Genome mutated = connectionMutation(original, std::move(historyTracker), params);
         
         const auto& newConn = mutated.get_connectionGenes()[0];
-        observedPairs.insert({newConn.get_sourceNodeGene().get_historyID(),
-                             newConn.get_targetNodeGene().get_historyID()});
+        const auto& nodes = mutated.get_nodeGenes();
+        observedPairs.insert({nodes[newConn.get_sourceNodeIndex()].get_historyID(),
+                             nodes[newConn.get_targetNodeIndex()].get_historyID()});
     }
     
     // Should observe more than one unique pair (accounting for randomness outliers)

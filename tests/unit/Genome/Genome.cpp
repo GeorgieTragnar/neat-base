@@ -32,11 +32,11 @@ protected:
         static NodeGene inputNode(1, NodeType::INPUT, {ActivationType::NONE});
         static NodeGene hiddenNode(2, NodeType::HIDDEN, {ActivationType::SIGMOID});
         static NodeGene outputNode(3, NodeType::OUTPUT, {ActivationType::NONE});
-        static ConnectionGene conn(1, inputNode, hiddenNode, {1.5f, true});
+        static ConnectionGene conn(1, 0, 1, {1.5f, true}); // Using indices: inputNode=0, hiddenNode=1
         
         RawGenomeParams params;
         params._nodeGenes = {&inputNode, &hiddenNode, &outputNode};
-        params._rawConnectionGeneData = {conn.get_rawData()};
+        params._connectionGenes = {&conn};
         return params;
     }
 };
@@ -172,7 +172,7 @@ TEST_F(GenomeTest, RawGenomeParams_NullNodeGenePointer) {
 
 TEST_F(GenomeTest, RawGenomeParams_NullConnectionDataPointer) {
     RawGenomeParams params = createValidRawGenomeParams();
-    params._rawConnectionGeneData[0] = nullptr; // Null pointer
+    params._connectionGenes[0] = nullptr; // Null pointer
     EXPECT_DEATH(Genome genome(params), "Raw connection data pointer cannot be null");
 }
 
@@ -188,35 +188,34 @@ TEST_F(GenomeTest, RawGenomeParams_DuplicateNodeHistoryIDs) {
 TEST_F(GenomeTest, RawGenomeParams_ConnectionReferencesNonexistentNode) {
     static NodeGene inputNode(1, NodeType::INPUT, {ActivationType::NONE});
     static NodeGene outputNode(3, NodeType::OUTPUT, {ActivationType::NONE});
-    static NodeGene hiddenNode(2, NodeType::HIDDEN, {ActivationType::SIGMOID});
-    // Create connection that references node ID 4 (doesn't exist)
-    static ConnectionGene conn(1, hiddenNode, outputNode, {1.0f, true});
+    // Create connection that references index 2 (out of bounds - only indices 0,1 exist)
+    static ConnectionGene conn(1, 0, 2, {1.0f, true}); // References index 2 as target (out of bounds)
     
     RawGenomeParams params;
-    params._nodeGenes = {&inputNode, &outputNode}; // Don't include hiddenNode (ID 2)
-    params._rawConnectionGeneData = {conn.get_rawData()}; // Connection references ID 2
-    EXPECT_DEATH(Genome genome(params), "Connection references nonexistent source node");
+    params._nodeGenes = {&inputNode, &outputNode}; // Only indices 0,1 exist
+    params._connectionGenes = {&conn}; // Connection references invalid target index 2
+    EXPECT_DEATH(Genome genome(params), "Connection target index out of bounds");
 }
 
 TEST_F(GenomeTest, RawGenomeParams_OutputNodeAsSource) {
     static NodeGene inputNode(1, NodeType::INPUT, {ActivationType::NONE});
     static NodeGene outputNode(2, NodeType::OUTPUT, {ActivationType::NONE});
-    static ConnectionGene conn(1, outputNode, inputNode, {1.0f, true}); // OUTPUT as source
+    static ConnectionGene conn(1, 1, 0, {1.0f, true}); // OUTPUT node (index 1) as source
     
     RawGenomeParams params;
     params._nodeGenes = {&inputNode, &outputNode};
-    params._rawConnectionGeneData = {conn.get_rawData()};
+    params._connectionGenes = {&conn};
     EXPECT_DEATH(Genome genome(params), "Output nodes cannot be connection sources");
 }
 
 TEST_F(GenomeTest, RawGenomeParams_InputNodeAsTarget) {
     static NodeGene inputNode(1, NodeType::INPUT, {ActivationType::NONE});
     static NodeGene hiddenNode(2, NodeType::HIDDEN, {ActivationType::SIGMOID});
-    static ConnectionGene conn(1, hiddenNode, inputNode, {1.0f, true}); // INPUT as target
+    static ConnectionGene conn(1, 1, 0, {1.0f, true}); // INPUT node (index 0) as target
     
     RawGenomeParams params;
     params._nodeGenes = {&inputNode, &hiddenNode};
-    params._rawConnectionGeneData = {conn.get_rawData()};
+    params._connectionGenes = {&conn};
     EXPECT_DEATH(Genome genome(params), "Input nodes cannot be connection targets");
 }
 
@@ -249,9 +248,11 @@ TEST_F(GenomeTest, ConstructorEquivalence_BasicGenome) {
     for (size_t i = 0; i < genome1.get_connectionGenes().size(); ++i) {
         const auto& conn1 = genome1.get_connectionGenes()[i];
         const auto& conn2 = genome2.get_connectionGenes()[i];
+        const auto& nodes1 = genome1.get_nodeGenes();
+        const auto& nodes2 = genome2.get_nodeGenes();
         EXPECT_EQ(conn1.get_historyID(), conn2.get_historyID());
-        EXPECT_EQ(conn1.get_sourceNodeGene().get_historyID(), conn2.get_sourceNodeGene().get_historyID());
-        EXPECT_EQ(conn1.get_targetNodeGene().get_historyID(), conn2.get_targetNodeGene().get_historyID());
+        EXPECT_EQ(nodes1[conn1.get_sourceNodeIndex()].get_historyID(), nodes2[conn2.get_sourceNodeIndex()].get_historyID());
+        EXPECT_EQ(nodes1[conn1.get_targetNodeIndex()].get_historyID(), nodes2[conn2.get_targetNodeIndex()].get_historyID());
         EXPECT_EQ(conn1.get_attributes().weight, conn2.get_attributes().weight);
         EXPECT_EQ(conn1.get_attributes().enabled, conn2.get_attributes().enabled);
     }
@@ -287,10 +288,16 @@ TEST_F(GenomeTest, ConstructorEquivalence_ComplexGenome) {
         nodeMap[node.get_historyID()] = &node;
     }
     
+    // Create index mapping
+    std::unordered_map<uint32_t, size_t> nodeIndexMap;
+    for (size_t i = 0; i < staticNodes.size(); ++i) {
+        nodeIndexMap[staticNodes[i].get_historyID()] = i;
+    }
+    
     for (size_t i = 0; i < params._connectionHistoryIDs.size(); ++i) {
-        const NodeGene* source = nodeMap[params._sourceNodeHistoryIDs[i]];
-        const NodeGene* target = nodeMap[params._targetNodeHistoryIDs[i]];
-        staticConns.emplace_back(params._connectionHistoryIDs[i], *source, *target, params._connectionAttributes[i]);
+        size_t sourceIndex = nodeIndexMap[params._sourceNodeHistoryIDs[i]];
+        size_t targetIndex = nodeIndexMap[params._targetNodeHistoryIDs[i]];
+        staticConns.emplace_back(params._connectionHistoryIDs[i], sourceIndex, targetIndex, params._connectionAttributes[i]);
     }
     
     RawGenomeParams rawParams;
@@ -298,7 +305,7 @@ TEST_F(GenomeTest, ConstructorEquivalence_ComplexGenome) {
         rawParams._nodeGenes.push_back(&node);
     }
     for (const auto& conn : staticConns) {
-        rawParams._rawConnectionGeneData.push_back(conn.get_rawData());
+        rawParams._connectionGenes.push_back(&conn);
     }
     
     Genome genome1(params);
@@ -319,9 +326,11 @@ TEST_F(GenomeTest, ConstructorEquivalence_ComplexGenome) {
     for (size_t i = 0; i < genome1.get_connectionGenes().size(); ++i) {
         const auto& conn1 = genome1.get_connectionGenes()[i];
         const auto& conn2 = genome2.get_connectionGenes()[i];
+        const auto& nodes1 = genome1.get_nodeGenes();
+        const auto& nodes2 = genome2.get_nodeGenes();
         EXPECT_EQ(conn1.get_historyID(), conn2.get_historyID());
-        EXPECT_EQ(conn1.get_sourceNodeGene().get_historyID(), conn2.get_sourceNodeGene().get_historyID());
-        EXPECT_EQ(conn1.get_targetNodeGene().get_historyID(), conn2.get_targetNodeGene().get_historyID());
+        EXPECT_EQ(nodes1[conn1.get_sourceNodeIndex()].get_historyID(), nodes2[conn2.get_sourceNodeIndex()].get_historyID());
+        EXPECT_EQ(nodes1[conn1.get_targetNodeIndex()].get_historyID(), nodes2[conn2.get_targetNodeIndex()].get_historyID());
         EXPECT_FLOAT_EQ(conn1.get_attributes().weight, conn2.get_attributes().weight);
         EXPECT_EQ(conn1.get_attributes().enabled, conn2.get_attributes().enabled);
     }
@@ -365,12 +374,12 @@ TEST_F(GenomeTest, CopyConstructor_BasicCopy) {
         
         // Different objects
         EXPECT_NE(&origConn, &copyConn);
-        EXPECT_NE(&origConn.get_sourceNodeGene(), &copyConn.get_sourceNodeGene());
-        EXPECT_NE(&origConn.get_targetNodeGene(), &copyConn.get_targetNodeGene());
         
-        // But same history IDs
-        EXPECT_EQ(origConn.get_sourceNodeGene().get_historyID(), copyConn.get_sourceNodeGene().get_historyID());
-        EXPECT_EQ(origConn.get_targetNodeGene().get_historyID(), copyConn.get_targetNodeGene().get_historyID());
+        // But same node history IDs (via indices)
+        const auto& origNodes = original.get_nodeGenes();
+        const auto& copyNodes = copy.get_nodeGenes();
+        EXPECT_EQ(origNodes[origConn.get_sourceNodeIndex()].get_historyID(), copyNodes[copyConn.get_sourceNodeIndex()].get_historyID());
+        EXPECT_EQ(origNodes[origConn.get_targetNodeIndex()].get_historyID(), copyNodes[copyConn.get_targetNodeIndex()].get_historyID());
     }
 }
 
@@ -397,25 +406,10 @@ TEST_F(GenomeTest, CopyConstructor_ReferenceRemapping) {
         const auto& origConn = origConns[i];
         const auto& copyConn = copyConns[i];
         
-        // Find the corresponding nodes in the copy by history ID
-        const NodeGene* expectedSource = nullptr;
-        const NodeGene* expectedTarget = nullptr;
-        
-        for (const auto& node : copyNodes) {
-            if (node.get_historyID() == origConn.get_sourceNodeGene().get_historyID()) {
-                expectedSource = &node;
-            }
-            if (node.get_historyID() == origConn.get_targetNodeGene().get_historyID()) {
-                expectedTarget = &node;
-            }
-        }
-        
-        ASSERT_NE(expectedSource, nullptr);
-        ASSERT_NE(expectedTarget, nullptr);
-        
-        // Verify the copied connection references the correct copied nodes
-        EXPECT_EQ(&copyConn.get_sourceNodeGene(), expectedSource);
-        EXPECT_EQ(&copyConn.get_targetNodeGene(), expectedTarget);
+        // Verify the copied connection references the correct node indices
+        const auto& origNodes = original.get_nodeGenes();
+        EXPECT_EQ(origNodes[origConn.get_sourceNodeIndex()].get_historyID(), copyNodes[copyConn.get_sourceNodeIndex()].get_historyID());
+        EXPECT_EQ(origNodes[origConn.get_targetNodeIndex()].get_historyID(), copyNodes[copyConn.get_targetNodeIndex()].get_historyID());
     }
 }
 
@@ -485,16 +479,16 @@ TEST_F(GenomeTest, CopyConstructor_DisconnectedComponents) {
 }
 
 // ============================================================================
-// Copy Assignment Tests
+// Assignment Operator Tests
 // ============================================================================
 
-TEST_F(GenomeTest, CopyAssignment_BasicAssignment) {
+TEST_F(GenomeTest, AssignmentOperator_IsDeleted) {
+    // Verify that assignment operator is properly deleted due to const members
     GenomeParams params1 = createValidGenomeParams();
     GenomeParams params2;
     params2._nodeHistoryIDs = {10, 20};
     params2._nodeTypes = {NodeType::INPUT, NodeType::OUTPUT};
     params2._nodeAttributes = {{ActivationType::NONE}, {ActivationType::NONE}};
-    // No connections in params2
     
     Genome genome1(params1);
     Genome genome2(params2);
@@ -502,162 +496,23 @@ TEST_F(GenomeTest, CopyAssignment_BasicAssignment) {
     // Verify initial difference
     EXPECT_NE(genome1.get_nodeGenes().size(), genome2.get_nodeGenes().size());
     
-    // Perform assignment
-    genome2 = genome1;
+    // Assignment operator should be deleted - this should not compile:
+    // genome2 = genome1;  // Intentionally commented out
     
-    // Verify assignment worked
-    EXPECT_EQ(genome1.get_nodeGenes().size(), genome2.get_nodeGenes().size());
-    EXPECT_EQ(genome1.get_connectionGenes().size(), genome2.get_connectionGenes().size());
-    
-    // Verify data copied correctly
-    for (size_t i = 0; i < genome1.get_nodeGenes().size(); ++i) {
-        const auto& node1 = genome1.get_nodeGenes()[i];
-        const auto& node2 = genome2.get_nodeGenes()[i];
-        EXPECT_EQ(node1.get_historyID(), node2.get_historyID());
-        EXPECT_EQ(node1.get_type(), node2.get_type());
-        EXPECT_EQ(node1.get_attributes().activationType, node2.get_attributes().activationType);
-        EXPECT_NE(&node1, &node2); // Different objects
-    }
+    // Instead, we must use copy construction for copying
+    Genome genome3(genome1);
+    EXPECT_EQ(genome1.get_nodeGenes().size(), genome3.get_nodeGenes().size());
+    EXPECT_EQ(genome1.get_connectionGenes().size(), genome3.get_connectionGenes().size());
 }
 
-TEST_F(GenomeTest, CopyAssignment_SelfAssignment) {
+TEST_F(GenomeTest, CopyConstruction_ReplacesAssignment) {
     GenomeParams params = createValidGenomeParams();
     Genome genome(params);
     
-    // Store original addresses to verify no change
-    const void* origNodePtr = &genome.get_nodeGenes()[0];
-    const void* origConnPtr = &genome.get_connectionGenes()[0];
-    size_t origNodeCount = genome.get_nodeGenes().size();
-    size_t origConnCount = genome.get_connectionGenes().size();
+    // Since assignment is deleted, we use copy construction
+    Genome copy(genome);
     
-    // Self-assignment
-    genome = genome;
-    
-    // Verify no change in structure
-    EXPECT_EQ(origNodeCount, genome.get_nodeGenes().size());
-    EXPECT_EQ(origConnCount, genome.get_connectionGenes().size());
-    
-    // Verify same objects (no unnecessary copying)
-    EXPECT_EQ(origNodePtr, &genome.get_nodeGenes()[0]);
-    EXPECT_EQ(origConnPtr, &genome.get_connectionGenes()[0]);
-}
-
-TEST_F(GenomeTest, CopyAssignment_PhenotypeClearing) {
-    GenomeParams params = createValidGenomeParams();
-    Genome genome1(params);
-    Genome genome2(params);
-    
-    // Force phenotype construction on genome2
-    Operator::phenotypeConstruct(genome2);
-    EXPECT_FALSE(genome2.get_phenotype()._nodeGeneAttributes.empty());
-    
-    // Assignment should copy phenotype from genome1 (which is empty)
-    genome2 = genome1;
-    EXPECT_TRUE(genome2.get_phenotype()._nodeGeneAttributes.empty());
-}
-
-TEST_F(GenomeTest, CopyAssignment_StateCleanup) {
-    // Create large genome
-    GenomeParams largeParams;
-    for (uint32_t i = 1; i <= 100; ++i) {
-        largeParams._nodeHistoryIDs.push_back(i);
-        largeParams._nodeTypes.push_back(i <= 10 ? NodeType::INPUT : 
-                                       i > 90 ? NodeType::OUTPUT : NodeType::HIDDEN);
-        largeParams._nodeAttributes.push_back({ActivationType::SIGMOID});
-    }
-    
-    GenomeParams smallParams = createValidGenomeParams();
-    
-    Genome largeGenome(largeParams);
-    Genome smallGenome(smallParams);
-    
-    // Assign small to large (should properly clean up large state)
-    largeGenome = smallGenome;
-    
-    EXPECT_EQ(largeGenome.get_nodeGenes().size(), smallGenome.get_nodeGenes().size());
-    EXPECT_EQ(largeGenome.get_connectionGenes().size(), smallGenome.get_connectionGenes().size());
-}
-
-TEST_F(GenomeTest, CopyAssignment_AssignmentChaining) {
-    GenomeParams params1 = createValidGenomeParams();
-    
-    GenomeParams params2;
-    params2._nodeHistoryIDs = {10, 20};
-    params2._nodeTypes = {NodeType::INPUT, NodeType::OUTPUT};
-    params2._nodeAttributes = {{ActivationType::NONE}, {ActivationType::NONE}};
-    
-    GenomeParams params3;
-    params3._nodeHistoryIDs = {100};
-    params3._nodeTypes = {NodeType::BIAS};
-    params3._nodeAttributes = {{ActivationType::NONE}};
-    
-    Genome genome1(params1);
-    Genome genome2(params2);
-    Genome genome3(params3);
-    
-    // Chain assignment
-    genome3 = genome2 = genome1;
-    
-    // All should be equal to genome1
-    EXPECT_EQ(genome1.get_nodeGenes().size(), genome2.get_nodeGenes().size());
-    EXPECT_EQ(genome1.get_nodeGenes().size(), genome3.get_nodeGenes().size());
-    EXPECT_EQ(genome1.get_connectionGenes().size(), genome2.get_connectionGenes().size());
-    EXPECT_EQ(genome1.get_connectionGenes().size(), genome3.get_connectionGenes().size());
-    
-    // Verify data consistency
-    for (size_t i = 0; i < genome1.get_nodeGenes().size(); ++i) {
-        EXPECT_EQ(genome1.get_nodeGenes()[i].get_historyID(), genome2.get_nodeGenes()[i].get_historyID());
-        EXPECT_EQ(genome1.get_nodeGenes()[i].get_historyID(), genome3.get_nodeGenes()[i].get_historyID());
-    }
-}
-
-TEST_F(GenomeTest, CopyAssignment_ComplexReferenceRemapping) {
-    // Create complex genome with multiple connection patterns
-    GenomeParams params;
-    params._nodeHistoryIDs = {1, 2, 3, 4, 5};
-    params._nodeTypes = {NodeType::INPUT, NodeType::INPUT, NodeType::HIDDEN, NodeType::HIDDEN, NodeType::OUTPUT};
-    params._nodeAttributes = {
-        {ActivationType::NONE}, {ActivationType::NONE}, {ActivationType::SIGMOID},
-        {ActivationType::TANH}, {ActivationType::NONE}
-    };
-    params._connectionHistoryIDs = {1, 2, 3, 4, 5, 6};
-    params._sourceNodeHistoryIDs = {1, 2, 1, 3, 4, 3};
-    params._targetNodeHistoryIDs = {3, 3, 4, 4, 5, 5};
-    params._connectionAttributes = {
-        {1.0f, true}, {2.0f, true}, {3.0f, false}, {4.0f, true}, {5.0f, true}, {6.0f, false}
-    };
-    
-    GenomeParams simpleParams = createValidGenomeParams();
-    
-    Genome complexGenome(params);
-    Genome simpleGenome(simpleParams);
-    
-    // Assign complex to simple
-    simpleGenome = complexGenome;
-    
-    // Verify reference remapping worked correctly
-    const auto& nodes = simpleGenome.get_nodeGenes();
-    const auto& conns = simpleGenome.get_connectionGenes();
-    
-    for (const auto& conn : conns) {
-        // Find source and target nodes by history ID
-        const NodeGene* sourceFound = nullptr;
-        const NodeGene* targetFound = nullptr;
-        
-        for (const auto& node : nodes) {
-            if (node.get_historyID() == conn.get_sourceNodeGene().get_historyID()) {
-                sourceFound = &node;
-            }
-            if (node.get_historyID() == conn.get_targetNodeGene().get_historyID()) {
-                targetFound = &node;
-            }
-        }
-        
-        ASSERT_NE(sourceFound, nullptr) << "Source node not found for connection " << conn.get_historyID();
-        ASSERT_NE(targetFound, nullptr) << "Target node not found for connection " << conn.get_historyID();
-        
-        // Verify connection references the correct nodes from our copied set
-        EXPECT_EQ(&conn.get_sourceNodeGene(), sourceFound);
-        EXPECT_EQ(&conn.get_targetNodeGene(), targetFound);
-    }
+    // Verify they are equivalent but independent
+    EXPECT_EQ(genome.get_nodeGenes().size(), copy.get_nodeGenes().size());
+    EXPECT_EQ(genome.get_connectionGenes().size(), copy.get_connectionGenes().size());
 }

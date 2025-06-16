@@ -117,14 +117,16 @@ protected:
         }
         
         // Same connection structure (but potentially different weights)
+        const auto& origNodes = original.get_nodeGenes();
+        const auto& mutNodes = mutated.get_nodeGenes();
         for (size_t i = 0; i < original.get_connectionGenes().size(); ++i) {
             const auto& origConn = original.get_connectionGenes()[i];
             const auto& mutConn = mutated.get_connectionGenes()[i];
             EXPECT_EQ(origConn.get_historyID(), mutConn.get_historyID());
-            EXPECT_EQ(origConn.get_sourceNodeGene().get_historyID(), 
-                     mutConn.get_sourceNodeGene().get_historyID());
-            EXPECT_EQ(origConn.get_targetNodeGene().get_historyID(), 
-                     mutConn.get_targetNodeGene().get_historyID());
+            EXPECT_EQ(origNodes[origConn.get_sourceNodeIndex()].get_historyID(), 
+                     mutNodes[mutConn.get_sourceNodeIndex()].get_historyID());
+            EXPECT_EQ(origNodes[origConn.get_targetNodeIndex()].get_historyID(), 
+                     mutNodes[mutConn.get_targetNodeIndex()].get_historyID());
             EXPECT_EQ(origConn.get_attributes().enabled, mutConn.get_attributes().enabled);
         }
     }

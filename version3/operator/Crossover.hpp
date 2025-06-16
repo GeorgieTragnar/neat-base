@@ -41,7 +41,6 @@ namespace {
     struct ConnectionGeneInfo {
         uint32_t innovationNumber;
         const ConnectionGene* genePtr;
-        const void* rawDataPtr;
         bool fromParentA;
     };
 
@@ -142,19 +141,19 @@ Genome crossover(
         processedConnections.insert(id);
         
         if (connMapB.find(id) != connMapB.end()) {
-            matchingConnections.push_back({id, &conn, conn.get_rawData(), true});
+            matchingConnections.push_back({id, &conn, true});
         } else {
-            disjointExcessConnections.push_back({id, &conn, conn.get_rawData(), true});
+            disjointExcessConnections.push_back({id, &conn, true});
         }
     }
     
     for (const auto& conn : connectionsB) {
         uint32_t id = conn.get_historyID();
         if (processedConnections.find(id) == processedConnections.end()) {
-            disjointExcessConnections.push_back({id, &conn, conn.get_rawData(), false});
+            disjointExcessConnections.push_back({id, &conn, false});
         } else {
             // This is a matching connection from parent B
-            matchingConnections.push_back({id, &conn, conn.get_rawData(), false});
+            matchingConnections.push_back({id, &conn, false});
         }
     }
     
@@ -175,7 +174,7 @@ Genome crossover(
     }
     
     // Select inherited connection genes
-    std::vector<const void*> selectedConnections;
+    std::vector<const ConnectionGene*> selectedConnections;
     std::vector<uint32_t> connectionsToReactivate;
     
     // Matching connections: random selection (50/50) between parents
@@ -194,10 +193,10 @@ Genome crossover(
             (connections[0].fromParentA ? connections[0] : connections[1]) :
             (connections[0].fromParentA ? connections[1] : connections[0]);
         
-        selectedConnections.push_back(selectedConn.rawDataPtr);
+        selectedConnections.push_back(selectedConn.genePtr);
         
         // Apply disabled gene reactivation probability
-        if (!reinterpret_cast<const ConnectionGene::RawData*>(selectedConn.rawDataPtr)->_attributes.enabled) {
+        if (!selectedConn.genePtr->get_attributes().enabled) {
             if (uniform_dist(gen) < params._disabledGeneReactivationProbability) {
                 connectionsToReactivate.push_back(selectedConn.innovationNumber);
             }
@@ -208,14 +207,14 @@ Genome crossover(
     for (const auto& connInfo : disjointExcessConnections) {
         if ((parentAIsFitter && connInfo.fromParentA) || 
             (!parentAIsFitter && !connInfo.fromParentA)) {
-            selectedConnections.push_back(connInfo.rawDataPtr);
+            selectedConnections.push_back(connInfo.genePtr);
         }
     }
     
     // Build offspring
     RawGenomeParams rawParams;
     rawParams._nodeGenes = selectedNodes;
-    rawParams._rawConnectionGeneData = selectedConnections;
+    rawParams._connectionGenes = selectedConnections;
     
     Genome offspring(rawParams);
     

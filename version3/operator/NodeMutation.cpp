@@ -36,11 +36,14 @@ namespace {
     }
     
     // Helper to check if a node has active (enabled) connections in the genome
-    bool nodeHasActiveConnections(const std::vector<ConnectionGene>& connections, uint32_t nodeHistoryID) {
+    bool nodeHasActiveConnections(const std::vector<ConnectionGene>& connections, 
+                                 const std::vector<NodeGene>& nodes, 
+                                 uint32_t nodeHistoryID) {
         for (const auto& conn : connections) {
             if (conn.get_attributes().enabled) {
-                if (conn.get_sourceNodeGene().get_historyID() == nodeHistoryID ||
-                    conn.get_targetNodeGene().get_historyID() == nodeHistoryID) {
+                uint32_t sourceHistoryID = nodes[conn.get_sourceNodeIndex()].get_historyID();
+                uint32_t targetHistoryID = nodes[conn.get_targetNodeIndex()].get_historyID();
+                if (sourceHistoryID == nodeHistoryID || targetHistoryID == nodeHistoryID) {
                     return true;
                 }
             }
@@ -83,7 +86,7 @@ namespace {
         }
         
         // Step 4: Primary node is valid - check if it has active connections
-        if (!nodeHasActiveConnections(genomeConnections, primarySplitNodeID)) {
+        if (!nodeHasActiveConnections(genomeConnections, genomeNodes, primarySplitNodeID)) {
             // Node exists but has no active connections - reuse it
             return primarySplitNodeID;
         }
@@ -138,8 +141,8 @@ Genome Operator::nodeMutation(const Genome& genome,
     // Now safe to get references since no reallocations will occur
     const ConnectionGene& connectionToSplit = connections[selectedIndex];
     uint32_t connectionToSplitID = connectionToSplit.get_historyID();
-    uint32_t sourceNodeID = connectionToSplit.get_sourceNodeGene().get_historyID();
-    uint32_t targetNodeID = connectionToSplit.get_targetNodeGene().get_historyID();
+    uint32_t sourceNodeID = nodes[connectionToSplit.get_sourceNodeIndex()].get_historyID();
+    uint32_t targetNodeID = nodes[connectionToSplit.get_targetNodeIndex()].get_historyID();
     float originalWeight = connectionToSplit.get_attributes().weight;
     
     // Determine which split node to use via innovation decision tree
@@ -174,18 +177,22 @@ Genome Operator::nodeMutation(const Genome& genome,
     uint32_t inputConnID = historyTracker->get_connection(sourceNodeID, splitNodeID);
     uint32_t outputConnID = historyTracker->get_connection(splitNodeID, targetNodeID);
     
-    // Find the actual source and target nodes in the genome by ID
-    const NodeGene* sourceNode = nullptr;
-    const NodeGene* targetNode = nullptr;
-    for (const auto& node : nodes) {
-        if (node.get_historyID() == sourceNodeID) {
-            sourceNode = &node;
-        }
-        if (node.get_historyID() == targetNodeID) {
-            targetNode = &node;
+    // Find the indices of source, target, and split nodes in the genome
+    size_t sourceNodeIndex = SIZE_MAX;
+    size_t targetNodeIndex = SIZE_MAX;
+    size_t splitNodeIndex = SIZE_MAX;
+    
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        uint32_t nodeID = nodes[i].get_historyID();
+        if (nodeID == sourceNodeID) {
+            sourceNodeIndex = i;
+        } else if (nodeID == targetNodeID) {
+            targetNodeIndex = i;
+        } else if (nodeID == splitNodeID) {
+            splitNodeIndex = i;
         }
     }
-    assert(sourceNode != nullptr && targetNode != nullptr);
+    assert(sourceNodeIndex != SIZE_MAX && targetNodeIndex != SIZE_MAX && splitNodeIndex != SIZE_MAX);
     
     // Disable the original connection (safe - no reallocation)
     ConnectionGeneAttributes& originalConnAttribs = connections[selectedIndex].get_attributes();
@@ -196,13 +203,13 @@ Genome Operator::nodeMutation(const Genome& genome,
     ConnectionGeneAttributes inputConnAttribs;
     inputConnAttribs.weight = 1.0f;
     inputConnAttribs.enabled = true;
-    connections.emplace_back(inputConnID, *sourceNode, *splitNode, inputConnAttribs);
+    connections.emplace_back(inputConnID, sourceNodeIndex, splitNodeIndex, inputConnAttribs);
     
     // Output connection: splitNode → target (weight = original)
     ConnectionGeneAttributes outputConnAttribs;
     outputConnAttribs.weight = originalWeight;
     outputConnAttribs.enabled = true;
-    connections.emplace_back(outputConnID, *splitNode, *targetNode, outputConnAttribs);
+    connections.emplace_back(outputConnID, splitNodeIndex, targetNodeIndex, outputConnAttribs);
     
     // Populate connection deltas: 1 disabled + 2 added (exactly 3 as per TODO spec)
     connectionDeltas.push_back(connectionToSplitID);  // disabled connection

@@ -28,8 +28,8 @@ void phenotypeUpdateConnection(Genome& genome)
 	assert(newConnection != nullptr && "New connection with history ID not found in genome");
 	assert(newConnection->get_attributes().enabled && "New connection must be enabled");
 	
-	uint32_t sourceHistoryID = newConnection->get_sourceNodeGene().get_historyID();
-	uint32_t targetHistoryID = newConnection->get_targetNodeGene().get_historyID();
+	uint32_t sourceHistoryID = nodeGenes[newConnection->get_sourceNodeIndex()].get_historyID();
+	uint32_t targetHistoryID = nodeGenes[newConnection->get_targetNodeIndex()].get_historyID();
 	
 	// Build current phenotype node mapping (history ID to phenotype index)
 	std::unordered_map<uint32_t, size_t> historyIDToIndex;
@@ -47,8 +47,8 @@ void phenotypeUpdateConnection(Genome& genome)
 	
 	for (const auto& conn : connectionGenes) {
 		if (conn.get_attributes().enabled && conn.get_historyID() != newConnectionHistoryID) {
-			includedNodeHistoryIDs.insert(conn.get_sourceNodeGene().get_historyID());
-			includedNodeHistoryIDs.insert(conn.get_targetNodeGene().get_historyID());
+			includedNodeHistoryIDs.insert(nodeGenes[conn.get_sourceNodeIndex()].get_historyID());
+			includedNodeHistoryIDs.insert(nodeGenes[conn.get_targetNodeIndex()].get_historyID());
 		}
 	}
 	
@@ -86,8 +86,8 @@ void phenotypeUpdateConnection(Genome& genome)
 		// Rebuild all enabled connections with new indices
 		for (const auto& conn : connectionGenes) {
 			if (conn.get_attributes().enabled) {
-				uint32_t connSourceID = conn.get_sourceNodeGene().get_historyID();
-				uint32_t connTargetID = conn.get_targetNodeGene().get_historyID();
+				uint32_t connSourceID = nodeGenes[conn.get_sourceNodeIndex()].get_historyID();
+				uint32_t connTargetID = nodeGenes[conn.get_targetNodeIndex()].get_historyID();
 				
 				Genome::Phenotype::Connection phenConn;
 				phenConn._sourceNodeIndex = historyIDToIndex[connSourceID];

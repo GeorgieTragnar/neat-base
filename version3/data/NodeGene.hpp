@@ -31,9 +31,9 @@ public:
 	NodeGene(const uint32_t historyID, const NodeType type, const NodeGeneAttributes attributes);
 	
 	NodeGene(const NodeGene& other) = default;
-	NodeGene& operator=(const NodeGene&) = default;
+	NodeGene& operator=(const NodeGene&) = delete;  // Cannot assign due to const members
 	NodeGene(NodeGene&& other) = default;
-	NodeGene& operator=(NodeGene&&) = default;
+	NodeGene& operator=(NodeGene&&) = delete;       // Cannot assign due to const members
 	
 	const uint32_t& get_historyID() const;
 	const NodeType& get_type() const;

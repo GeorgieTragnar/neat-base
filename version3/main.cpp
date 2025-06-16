@@ -121,7 +121,7 @@ int main(int argc, char* argv[])
     try {
         // Evolution parameters
         const uint32_t populationSize = 150;
-        const uint32_t maxGenerations = 300;
+        const uint32_t maxGenerations = 5;
         const uint32_t randomSeed = 12345;
         
         // Create input node attributes (2 inputs for XOR)

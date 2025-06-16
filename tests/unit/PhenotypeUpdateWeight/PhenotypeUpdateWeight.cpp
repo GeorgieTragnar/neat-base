@@ -175,8 +175,9 @@ protected:
         }
         
         // Find corresponding phenotype connection
-        uint32_t sourceHistoryID = targetConnection->get_sourceNodeGene().get_historyID();
-        uint32_t targetHistoryID = targetConnection->get_targetNodeGene().get_historyID();
+        const auto& nodes = genome.get_nodeGenes();
+        uint32_t sourceHistoryID = nodes[targetConnection->get_sourceNodeIndex()].get_historyID();
+        uint32_t targetHistoryID = nodes[targetConnection->get_targetNodeIndex()].get_historyID();
         
         // Build mapping from history IDs to phenotype indices
         std::unordered_map<uint32_t, size_t> historyToIndex;
@@ -194,8 +195,8 @@ protected:
         
         for (const auto& conn : connectionGenes) {
             if (conn.get_attributes().enabled) {
-                includedHistoryIDs.insert(conn.get_sourceNodeGene().get_historyID());
-                includedHistoryIDs.insert(conn.get_targetNodeGene().get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_sourceNodeIndex()].get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_targetNodeIndex()].get_historyID());
             }
         }
         
@@ -238,8 +239,8 @@ protected:
         
         for (const auto& conn : connectionGenes) {
             if (conn.get_attributes().enabled) {
-                includedHistoryIDs.insert(conn.get_sourceNodeGene().get_historyID());
-                includedHistoryIDs.insert(conn.get_targetNodeGene().get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_sourceNodeIndex()].get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_targetNodeIndex()].get_historyID());
             }
         }
         
@@ -253,8 +254,8 @@ protected:
         // Verify each enabled genome connection matches phenotype
         for (const auto& conn : connectionGenes) {
             if (conn.get_attributes().enabled) {
-                uint32_t sourceHistoryID = conn.get_sourceNodeGene().get_historyID();
-                uint32_t targetHistoryID = conn.get_targetNodeGene().get_historyID();
+                uint32_t sourceHistoryID = nodeGenes[conn.get_sourceNodeIndex()].get_historyID();
+                uint32_t targetHistoryID = nodeGenes[conn.get_targetNodeIndex()].get_historyID();
                 
                 bool foundConnection = false;
                 for (const auto& phenConn : phenotype._orderedConnections) {

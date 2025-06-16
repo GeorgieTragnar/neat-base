@@ -88,22 +88,22 @@ protected:
         auto& connectionGenes = genome.get_connectionGenes();
         auto& nodeGenes = genome.get_nodeGenes();
         
-        // Find source and target nodes
-        const NodeGene* sourceNode = nullptr;
-        const NodeGene* targetNode = nullptr;
+        // Find source and target node indices
+        size_t sourceIndex = SIZE_MAX;
+        size_t targetIndex = SIZE_MAX;
         
-        for (const auto& node : nodeGenes) {
-            if (node.get_historyID() == sourceHistoryID) {
-                sourceNode = &node;
+        for (size_t i = 0; i < nodeGenes.size(); ++i) {
+            if (nodeGenes[i].get_historyID() == sourceHistoryID) {
+                sourceIndex = i;
             }
-            if (node.get_historyID() == targetHistoryID) {
-                targetNode = &node;
+            if (nodeGenes[i].get_historyID() == targetHistoryID) {
+                targetIndex = i;
             }
         }
         
-        if (sourceNode && targetNode) {
+        if (sourceIndex != SIZE_MAX && targetIndex != SIZE_MAX) {
             ConnectionGeneAttributes attrs{weight, enabled};
-            ConnectionGene newConnection(historyID, *sourceNode, *targetNode, attrs);
+            ConnectionGene newConnection(historyID, sourceIndex, targetIndex, attrs);
             connectionGenes.push_back(newConnection);
         }
     }
@@ -154,8 +154,8 @@ protected:
         
         for (const auto& conn : genome.get_connectionGenes()) {
             if (conn.get_attributes().enabled) {
-                includedHistoryIDs.insert(conn.get_sourceNodeGene().get_historyID());
-                includedHistoryIDs.insert(conn.get_targetNodeGene().get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_sourceNodeIndex()].get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_targetNodeIndex()].get_historyID());
             }
         }
         
@@ -171,8 +171,8 @@ protected:
         // Validate connections use correct indices
         for (const auto& conn : genome.get_connectionGenes()) {
             if (conn.get_attributes().enabled) {
-                uint32_t sourceHistoryID = conn.get_sourceNodeGene().get_historyID();
-                uint32_t targetHistoryID = conn.get_targetNodeGene().get_historyID();
+                uint32_t sourceHistoryID = nodeGenes[conn.get_sourceNodeIndex()].get_historyID();
+                uint32_t targetHistoryID = nodeGenes[conn.get_targetNodeIndex()].get_historyID();
                 
                 bool foundConnection = false;
                 for (const auto& phenConn : phenotype._orderedConnections) {
@@ -207,8 +207,8 @@ protected:
         
         for (const auto& conn : genome.get_connectionGenes()) {
             if (conn.get_attributes().enabled) {
-                includedHistoryIDs.insert(conn.get_sourceNodeGene().get_historyID());
-                includedHistoryIDs.insert(conn.get_targetNodeGene().get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_sourceNodeIndex()].get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_targetNodeIndex()].get_historyID());
             }
         }
         

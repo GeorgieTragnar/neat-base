@@ -184,8 +184,8 @@ protected:
         
         for (const auto& conn : genome.get_connectionGenes()) {
             if (conn.get_attributes().enabled) {
-                includedHistoryIDs.insert(conn.get_sourceNodeGene().get_historyID());
-                includedHistoryIDs.insert(conn.get_targetNodeGene().get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_sourceNodeIndex()].get_historyID());
+                includedHistoryIDs.insert(nodeGenes[conn.get_targetNodeIndex()].get_historyID());
             }
         }
         
@@ -202,8 +202,8 @@ protected:
         // Validate connections use correct indices
         for (const auto& conn : genome.get_connectionGenes()) {
             if (conn.get_attributes().enabled) {
-                uint32_t sourceHistoryID = conn.get_sourceNodeGene().get_historyID();
-                uint32_t targetHistoryID = conn.get_targetNodeGene().get_historyID();
+                uint32_t sourceHistoryID = nodeGenes[conn.get_sourceNodeIndex()].get_historyID();
+                uint32_t targetHistoryID = nodeGenes[conn.get_targetNodeIndex()].get_historyID();
                 
                 // Find corresponding phenotype connection
                 bool foundConnection = false;

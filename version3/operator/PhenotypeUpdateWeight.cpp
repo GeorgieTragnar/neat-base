@@ -59,8 +59,9 @@ void phenotypeUpdateWeight(Genome& genome)
 		
 		// Only update if connection is enabled
 		if (connection->get_attributes().enabled) {
-			uint32_t sourceHistoryID = connection->get_sourceNodeGene().get_historyID();
-			uint32_t targetHistoryID = connection->get_targetNodeGene().get_historyID();
+			const auto& nodeGenes = genome.get_nodeGenes();
+			uint32_t sourceHistoryID = nodeGenes[connection->get_sourceNodeIndex()].get_historyID();
+			uint32_t targetHistoryID = nodeGenes[connection->get_targetNodeIndex()].get_historyID();
 			
 			uint64_t connectionKey = (static_cast<uint64_t>(sourceHistoryID) << 32) | targetHistoryID;
 			auto indexIt = connectionPairToIndex.find(connectionKey);

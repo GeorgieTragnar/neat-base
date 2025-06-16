@@ -19,12 +19,14 @@ ConnectionMutationParams::ConnectionMutationParams(double connectionRate,
 
 namespace {
     // Helper to check if a connection already exists between two nodes
-    bool connectionExists(const std::vector<ConnectionGene>& connections, 
+    bool connectionExists(const std::vector<ConnectionGene>& connections,
+                         const std::vector<NodeGene>& nodes,
                          uint32_t sourceHistoryID, 
                          uint32_t targetHistoryID) {
         for (const auto& conn : connections) {
-            if (conn.get_sourceNodeGene().get_historyID() == sourceHistoryID &&
-                conn.get_targetNodeGene().get_historyID() == targetHistoryID) {
+            uint32_t connSourceID = nodes[conn.get_sourceNodeIndex()].get_historyID();
+            uint32_t connTargetID = nodes[conn.get_targetNodeIndex()].get_historyID();
+            if (connSourceID == sourceHistoryID && connTargetID == targetHistoryID) {
                 return true;
             }
         }
@@ -59,7 +61,7 @@ namespace {
                 }
                 
                 // Check if connection already exists
-                if (connectionExists(connections, sourceNode.get_historyID(), targetNode.get_historyID())) {
+                if (connectionExists(connections, nodes, sourceNode.get_historyID(), targetNode.get_historyID())) {
                     continue;
                 }
                 
@@ -121,7 +123,7 @@ Genome Operator::connectionMutation(const Genome& genome,
     mutatedGenome.ensureCapacity(0, 1);
     
     // Now safe to add new connection directly (capacity ensured)
-    connections.emplace_back(innovationNumber, sourceNode, targetNode, newConnAttribs);
+    connections.emplace_back(innovationNumber, selectedPair.first, selectedPair.second, newConnAttribs);
     
     // Add new connection history ID to deltas
     connectionDeltas.push_back(innovationNumber);

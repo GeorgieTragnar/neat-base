@@ -48,16 +48,19 @@ Genome::Genome(const GenomeParams& params)
 		assert(sourceIt != nodeIndexMap.end() && "Connection references nonexistent source node");
 		assert(targetIt != nodeIndexMap.end() && "Connection references nonexistent target node");
 		
-		const NodeGene& sourceNode = _nodeGenes[sourceIt->second];
-		const NodeGene& targetNode = _nodeGenes[targetIt->second];
+		size_t sourceIndex = sourceIt->second;
+		size_t targetIndex = targetIt->second;
+		
+		const NodeGene& sourceNode = _nodeGenes[sourceIndex];
+		const NodeGene& targetNode = _nodeGenes[targetIndex];
 		
 		assert(sourceNode.get_type() != NodeType::OUTPUT && "Output nodes cannot be connection sources");
 		assert(targetNode.get_type() != NodeType::INPUT && "Input nodes cannot be connection targets");
 		
 		_connectionGenes.emplace_back(
 			params._connectionHistoryIDs[i],
-			sourceNode,
-			targetNode,
+			sourceIndex,
+			targetIndex,
 			params._connectionAttributes[i]
 		);
 	}
@@ -66,216 +69,56 @@ Genome::Genome(const GenomeParams& params)
 Genome::Genome(const RawGenomeParams& params)
 {
 	assert(!params._nodeGenes.empty() && "Raw node gene data cannot be empty");
-	for (const void* nodeData : params._nodeGenes) {
-		assert(nodeData != nullptr && "Raw node data pointer cannot be null");
+	for (const NodeGene* nodePtr : params._nodeGenes) {
+		assert(nodePtr != nullptr && "Raw node data pointer cannot be null");
 	}
 
-	for (const void* connData : params._rawConnectionGeneData) {
-		assert(connData != nullptr && "Raw connection data pointer cannot be null");
+	for (const ConnectionGene* connPtr : params._connectionGenes) {
+		assert(connPtr != nullptr && "Raw connection data pointer cannot be null");
 	}
 
 	// Strategic pre-allocation to prevent reallocations during evolution
 	size_t nodeCapacity = calculateOptimalCapacity(params._nodeGenes.size(), 0);
-	size_t connCapacity = calculateOptimalCapacity(params._rawConnectionGeneData.size(), 0);
+	size_t connCapacity = calculateOptimalCapacity(params._connectionGenes.size(), 0);
 	
 	_nodeGenes.reserve(nodeCapacity);
 	_connectionGenes.reserve(connCapacity);
 	
-	for (const NodeGene* nodeGene : params._nodeGenes) {
-		_nodeGenes.emplace_back(*nodeGene);
+	// Simple copying - no complex mapping needed with index-based design
+	for (const NodeGene* nodePtr : params._nodeGenes) {
+		_nodeGenes.emplace_back(*nodePtr);
 	}
 
-	std::unordered_map<uint32_t, const NodeGene*> nodeMap;
+	// Check for duplicate node history IDs
+	std::unordered_set<uint32_t> seenHistoryIDs;
 	for (const NodeGene& node : _nodeGenes) {
-		const uint32_t historyID = node.get_historyID();
-
-		assert(nodeMap.find(historyID) == nodeMap.end() && 
+		assert(seenHistoryIDs.find(node.get_historyID()) == seenHistoryIDs.end() && 
 			"Duplicate node history ID found in raw data");
-
-		nodeMap[historyID] = &node;
+		seenHistoryIDs.insert(node.get_historyID());
 	}
 
-	for (const void* connData : params._rawConnectionGeneData) {
-		const uint32_t* sourceNodeIDPtr = ConnectionGene::getSourceNodeHistoryID(connData);
-		const uint32_t* targetNodeIDPtr = ConnectionGene::getTargetNodeHistoryID(connData);
+	for (const ConnectionGene* connPtr : params._connectionGenes) {
+		_connectionGenes.emplace_back(*connPtr);  // Simple copy of data container
+	}
 
-		auto sourceIt = nodeMap.find(*sourceNodeIDPtr);
-		auto targetIt = nodeMap.find(*targetNodeIDPtr);
-
-		assert(sourceIt != nodeMap.end() && 
-			"Connection references nonexistent source node");
-		assert(targetIt != nodeMap.end() && 
-			"Connection references nonexistent target node");
-
-		const NodeGene& sourceNode = *sourceIt->second;
-		const NodeGene& targetNode = *targetIt->second;
-
-		assert(sourceNode.get_historyID() == *sourceNodeIDPtr && 
-			"Source node history ID mismatch");
-		assert(targetNode.get_historyID() == *targetNodeIDPtr && 
-			"Target node history ID mismatch");
-
+	// Validation: ensure connection indices are valid for this genome
+	for (const ConnectionGene& conn : _connectionGenes) {
+		assert(conn.get_sourceNodeIndex() < _nodeGenes.size() && 
+			"Connection source index out of bounds");
+		assert(conn.get_targetNodeIndex() < _nodeGenes.size() && 
+			"Connection target index out of bounds");
+		
+		const NodeGene& sourceNode = _nodeGenes[conn.get_sourceNodeIndex()];
+		const NodeGene& targetNode = _nodeGenes[conn.get_targetNodeIndex()];
+		
 		assert(sourceNode.get_type() != NodeType::OUTPUT && 
 			"Output nodes cannot be connection sources");
 		assert(targetNode.get_type() != NodeType::INPUT && 
 			"Input nodes cannot be connection targets");
-
-		_connectionGenes.emplace_back(connData, sourceNode, targetNode);
 	}
 }
 
-Genome::Genome(const Genome& other)
-{
-	assert(other._connectionGeneDeltas.empty() && "Source genome must have empty connection deltas for copy construction");
-	assert(other._nodeGeneDeltas.empty() && "Source genome must have empty node deltas for copy construction");
-	
-	// Strategic pre-allocation to prevent reallocations during evolution
-	size_t nodeCapacity = calculateOptimalCapacity(other._nodeGenes.size(), 0);
-	size_t connCapacity = calculateOptimalCapacity(other._connectionGenes.size(), 0);
-	
-	_nodeGenes.reserve(nodeCapacity);
-	_connectionGenes.reserve(connCapacity);
-	_phenotype = other._phenotype;
-
-	for (const NodeGene& node : other._nodeGenes) {
-		_nodeGenes.emplace_back(node);
-	}
-
-	std::unordered_map<const NodeGene*, const NodeGene*> nodeMap;
-	for (size_t i = 0; i < other._nodeGenes.size(); ++i) {
-		LOG_DEBUG("Mapping node [{}]: old ptr {} -> new ptr {}", i, 
-			static_cast<const void*>(&other._nodeGenes[i]), static_cast<const void*>(&_nodeGenes[i]));
-		nodeMap[&other._nodeGenes[i]] = &_nodeGenes[i];
-	}
-
-	LOG_DEBUG("Processing {} connection genes", other._connectionGenes.size());
-	for (size_t connIdx = 0; connIdx < other._connectionGenes.size(); ++connIdx) {
-		const ConnectionGene& conn = other._connectionGenes[connIdx];
-		const void* rawConnData = conn.get_rawData();
-
-		LOG_DEBUG("Connection [{}]: Processing connection with raw data ptr {}", connIdx, rawConnData);
-		
-		const NodeGene* originalSource = &conn.get_sourceNodeGene();
-		const NodeGene* originalTarget = &conn.get_targetNodeGene();
-		
-		LOG_DEBUG("Connection [{}]: Source ptr {}, Target ptr {}", connIdx, 
-			static_cast<const void*>(originalSource), static_cast<const void*>(originalTarget));
-
-		auto sourceIt = nodeMap.find(originalSource);
-		auto targetIt = nodeMap.find(originalTarget);
-
-		if (sourceIt == nodeMap.end() || targetIt == nodeMap.end()) {
-			LOG_ERROR("Genome copy constructor node mapping failure");
-			if (originalSource) {
-				LOG_ERROR("Source node ID: {}, Source ptr: {}, Found: {}", 
-					originalSource->get_historyID(), static_cast<const void*>(originalSource), sourceIt != nodeMap.end());
-			} else {
-				LOG_ERROR("Source node is NULL pointer");
-			}
-			if (originalTarget) {
-				LOG_ERROR("Target node ID: {}, Target ptr: {}, Found: {}", 
-					originalTarget->get_historyID(), static_cast<const void*>(originalTarget), targetIt != nodeMap.end());
-			} else {
-				LOG_ERROR("Target node is NULL pointer");
-			}
-			LOG_ERROR("NodeMap size: {}, Other nodes: {}, This nodes: {}", nodeMap.size(), other._nodeGenes.size(), _nodeGenes.size());
-			LOG_ERROR("Available nodes in source genome:");
-			for (size_t i = 0; i < other._nodeGenes.size(); ++i) {
-				LOG_ERROR("  [{}] Node ID: {}, ptr: {}", i, other._nodeGenes[i].get_historyID(), static_cast<const void*>(&other._nodeGenes[i]));
-			}
-		}
-
-		assert(sourceIt != nodeMap.end() && "Failed to find source node in node map");
-		assert(targetIt != nodeMap.end() && "Failed to find target node in node map");
-
-		const NodeGene& newSource = *sourceIt->second;
-		const NodeGene& newTarget = *targetIt->second;
-
-		assert(newSource.get_historyID() == originalSource->get_historyID() && 
-			"Source node history ID mismatch in copy");
-		assert(newTarget.get_historyID() == originalTarget->get_historyID() && 
-			"Target node history ID mismatch in copy");
-
-		_connectionGenes.emplace_back(rawConnData, *sourceIt->second, *targetIt->second);
-	}
-
-	assert(_nodeGenes.size() == other._nodeGenes.size() && 
-		"Node count mismatch after copy");
-	assert(_connectionGenes.size() == other._connectionGenes.size() && 
-		"Connection count mismatch after copy");
-}
-
-Genome& Genome::operator=(const Genome& other)
-{
-	if (this == &other) {
-		return *this;
-	}
-
-	assert(other._connectionGeneDeltas.empty() && "Source genome must have empty connection deltas for copy assignment");
-	assert(other._nodeGeneDeltas.empty() && "Source genome must have empty node deltas for copy assignment");
-
-	_nodeGenes.clear();
-	_connectionGenes.clear();
-	_connectionGeneDeltas.clear();
-	_nodeGeneDeltas.clear();
-	_phenotype = other._phenotype;
-
-	// Strategic pre-allocation to prevent reallocations during evolution
-	size_t nodeCapacity = calculateOptimalCapacity(other._nodeGenes.size(), 0);
-	size_t connCapacity = calculateOptimalCapacity(other._connectionGenes.size(), 0);
-	
-	_nodeGenes.reserve(nodeCapacity);
-	_connectionGenes.reserve(connCapacity);
-
-	for (const NodeGene& node : other._nodeGenes) {
-		_nodeGenes.emplace_back(node);
-	}
-
-	std::unordered_map<uint32_t, const NodeGene*> nodeHistoryMap;
-	for (const NodeGene& node : _nodeGenes) {
-		nodeHistoryMap[node.get_historyID()] = &node;
-	}
-
-	for (const ConnectionGene& conn : other._connectionGenes) {
-		const void* rawConnData = conn.get_rawData();
-		const uint32_t* sourceNodeIDPtr = ConnectionGene::getSourceNodeHistoryID(rawConnData);
-		const uint32_t* targetNodeIDPtr = ConnectionGene::getTargetNodeHistoryID(rawConnData);
-
-		auto sourceIt = nodeHistoryMap.find(*sourceNodeIDPtr);
-		auto targetIt = nodeHistoryMap.find(*targetNodeIDPtr);
-
-		assert(sourceIt != nodeHistoryMap.end() && "Failed to find source node by history ID");
-		assert(targetIt != nodeHistoryMap.end() && "Failed to find target node by history ID");
-
-		_connectionGenes.emplace_back(rawConnData, *sourceIt->second, *targetIt->second);
-	}
-
-	return *this;
-}
-
-Genome::Genome(Genome&& other) noexcept
-	: _nodeGenes(std::move(other._nodeGenes))
-	, _connectionGenes(std::move(other._connectionGenes))
-	, _phenotype(std::move(other._phenotype))
-	, _connectionGeneDeltas(std::move(other._connectionGeneDeltas))
-	, _nodeGeneDeltas(std::move(other._nodeGeneDeltas))
-{
-}
-
-Genome& Genome::operator=(Genome&& other) noexcept
-{
-	if (this == &other) {
-		return *this;
-	}
-	
-	_nodeGenes = std::move(other._nodeGenes);
-	_connectionGenes = std::move(other._connectionGenes);
-	_phenotype = std::move(other._phenotype);
-	_connectionGeneDeltas = std::move(other._connectionGeneDeltas);
-	_nodeGeneDeltas = std::move(other._nodeGeneDeltas);
-	
-	return *this;
-}
+// Copy and move operations are now defaulted in header - much simpler with index-based design!
 
 const std::vector<NodeGene>& Genome::get_nodeGenes() const
 {

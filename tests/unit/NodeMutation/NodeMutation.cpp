@@ -46,10 +46,11 @@ protected:
         }
         
         // Initialize tracker with genome's existing connections
+        const auto& nodes = genome.get_nodeGenes();
         for (const auto& conn : genome.get_connectionGenes()) {
             tracker->get_connection(
-                conn.get_sourceNodeGene().get_historyID(),
-                conn.get_targetNodeGene().get_historyID()
+                nodes[conn.get_sourceNodeIndex()].get_historyID(),
+                nodes[conn.get_targetNodeIndex()].get_historyID()
             );
         }
         
@@ -203,10 +204,11 @@ protected:
             std::cout << "  Node " << node.get_historyID() << " type=" << (int)node.get_type() << "\n";
         }
         std::cout << "Connections: " << genome.get_connectionGenes().size() << "\n";
+        const auto& nodes = genome.get_nodeGenes();
         for (const auto& conn : genome.get_connectionGenes()) {
             std::cout << "  Conn " << conn.get_historyID() 
-                     << " " << conn.get_sourceNodeGene().get_historyID() 
-                     << "->" << conn.get_targetNodeGene().get_historyID()
+                     << " " << nodes[conn.get_sourceNodeIndex()].get_historyID() 
+                     << "->" << nodes[conn.get_targetNodeIndex()].get_historyID()
                      << " enabled=" << conn.get_attributes().enabled << "\n";
         }
     }
@@ -274,12 +276,13 @@ protected:
         // Check if first connection's source/target matches second connection's source/target
         const auto& conn1 = *result.newConnections[0];
         const auto& conn2 = *result.newConnections[1];
+        const auto& nodes = mutated.get_nodeGenes();
         
-        if (conn1.get_sourceNodeGene().get_historyID() == conn2.get_targetNodeGene().get_historyID()) {
-            candidate1 = conn1.get_sourceNodeGene().get_historyID();
+        if (nodes[conn1.get_sourceNodeIndex()].get_historyID() == nodes[conn2.get_targetNodeIndex()].get_historyID()) {
+            candidate1 = nodes[conn1.get_sourceNodeIndex()].get_historyID();
         }
-        if (conn1.get_targetNodeGene().get_historyID() == conn2.get_sourceNodeGene().get_historyID()) {
-            candidate2 = conn1.get_targetNodeGene().get_historyID();
+        if (nodes[conn1.get_targetNodeIndex()].get_historyID() == nodes[conn2.get_sourceNodeIndex()].get_historyID()) {
+            candidate2 = nodes[conn1.get_targetNodeIndex()].get_historyID();
         }
         
         // The split node should be HIDDEN type
@@ -452,7 +455,8 @@ TEST_F(NodeMutationTest, InputConnectionWeight) {
     Genome original = createSingleConnectionGenome();
     NodeMutationParams params({ActivationType::SIGMOID});
     
-    uint32_t originalSourceID = original.get_connectionGenes()[0].get_sourceNodeGene().get_historyID();
+    const auto& originalNodes = original.get_nodeGenes();
+    uint32_t originalSourceID = originalNodes[original.get_connectionGenes()[0].get_sourceNodeIndex()].get_historyID();
     
     Genome mutated = nodeMutation(original, createInitializedHistoryTracker(original), params);
     
@@ -462,9 +466,10 @@ TEST_F(NodeMutationTest, InputConnectionWeight) {
     
     // Find connection from original source to split node
     const ConnectionGene* inputConn = nullptr;
+    const auto& mutatedNodes = mutated.get_nodeGenes();
     for (const auto& conn : result.newConnections) {
-        if (conn->get_sourceNodeGene().get_historyID() == originalSourceID &&
-            conn->get_targetNodeGene().get_historyID() == result.splitNode->get_historyID()) {
+        if (mutatedNodes[conn->get_sourceNodeIndex()].get_historyID() == originalSourceID &&
+            mutatedNodes[conn->get_targetNodeIndex()].get_historyID() == result.splitNode->get_historyID()) {
             inputConn = conn;
             break;
         }
@@ -479,7 +484,8 @@ TEST_F(NodeMutationTest, OutputConnectionWeight) {
     NodeMutationParams params({ActivationType::SIGMOID});
     
     float originalWeight = original.get_connectionGenes()[0].get_attributes().weight;
-    uint32_t originalTargetID = original.get_connectionGenes()[0].get_targetNodeGene().get_historyID();
+    const auto& originalNodes = original.get_nodeGenes();
+    uint32_t originalTargetID = originalNodes[original.get_connectionGenes()[0].get_targetNodeIndex()].get_historyID();
     
     Genome mutated = nodeMutation(original, createInitializedHistoryTracker(original), params);
     
@@ -489,9 +495,10 @@ TEST_F(NodeMutationTest, OutputConnectionWeight) {
     
     // Find connection from split node to original target
     const ConnectionGene* outputConn = nullptr;
+    const auto& mutatedNodes = mutated.get_nodeGenes();
     for (const auto& conn : result.newConnections) {
-        if (conn->get_sourceNodeGene().get_historyID() == result.splitNode->get_historyID() &&
-            conn->get_targetNodeGene().get_historyID() == originalTargetID) {
+        if (mutatedNodes[conn->get_sourceNodeIndex()].get_historyID() == result.splitNode->get_historyID() &&
+            mutatedNodes[conn->get_targetNodeIndex()].get_historyID() == originalTargetID) {
             outputConn = conn;
             break;
         }
@@ -516,12 +523,13 @@ TEST_F(NodeMutationTest, NetworkFunctionMaintained) {
     // Find input and output connections
     float inputWeight = 0.0f, outputWeight = 0.0f;
     int foundConnections = 0;
+    const auto& mutatedNodes = mutated.get_nodeGenes();
     
     for (const auto& conn : result.newConnections) {
-        if (conn->get_targetNodeGene().get_historyID() == result.splitNode->get_historyID()) {
+        if (mutatedNodes[conn->get_targetNodeIndex()].get_historyID() == result.splitNode->get_historyID()) {
             inputWeight = conn->get_attributes().weight;
             foundConnections++;
-        } else if (conn->get_sourceNodeGene().get_historyID() == result.splitNode->get_historyID()) {
+        } else if (mutatedNodes[conn->get_sourceNodeIndex()].get_historyID() == result.splitNode->get_historyID()) {
             outputWeight = conn->get_attributes().weight;
             foundConnections++;
         }
@@ -557,8 +565,9 @@ TEST_F(NodeMutationTest, CorrectSourceTarget) {
     Genome original = createSingleConnectionGenome();
     NodeMutationParams params({ActivationType::SIGMOID});
     
-    uint32_t originalSourceID = original.get_connectionGenes()[0].get_sourceNodeGene().get_historyID();
-    uint32_t originalTargetID = original.get_connectionGenes()[0].get_targetNodeGene().get_historyID();
+    const auto& originalNodes = original.get_nodeGenes();
+    uint32_t originalSourceID = originalNodes[original.get_connectionGenes()[0].get_sourceNodeIndex()].get_historyID();
+    uint32_t originalTargetID = originalNodes[original.get_connectionGenes()[0].get_targetNodeIndex()].get_historyID();
     
     Genome mutated = nodeMutation(original, createInitializedHistoryTracker(original), params);
     
@@ -568,16 +577,17 @@ TEST_F(NodeMutationTest, CorrectSourceTarget) {
     
     // Verify connection structure
     bool foundInputConn = false, foundOutputConn = false;
+    const auto& mutatedNodes = mutated.get_nodeGenes();
     
     for (const auto& conn : result.newConnections) {
         // Input connection: originalSource → splitNode
-        if (conn->get_sourceNodeGene().get_historyID() == originalSourceID &&
-            conn->get_targetNodeGene().get_historyID() == result.splitNode->get_historyID()) {
+        if (mutatedNodes[conn->get_sourceNodeIndex()].get_historyID() == originalSourceID &&
+            mutatedNodes[conn->get_targetNodeIndex()].get_historyID() == result.splitNode->get_historyID()) {
             foundInputConn = true;
         }
         // Output connection: splitNode → originalTarget
-        else if (conn->get_sourceNodeGene().get_historyID() == result.splitNode->get_historyID() &&
-                 conn->get_targetNodeGene().get_historyID() == originalTargetID) {
+        else if (mutatedNodes[conn->get_sourceNodeIndex()].get_historyID() == result.splitNode->get_historyID() &&
+                 mutatedNodes[conn->get_targetNodeIndex()].get_historyID() == originalTargetID) {
             foundOutputConn = true;
         }
     }
@@ -602,11 +612,12 @@ TEST_F(NodeMutationTest, SplitNodePositioning) {
     
     // Split node should appear as both source and target in enabled connections
     bool isSource = false, isTarget = false;
+    const auto& mutatedNodes = mutated.get_nodeGenes();
     for (const auto& conn : result.newConnections) {
-        if (conn->get_sourceNodeGene().get_historyID() == result.splitNode->get_historyID()) {
+        if (mutatedNodes[conn->get_sourceNodeIndex()].get_historyID() == result.splitNode->get_historyID()) {
             isSource = true;
         }
-        if (conn->get_targetNodeGene().get_historyID() == result.splitNode->get_historyID()) {
+        if (mutatedNodes[conn->get_targetNodeIndex()].get_historyID() == result.splitNode->get_historyID()) {
             isTarget = true;
         }
     }
@@ -665,9 +676,10 @@ TEST_F(NodeMutationTest, StructureConsistency) {
     Genome mutated = nodeMutation(original, createInitializedHistoryTracker(original), params);
     
     // All connections in mutated genome should have valid node references
+    const auto& mutatedNodes = mutated.get_nodeGenes();
     for (const auto& conn : mutated.get_connectionGenes()) {
-        const NodeGene* sourceNode = findNodeByID(mutated, conn.get_sourceNodeGene().get_historyID());
-        const NodeGene* targetNode = findNodeByID(mutated, conn.get_targetNodeGene().get_historyID());
+        const NodeGene* sourceNode = findNodeByID(mutated, mutatedNodes[conn.get_sourceNodeIndex()].get_historyID());
+        const NodeGene* targetNode = findNodeByID(mutated, mutatedNodes[conn.get_targetNodeIndex()].get_historyID());
         
         EXPECT_NE(sourceNode, nullptr) << "Connection " << conn.get_historyID() << " has invalid source";
         EXPECT_NE(targetNode, nullptr) << "Connection " << conn.get_historyID() << " has invalid target";

@@ -26,10 +26,11 @@ void phenotypeConstruct(Genome& genome)
 		}
 	}
 
+	const auto& nodes = genome.get_nodeGenes();
 	for (const auto& conn : genome.get_connectionGenes()) {
 		if (conn.get_attributes().enabled) {
-			includedNodeGeneHistoryIDs.insert(conn.get_sourceNodeGene().get_historyID());
-			includedNodeGeneHistoryIDs.insert(conn.get_targetNodeGene().get_historyID());
+			includedNodeGeneHistoryIDs.insert(nodes[conn.get_sourceNodeIndex()].get_historyID());
+			includedNodeGeneHistoryIDs.insert(nodes[conn.get_targetNodeIndex()].get_historyID());
 		}
 	}
 
@@ -63,8 +64,8 @@ void phenotypeConstruct(Genome& genome)
 
 	for (const auto& conn : genome.get_connectionGenes()) {
 		if (conn.get_attributes().enabled) {
-			uint32_t sourceID = conn.get_sourceNodeGene().get_historyID();
-			uint32_t targetID = conn.get_targetNodeGene().get_historyID();
+			uint32_t sourceID = nodes[conn.get_sourceNodeIndex()].get_historyID();
+			uint32_t targetID = nodes[conn.get_targetNodeIndex()].get_historyID();
 
 			Genome::Phenotype::Connection phenConn;
 			phenConn._sourceNodeIndex = historyIDToIndex[sourceID];

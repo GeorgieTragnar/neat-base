@@ -21,8 +21,8 @@ struct GenomeParams {
 };
 
 struct RawGenomeParams {
-	std::vector<const NodeGene*>	_nodeGenes;
-	std::vector<const void*>		_rawConnectionGeneData;
+	std::vector<const NodeGene*>		_nodeGenes;
+	std::vector<const ConnectionGene*>	_connectionGenes;
 };
 
 class Genome {
@@ -31,10 +31,11 @@ public:
 	Genome(const GenomeParams& params);
 	Genome(const RawGenomeParams& params);
 
-	Genome(const Genome& other);
-	Genome& operator=(const Genome& other);
-	Genome(Genome&& other) noexcept;
-	Genome& operator=(Genome&& other) noexcept;
+	// Copy/move operations (assignment deleted due to NodeGene const members)
+	Genome(const Genome& other) = default;
+	Genome& operator=(const Genome& other) = delete;  // Cannot assign due to NodeGene const members
+	Genome(Genome&& other) noexcept = default;
+	Genome& operator=(Genome&& other) noexcept = delete;  // Cannot assign due to NodeGene const members
 
 	// TODO: Implement when project-wide serialization is addressed
 	static Genome Deserialize(const std::vector<uint8_t>& serializedData) = delete;
