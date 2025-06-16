@@ -368,14 +368,26 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             auto instructionIt = _instructionSets[_lastGeneration].find(speciesId);
             if (instructionIt != _instructionSets[_lastGeneration].end()) {
                 // Species has instruction sets (active or marked for elimination)
+                auto logger = LOGGER("evolution.EvolutionPrototype");
+                LOG_DEBUG("Species {} has {} instruction sets", speciesId, instructionIt->second.size());
                 totalGenomesThisGeneration += static_cast<uint32_t>(instructionIt->second.size());
             } else {
                 // Species not in instruction sets = new/rediscovered, carry forward
+                auto logger = LOGGER("evolution.EvolutionPrototype");
+                LOG_DEBUG("Species {} has no instructions, carrying forward {} genomes", speciesId, speciesData.currentPopulationSize);
                 totalGenomesThisGeneration += speciesData.currentPopulationSize;
             }
         }
+        
+        auto logger = LOGGER("evolution.EvolutionPrototype");
+        LOG_DEBUG("Generation {}: Calculated total genomes = {}, Current population size = {}", 
+            generation, totalGenomesThisGeneration, _population[_currentGeneration].size());
+        
         _population[_currentGeneration].clear();
         _population[_currentGeneration].reserve(totalGenomesThisGeneration);
+        
+        LOG_DEBUG("Generation {}: Reserved {} slots, current capacity = {}", 
+            generation, totalGenomesThisGeneration, _population[_currentGeneration].capacity());
 
         // Build index-to-iterator mapping once per generation
         std::vector<decltype(_genomeData[_lastGeneration].begin())> indexToIterator;
@@ -427,7 +439,11 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 }
                 
                 // Add to current generation
+                auto logger = LOGGER("evolution.EvolutionPrototype");
+                LOG_DEBUG("Adding offspring: population size before = {}, capacity = {}", 
+                    _population[_currentGeneration].size(), _population[_currentGeneration].capacity());
                 _population[_currentGeneration].push_back(std::move(offspring));
+                LOG_DEBUG("Adding offspring: population size after = {}", _population[_currentGeneration].size());
             }
             // instruction set end of loop
         }
@@ -436,10 +452,14 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         // These are new/rediscovered species that should be copied as-is
         for (const auto& [speciesId, speciesData] : _speciesData) {
             if (_instructionSets[_lastGeneration].find(speciesId) == _instructionSets[_lastGeneration].end()) {
+                auto logger = LOGGER("evolution.EvolutionPrototype");
+                LOG_DEBUG("Processing new/rediscovered species {} with currentPopulationSize={}", 
+                    speciesId, speciesData.currentPopulationSize);
                 // This species has no instruction sets, copy its genomes from last generation
                 for (const auto& [fitness, genomeData] : _genomeData[_lastGeneration]) {
                     if (genomeData.speciesId == speciesId) {
                         // Copy the genome
+                        // LOG_DEBUG("Copying genome from species {} at index {}", speciesId, genomeData.genomeIndex);
                         Genome genomeCopy = _population[_lastGeneration][genomeData.genomeIndex];
                         
                         // Create new genome data with updated index
@@ -447,7 +467,11 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                         newGenomeData.genomeIndex = static_cast<uint32_t>(_population[_currentGeneration].size());
                         
                         // Add to current generation
+                        auto logger = LOGGER("evolution.EvolutionPrototype");
+                        LOG_DEBUG("Adding copied genome: population size before = {}, capacity = {}", 
+                            _population[_currentGeneration].size(), _population[_currentGeneration].capacity());
                         _population[_currentGeneration].push_back(std::move(genomeCopy));
+                        LOG_DEBUG("Adding copied genome: population size after = {}", _population[_currentGeneration].size());
                         _genomeData[_currentGeneration].insert({fitness, newGenomeData});
                     }
                 }
@@ -456,7 +480,18 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
 
         // Population operations
         // 1. Generate instruction sets for next generation based on current species data
+        LOG_DEBUG("Generation {}: Before generation planner:", generation);
+        for (const auto& [speciesId, speciesData] : _speciesData) {
+            LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
+                speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
+        }
+        
         _instructionSets[_currentGeneration] = Population::generationPlanner(_speciesData, _plannerParams);
+        
+        LOG_DEBUG("Generation {}: After generation planner, instruction sets created:", generation);
+        for (const auto& [speciesId, instructions] : _instructionSets[_currentGeneration]) {
+            LOG_DEBUG("  Species {}: {} instruction sets", speciesId, instructions.size());
+        }
 
         // 2. Group current generation by species to get index mappings
         auto speciesGrouping = Population::speciesGrouping(_genomeData[_currentGeneration], _speciesData);
@@ -470,7 +505,19 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         }
 
         // 4. Update dynamic data for current generation (finishing operation of evolution loop)
+        LOG_DEBUG("Generation {}: Before dynamic data update:", generation);
+        for (const auto& [speciesId, speciesData] : _speciesData) {
+            LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
+                speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
+        }
+        
         Population::dynamicDataUpdate(_genomeData[_currentGeneration], _speciesData, _instructionSets[_currentGeneration], _updateParams);
+        
+        LOG_DEBUG("Generation {}: After dynamic data update:", generation);
+        for (const auto& [speciesId, speciesData] : _speciesData) {
+            LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
+                speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
+        }
         // end of generation loop
     }
     

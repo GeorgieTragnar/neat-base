@@ -4,6 +4,9 @@
 #include <unordered_set>
 #include <cassert>
 
+#include "../logger/Logger.hpp"
+static auto logger = LOGGER("core::Genome");
+
 Genome::Genome(const GenomeParams& params)
 {
 	assert(params._nodeHistoryIDs.size() == params._nodeTypes.size() && 
@@ -140,17 +143,47 @@ Genome::Genome(const Genome& other)
 
 	std::unordered_map<const NodeGene*, const NodeGene*> nodeMap;
 	for (size_t i = 0; i < other._nodeGenes.size(); ++i) {
+		LOG_DEBUG("Mapping node [{}]: old ptr {} -> new ptr {}", i, 
+			static_cast<const void*>(&other._nodeGenes[i]), static_cast<const void*>(&_nodeGenes[i]));
 		nodeMap[&other._nodeGenes[i]] = &_nodeGenes[i];
 	}
 
-	for (const ConnectionGene& conn : other._connectionGenes) {
+	LOG_DEBUG("Processing {} connection genes", other._connectionGenes.size());
+	for (size_t connIdx = 0; connIdx < other._connectionGenes.size(); ++connIdx) {
+		const ConnectionGene& conn = other._connectionGenes[connIdx];
 		const void* rawConnData = conn.get_rawData();
 
+		LOG_DEBUG("Connection [{}]: Processing connection with raw data ptr {}", connIdx, rawConnData);
+		
 		const NodeGene* originalSource = &conn.get_sourceNodeGene();
 		const NodeGene* originalTarget = &conn.get_targetNodeGene();
+		
+		LOG_DEBUG("Connection [{}]: Source ptr {}, Target ptr {}", connIdx, 
+			static_cast<const void*>(originalSource), static_cast<const void*>(originalTarget));
 
 		auto sourceIt = nodeMap.find(originalSource);
 		auto targetIt = nodeMap.find(originalTarget);
+
+		if (sourceIt == nodeMap.end() || targetIt == nodeMap.end()) {
+			LOG_ERROR("Genome copy constructor node mapping failure");
+			if (originalSource) {
+				LOG_ERROR("Source node ID: {}, Source ptr: {}, Found: {}", 
+					originalSource->get_historyID(), static_cast<const void*>(originalSource), sourceIt != nodeMap.end());
+			} else {
+				LOG_ERROR("Source node is NULL pointer");
+			}
+			if (originalTarget) {
+				LOG_ERROR("Target node ID: {}, Target ptr: {}, Found: {}", 
+					originalTarget->get_historyID(), static_cast<const void*>(originalTarget), targetIt != nodeMap.end());
+			} else {
+				LOG_ERROR("Target node is NULL pointer");
+			}
+			LOG_ERROR("NodeMap size: {}, Other nodes: {}, This nodes: {}", nodeMap.size(), other._nodeGenes.size(), _nodeGenes.size());
+			LOG_ERROR("Available nodes in source genome:");
+			for (size_t i = 0; i < other._nodeGenes.size(); ++i) {
+				LOG_ERROR("  [{}] Node ID: {}, ptr: {}", i, other._nodeGenes[i].get_historyID(), static_cast<const void*>(&other._nodeGenes[i]));
+			}
+		}
 
 		assert(sourceIt != nodeMap.end() && "Failed to find source node in node map");
 		assert(targetIt != nodeMap.end() && "Failed to find target node in node map");

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cassert>
 #include "PopulationData.hpp"
+#include "../logger/Logger.hpp"
 
 namespace Population {
 
@@ -68,6 +69,9 @@ void dynamicDataUpdate(
     std::unordered_map<uint32_t, size_t> speciesCount;
     std::unordered_map<uint32_t, double> speciesAverageRanks;
     
+    // Track newly discovered species to set their instructionSetsSize after the loop
+    std::vector<uint32_t> newlyDiscoveredSpecies;
+    
     // Reset species population sizes at start of analysis
     for (auto& [speciesId, data] : speciesData) {
         data.currentPopulationSize = 0;
@@ -92,16 +96,31 @@ void dynamicDataUpdate(
             speciesIt->second.currentPopulationSize++;
         } else {
             // Create new species data entry for species discovered in genome data
+            auto logger = LOGGER("population.DynamicDataUpdate");
+            LOG_DEBUG("Discovered new species {} in genome data, creating species entry", speciesId);
             DynamicSpeciesData newSpecies;
             newSpecies.currentPopulationSize = 1;     // First genome for this species
-            newSpecies.instructionSetsSize = 0;       // Will be set by Phase 1 if instruction sets exist
+            newSpecies.instructionSetsSize = 0;       // Will be set to currentPopulationSize after the loop
             newSpecies.protectionRating = 0;          // Default protection rating
             newSpecies.speciesRank = 0;               // Will be calculated in ranking phase
             newSpecies.isMarkedForElimination = false; // Default elimination status
             speciesData[speciesId] = newSpecies;
+            
+            // Track this as a newly discovered species
+            newlyDiscoveredSpecies.push_back(speciesId);
+            LOG_DEBUG("Created species {}: currentPopulationSize=1, instructionSetsSize=0 (will be set to population size)", speciesId);
         }
         
         ++rank;
+    }
+    
+    // Set instructionSetsSize for newly discovered species (they were copied as-is)
+    for (uint32_t speciesId : newlyDiscoveredSpecies) {
+        auto& speciesInfo = speciesData[speciesId];
+        speciesInfo.instructionSetsSize = speciesInfo.currentPopulationSize;
+        auto logger = LOGGER("population.DynamicDataUpdate");
+        LOG_DEBUG("Set newly discovered species {} instructionSetsSize to {} (equals currentPopulationSize)", 
+            speciesId, speciesInfo.instructionSetsSize);
     }
     
     // Calculate average rank per species

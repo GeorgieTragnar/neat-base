@@ -1,5 +1,6 @@
 #include "DynamicDataUpdate.hpp"
 #include "ReproductiveInstruction.hpp"
+#include "../logger/Logger.hpp"
 
 namespace Population {
 
@@ -23,13 +24,18 @@ void updateInstructionSetSizes(
     std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
     const GenerationInstructionSets& instructionSets
 ) {
+    auto logger = LOGGER("population.DynamicDataUpdate");
+    LOG_DEBUG("updateInstructionSetSizes: Processing {} species with instruction sets", instructionSets.size());
+    
     // Reset all instruction set sizes to 0 first
     for (auto& [speciesId, data] : speciesData) {
+        LOG_DEBUG("  Resetting species {} instructionSetsSize from {} to 0", speciesId, data.instructionSetsSize);
         data.instructionSetsSize = 0;
     }
     
     // Count instruction sets from GenerationPlanner output
     for (const auto& [speciesId, speciesInstructions] : instructionSets) {
+        LOG_DEBUG("  Processing species {} with {} instruction sets", speciesId, speciesInstructions.size());
         // Early assertion for zero instruction species (catches GenerationPlanner errors)
         #ifdef DEBUG
         assert(!speciesInstructions.empty() && "GenerationPlanner error: species has zero instructions");
@@ -46,12 +52,14 @@ void updateInstructionSetSizes(
         auto speciesIt = speciesData.find(speciesId);
         if (speciesIt != speciesData.end()) {
             // Update existing species
+            LOG_DEBUG("  Updating existing species {} instructionSetsSize to {}", speciesId, speciesInstructions.size());
             speciesIt->second.instructionSetsSize = static_cast<uint32_t>(speciesInstructions.size());
         } else {
-            // Handle new species discovery - create minimal entry
-            DynamicSpeciesData newSpeciesData;
-            newSpeciesData.instructionSetsSize = static_cast<uint32_t>(speciesInstructions.size());
-            speciesData[speciesId] = newSpeciesData;
+            // Species not found in species data but has instruction sets - this indicates a bug
+            // GenerationPlanner should only create instruction sets for existing species
+            auto logger = LOGGER("population.DynamicDataUpdate");
+            LOG_ERROR("GenerationPlanner created instruction sets for non-existent species {}", speciesId);
+            assert(false && "GenerationPlanner error: instruction sets created for non-existent species");
         }
     }
     
