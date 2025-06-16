@@ -9,14 +9,17 @@ DynamicDataUpdateParams::DynamicDataUpdateParams(
     uint32_t maxProtectionLimit,
     uint32_t maxSpeciesProtectionRating,
     double protectedTierPercentage,
-    uint32_t worstSpeciesCount
+    uint32_t worstSpeciesCount,
+    uint32_t minActiveSpeciesCount
 ) : _maxProtectionLimit(maxProtectionLimit),
     _maxSpeciesProtectionRating(maxSpeciesProtectionRating),
     _protectedTierPercentage(protectedTierPercentage),
-    _worstSpeciesCount(worstSpeciesCount) {
+    _worstSpeciesCount(worstSpeciesCount),
+    _minActiveSpeciesCount(minActiveSpeciesCount) {
     
     assert(protectedTierPercentage >= 0.0 && protectedTierPercentage <= 1.0);
     assert(worstSpeciesCount > 0);
+    // minActiveSpeciesCount can be 0 to disable the minimum species protection mechanism
 }
 
 // Internal helper function for Phase 1: Instruction Set Counting and Size Updates

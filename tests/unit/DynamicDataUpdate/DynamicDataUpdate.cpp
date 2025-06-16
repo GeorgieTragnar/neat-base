@@ -12,11 +12,13 @@ class DynamicDataUpdateTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Create test parameters with reasonable defaults
+        // Setting minActiveSpeciesCount to 0 to test protection mechanisms in isolation
         params = std::make_unique<DynamicDataUpdateParams>(
             5,    // maxProtectionLimit
             3,    // maxSpeciesProtectionRating  
             0.3,  // protectedTierPercentage (30%)
-            1     // worstSpeciesCount
+            1,    // worstSpeciesCount
+            0     // minActiveSpeciesCount (disable minimum for testing protection mechanisms)
         );
     }
 
@@ -164,7 +166,7 @@ TEST_F(DynamicDataUpdateTest, ProtectionTier_BoundaryGenome) {
 
 TEST_F(DynamicDataUpdateTest, ProtectionTier_ZeroPercent) {
     // Test edge case: 0% protection → no genomes protected
-    DynamicDataUpdateParams zeroParams(5, 3, 0.0, 1); // 0% protection
+    DynamicDataUpdateParams zeroParams(5, 3, 0.0, 1, 0); // 0% protection, no minimum species
     
     std::vector<double> fitness = {100, 90, 80, 70, 60};
     std::vector<uint32_t> species = {1, 1, 2, 2, 3};
@@ -182,7 +184,7 @@ TEST_F(DynamicDataUpdateTest, ProtectionTier_ZeroPercent) {
 
 TEST_F(DynamicDataUpdateTest, ProtectionTier_HundredPercent) {
     // Test edge case: 100% protection → all genomes protected
-    DynamicDataUpdateParams hundredParams(5, 3, 1.0, 1); // 100% protection
+    DynamicDataUpdateParams hundredParams(5, 3, 1.0, 1, 0); // 100% protection, no minimum species
     
     std::vector<double> fitness = {100, 90, 80, 70, 60};
     std::vector<uint32_t> species = {1, 1, 2, 2, 3};
@@ -335,7 +337,7 @@ TEST_F(DynamicDataUpdateTest, SpeciesRanking_AverageRankCalculation) {
 
 TEST_F(DynamicDataUpdateTest, SpeciesRanking_WorstNSpeciesIdentification) {
     // Test: Worst N species correctly identified from ranking
-    DynamicDataUpdateParams multiWorstParams(5, 3, 0.3, 2); // worstSpeciesCount = 2
+    DynamicDataUpdateParams multiWorstParams(5, 3, 0.3, 2, 0); // worstSpeciesCount = 2, no minimum species
     
     // Create 4 species with different average ranks
     std::vector<double> fitness = {100, 90, 80, 70, 60, 50, 40, 30};
@@ -473,7 +475,7 @@ TEST_F(DynamicDataUpdateTest, SpeciesRating_ExceedsLimitTriggersElimination) {
 
 TEST_F(DynamicDataUpdateTest, SpeciesRating_MultipleWorstSpeciesIncrement) {
     // Test: Multiple worst species all increment their ratings
-    DynamicDataUpdateParams multiWorstParams(5, 3, 0.3, 2); // worstSpeciesCount = 2
+    DynamicDataUpdateParams multiWorstParams(5, 3, 0.3, 2, 0); // worstSpeciesCount = 2, no minimum species
     
     std::vector<double> fitness = {100, 90, 80, 70, 60, 50, 40, 30};
     std::vector<uint32_t> species = {1,   2,  3,  4,  1,  2,  3,  4};
@@ -644,7 +646,7 @@ TEST_F(DynamicDataUpdateTest, EmptySpecies_NonEmptyGenomes) {
 
 TEST_F(DynamicDataUpdateTest, ParameterBoundary_WorstCountExceedsSpecies) {
     // Test: worstSpeciesCount=5 but only 2 species exist
-    DynamicDataUpdateParams excessParams(5, 3, 0.3, 5); // worstSpeciesCount=5
+    DynamicDataUpdateParams excessParams(5, 3, 0.3, 5, 0); // worstSpeciesCount=5, no minimum species
     
     std::vector<double> fitness = {100, 90, 80, 70};
     std::vector<uint32_t> species = {1,   1,  2,  2};
@@ -663,7 +665,7 @@ TEST_F(DynamicDataUpdateTest, ParameterBoundary_WorstCountExceedsSpecies) {
 
 TEST_F(DynamicDataUpdateTest, ParameterBoundary_WorstCountEqualsSpecies) {
     // Test: worstSpeciesCount equals actual species count
-    DynamicDataUpdateParams equalParams(5, 3, 0.3, 3); // worstSpeciesCount=3
+    DynamicDataUpdateParams equalParams(5, 3, 0.3, 3, 0); // worstSpeciesCount=3, no minimum species
     
     std::vector<double> fitness = {100, 90, 80, 70, 60, 50};
     std::vector<uint32_t> species = {1,   1,  2,  2,  3,  3};
@@ -683,18 +685,18 @@ TEST_F(DynamicDataUpdateTest, ParameterBoundary_WorstCountEqualsSpecies) {
 TEST_F(DynamicDataUpdateTest, ParameterBoundary_WorstCountZeroDeathTest) {
     // Test: worstSpeciesCount=0 should trigger assertion failure
     EXPECT_DEATH({
-        DynamicDataUpdateParams zeroParams(5, 3, 0.3, 0); // worstSpeciesCount=0
+        DynamicDataUpdateParams zeroParams(5, 3, 0.3, 0, 1); // worstSpeciesCount=0
     }, "worstSpeciesCount > 0");
 }
 
 TEST_F(DynamicDataUpdateTest, ParameterBoundary_InvalidProtectionPercentage) {
     // Test: invalid protection percentages should trigger assertion failure
     EXPECT_DEATH({
-        DynamicDataUpdateParams invalidParams(5, 3, -0.1, 1); // negative percentage
+        DynamicDataUpdateParams invalidParams(5, 3, -0.1, 1, 1); // negative percentage
     }, "protectedTierPercentage >= 0.0 && protectedTierPercentage <= 1.0");
     
     EXPECT_DEATH({
-        DynamicDataUpdateParams invalidParams2(5, 3, 1.1, 1); // > 100%
+        DynamicDataUpdateParams invalidParams2(5, 3, 1.1, 1, 1); // > 100%
     }, "protectedTierPercentage >= 0.0 && protectedTierPercentage <= 1.0");
 }
 
@@ -793,7 +795,7 @@ TEST_F(DynamicDataUpdateTest, SingleGenome_HandledCorrectly) {
 
 TEST_F(DynamicDataUpdateTest, SingleGenome_WithHighProtectionPercentage) {
     // Test single genome with high protection percentage
-    DynamicDataUpdateParams highProtectionParams(5, 3, 1.0, 1); // 100% protection
+    DynamicDataUpdateParams highProtectionParams(5, 3, 1.0, 1, 0); // 100% protection, no minimum species
     
     std::vector<double> fitness = {100};
     std::vector<uint32_t> species = {1};
@@ -821,7 +823,7 @@ TEST_F(DynamicDataUpdateTest, SingleGenome_AtProtectionLimit) {
     auto speciesData = createTestSpeciesData({1});
     
     // Set genome at protection limit with 100% protection to trigger increment
-    DynamicDataUpdateParams fullProtectionParams(5, 3, 1.0, 1); // 100% protection
+    DynamicDataUpdateParams fullProtectionParams(5, 3, 1.0, 1, 0); // 100% protection, no minimum species
     genomeData.find(TestFitnessResult{100})->second.protectionCounter = 5; // At limit
     
     auto instructionSets = createMockInstructionSets({1});

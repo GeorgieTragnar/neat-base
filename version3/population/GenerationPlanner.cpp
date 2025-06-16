@@ -1,4 +1,5 @@
 #include "GenerationPlanner.hpp"
+#include "../logger/Logger.hpp"
 
 namespace Population {
 
@@ -7,6 +8,9 @@ PopulationHealthAssessment assessPopulationHealth(
     const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
     const GenerationPlannerParams& params
 ) {
+    auto logger = LOGGER("population.GenerationPlanner");
+    LOG_DEBUG("assessPopulationHealth: Processing {} species", speciesData.size());
+    
     PopulationHealthAssessment assessment = {};
     
     // Count active species and total instruction sets
@@ -14,12 +18,17 @@ PopulationHealthAssessment assessPopulationHealth(
     activeSizes.reserve(speciesData.size());
     
     for (const auto& [speciesId, data] : speciesData) {
+        LOG_DEBUG("  Species {}: instructionSetsSize={}, isMarkedForElimination={}", 
+                 speciesId, data.instructionSetsSize, data.isMarkedForElimination);
         if (!data.isMarkedForElimination) {
             assessment.activeSpeciesCount++;
             assessment.totalCurrentInstructions += data.instructionSetsSize;
             activeSizes.push_back(data.instructionSetsSize);
         }
     }
+    
+    LOG_DEBUG("  Active species count: {}", assessment.activeSpeciesCount);
+    LOG_DEBUG("  Total current instructions: {}", assessment.totalCurrentInstructions);
     
     // Handle edge cases
     if (assessment.activeSpeciesCount == 0) {
@@ -32,17 +41,25 @@ PopulationHealthAssessment assessPopulationHealth(
     }
     
     if (assessment.activeSpeciesCount == 1) {
-        // Single species - disable equilibrium force
-        assessment.equilibriumTarget = activeSizes[0]; // Use current size
+        // Single species - still apply equilibrium force to reach target population
+        uint32_t rawEquilibriumTarget = params.getTargetTotalPopulation(); // All population goes to single species
+        assessment.equilibriumTarget = std::max(rawEquilibriumTarget, params.getMinSpeciesSize());
         assessment.averageSpeciesSize = static_cast<float>(activeSizes[0]);
         assessment.sizeVariance = 0.0f;
         assessment.isSystemHealthy = true;
+        
+        LOG_DEBUG("  Single species mode: Target population: {}, Final equilibrium target: {}", 
+                 params.getTargetTotalPopulation(), assessment.equilibriumTarget);
         return assessment;
     }
     
     // Calculate equilibrium target
     uint32_t rawEquilibriumTarget = params.getTargetTotalPopulation() / assessment.activeSpeciesCount;
     assessment.equilibriumTarget = std::max(rawEquilibriumTarget, params.getMinSpeciesSize());
+    
+    LOG_DEBUG("  Target population: {}, Raw equilibrium target: {}, Min species size: {}", 
+             params.getTargetTotalPopulation(), rawEquilibriumTarget, params.getMinSpeciesSize());
+    LOG_DEBUG("  Final equilibrium target: {}", assessment.equilibriumTarget);
     
     // Calculate system health metrics
     if (!activeSizes.empty()) {
@@ -68,6 +85,11 @@ PopulationHealthAssessment assessPopulationHealth(
         
         assessment.isSystemHealthy = (avgToTargetRatio >= 0.5f && avgToTargetRatio <= 2.0f) &&
                                    (coefficientOfVariation < 1.0f);
+        
+        LOG_DEBUG("  Average species size: {:.2f}, Size variance: {:.2f}", 
+                 assessment.averageSpeciesSize, assessment.sizeVariance);
+        LOG_DEBUG("  Avg/Target ratio: {:.2f}, Coeff of variation: {:.2f}, System healthy: {}", 
+                 avgToTargetRatio, coefficientOfVariation, assessment.isSystemHealthy);
     } else {
         assessment.averageSpeciesSize = 0.0f;
         assessment.sizeVariance = 0.0f;
@@ -80,6 +102,15 @@ PopulationHealthAssessment assessPopulationHealth(
     assert(assessment.equilibriumTarget >= params.getMinSpeciesSize());
     assert(assessment.averageSpeciesSize >= 0.0f);
     assert(assessment.sizeVariance >= 0.0f);
+    
+    // Validate minimum active species count constraint
+    // Note: This may be violated temporarily during population initialization,
+    // but should be maintained after the first few generations
+    if (speciesData.size() >= params.getMinActiveSpeciesCount()) {
+        // Only assert if we have enough total species to meet the minimum
+        assert(assessment.activeSpeciesCount >= params.getMinActiveSpeciesCount() && 
+               "Active species count is below minimum - check DynamicDataUpdate parameters");
+    }
     #endif
     
     return assessment;
@@ -203,6 +234,9 @@ EquilibriumMutationAllocationResult allocateEquilibriumMutations(
     const CrossoverAllocationResult& crossoverAllocation,
     const GenerationPlannerParams& params
 ) {
+    auto logger = LOGGER("population.GenerationPlanner");
+    LOG_DEBUG("allocateEquilibriumMutations: Equilibrium target = {}", healthAssessment.equilibriumTarget);
+    
     EquilibriumMutationAllocationResult result;
     
     for (const auto& [speciesId, data] : speciesData) {
@@ -229,6 +263,9 @@ EquilibriumMutationAllocationResult allocateEquilibriumMutations(
         int32_t equilibriumGap = static_cast<int32_t>(healthAssessment.equilibriumTarget) - 
                                 static_cast<int32_t>(currentAllocation);
         
+        LOG_DEBUG("  Species {}: currentAllocation={}, equilibriumTarget={}, equilibriumGap={}", 
+                 speciesId, currentAllocation, healthAssessment.equilibriumTarget, equilibriumGap);
+        
         uint32_t guaranteedUnprotectedMutations = 0;
         
         if (equilibriumGap > 0) {
@@ -236,12 +273,17 @@ EquilibriumMutationAllocationResult allocateEquilibriumMutations(
             float biasedGap = equilibriumGap * params.getEquilibriumBias();
             uint32_t maxPossibleGap = static_cast<uint32_t>(biasedGap);
             
-            // Calculate remaining slots available for mutations
-            uint32_t remainingSlots = (data.instructionSetsSize > currentAllocation) ? 
-                                     (data.instructionSetsSize - currentAllocation) : 0;
+            // For growth scenarios, we allow expansion beyond current instructionSetsSize
+            // The limit is the equilibrium target itself
+            uint32_t maxAllowedTotal = healthAssessment.equilibriumTarget;
+            uint32_t remainingSlots = (maxAllowedTotal > currentAllocation) ? 
+                                     (maxAllowedTotal - currentAllocation) : 0;
             
             // Guaranteed unprotected mutations is minimum of biased gap and remaining slots
             guaranteedUnprotectedMutations = std::min(maxPossibleGap, remainingSlots);
+            
+            LOG_DEBUG("    Equilibrium bias: {:.2f}, biasedGap: {:.2f}, maxPossibleGap: {}, remainingSlots: {}, guaranteedUnprotected: {}", 
+                     params.getEquilibriumBias(), biasedGap, maxPossibleGap, remainingSlots, guaranteedUnprotectedMutations);
         }
         // else: equilibriumGap <= 0, so guaranteedUnprotectedMutations remains 0
         
@@ -263,6 +305,7 @@ EquilibriumMutationAllocationResult allocateEquilibriumMutations(
 // Phase 5: Protection Assignment for Remaining Genomes
 ProtectionAssignmentResult assignProtectionForRemainingGenomes(
     const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
+    const PopulationHealthAssessment& healthAssessment,
     const EliteAllocationResult& eliteAllocation,
     const CrossoverAllocationResult& crossoverAllocation,
     const EquilibriumMutationAllocationResult& equilibriumMutationAllocation,
@@ -291,9 +334,11 @@ ProtectionAssignmentResult assignProtectionForRemainingGenomes(
                                                   guaranteedIt->second : 0;
         
         // Calculate remaining genomes after all prior allocations
+        // For species below equilibrium, we allow expansion to equilibrium target
         uint32_t allocatedSoFar = eliteCount + crossoverCount + guaranteedUnprotectedMutations;
-        uint32_t remainingGenomes = (data.instructionSetsSize > allocatedSoFar) ? 
-                                   (data.instructionSetsSize - allocatedSoFar) : 0;
+        uint32_t targetSize = std::max(data.instructionSetsSize, healthAssessment.equilibriumTarget);
+        uint32_t remainingGenomes = (targetSize > allocatedSoFar) ? 
+                                   (targetSize - allocatedSoFar) : 0;
         
         // Apply protection split to remaining genomes using exact integer arithmetic
         float protectionPercentage = params.getProtectionPercentage();
@@ -332,11 +377,11 @@ ProtectionAssignmentResult assignProtectionForRemainingGenomes(
         
         #ifdef DEBUG
         // Validation
-        assert(allocatedSoFar <= data.instructionSetsSize);
+        assert(allocatedSoFar <= targetSize);
         assert(unprotectedRemainder + protectedRemainder == remainingGenomes);
-        assert(allocatedSoFar + remainingGenomes == data.instructionSetsSize);
+        assert(allocatedSoFar + remainingGenomes == targetSize);
         assert(eliteCount + crossoverCount + guaranteedUnprotectedMutations + 
-               unprotectedRemainder + protectedRemainder == data.instructionSetsSize);
+               unprotectedRemainder + protectedRemainder == targetSize);
         #endif
     }
     
@@ -352,6 +397,7 @@ GenerationInstructionSets generateInstructionSets(
     const ProtectionAssignmentResult& protectionAssignment,
     const GenerationPlannerParams& params
 ) {
+    auto logger = LOGGER("population.GenerationPlanner");
     GenerationInstructionSets instructionSets;
     
     for (const auto& [speciesId, data] : speciesData) {
@@ -374,9 +420,15 @@ GenerationInstructionSets generateInstructionSets(
         uint32_t unprotectedRemainder = (unprotectedIt != protectionAssignment.unprotectedRemainderPerSpecies.end()) ? unprotectedIt->second : 0;
         uint32_t protectedRemainder = (protectedIt != protectionAssignment.protectedRemainderPerSpecies.end()) ? protectedIt->second : 0;
         
+        // Calculate total planned allocation for this species
+        uint32_t totalPlannedAllocation = eliteCount + crossoverCount + guaranteedUnprotected + unprotectedRemainder + protectedRemainder;
+        
         // Initialize instruction set for this species
         SpeciesInstructionSet& speciesInstructions = instructionSets[speciesId];
-        speciesInstructions.reserve(data.instructionSetsSize);
+        speciesInstructions.reserve(totalPlannedAllocation);
+        
+        LOG_DEBUG("Species {}: Planning {} total instructions (elite={}, crossover={}, guaranteedUnprotected={}, unprotectedRemainder={}, protectedRemainder={})", 
+                 speciesId, totalPlannedAllocation, eliteCount, crossoverCount, guaranteedUnprotected, unprotectedRemainder, protectedRemainder);
         
         uint32_t currentPriority = 0;
         
@@ -418,8 +470,8 @@ GenerationInstructionSets generateInstructionSets(
         }
         
         #ifdef DEBUG
-        // Validate instruction count matches allocation
-        assert(speciesInstructions.size() == data.instructionSetsSize);
+        // Validate instruction count matches planned allocation
+        assert(speciesInstructions.size() == totalPlannedAllocation);
         assert(speciesInstructions.size() == eliteCount + crossoverCount + totalUnprotectedMutations + protectedRemainder);
         
         // Validate all relative parent indices are within species bounds
@@ -438,6 +490,9 @@ GenerationInstructionSets generationPlanner(
     std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
     const GenerationPlannerParams& params
 ) {
+    auto logger = LOGGER("population.GenerationPlanner");
+    LOG_DEBUG("generationPlanner: Starting with {} species", speciesData.size());
+    
     // Phase 1: Population Health Assessment
     PopulationHealthAssessment healthAssessment = assessPopulationHealth(speciesData, params);
     
@@ -453,11 +508,19 @@ GenerationInstructionSets generationPlanner(
     
     // Phase 5: Protection Assignment for Remaining Genomes
     ProtectionAssignmentResult protectionAssignment = assignProtectionForRemainingGenomes(
-        speciesData, eliteAllocation, crossoverAllocation, equilibriumMutationAllocation, params);
+        speciesData, healthAssessment, eliteAllocation, crossoverAllocation, equilibriumMutationAllocation, params);
     
     // Phase 6: Instruction Set Generation
     GenerationInstructionSets instructionSets = generateInstructionSets(
         speciesData, eliteAllocation, crossoverAllocation, equilibriumMutationAllocation, protectionAssignment, params);
+    
+    // Log final instruction set totals
+    uint32_t totalInstructionSets = 0;
+    for (const auto& [speciesId, instructions] : instructionSets) {
+        totalInstructionSets += instructions.size();
+        LOG_DEBUG("Final species {}: {} instruction sets", speciesId, instructions.size());
+    }
+    LOG_DEBUG("Total instruction sets generated: {}", totalInstructionSets);
     
     #ifdef DEBUG
     // Final validation: verify atomic instruction generation guarantee

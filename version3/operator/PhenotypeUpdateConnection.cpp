@@ -12,7 +12,12 @@ void phenotypeUpdateConnection(Genome& genome)
 	const auto& connectionGenes = genome.get_connectionGenes();
 	const auto& nodeGenes = genome.get_nodeGenes();
 	
-	// Assert that connection deltas contains exactly 1 ID
+	// Early return if no connection deltas to process (valid state - no mutations occurred)
+	if (connectionDeltas.empty()) {
+		return;
+	}
+	
+	// Assert that connection deltas contains exactly 1 ID when mutations did occur
 	assert(connectionDeltas.size() == 1 && "Connection deltas must contain exactly 1 ID for connection phenotype update");
 	
 	uint32_t newConnectionHistoryID = connectionDeltas[0];

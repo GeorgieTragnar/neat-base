@@ -29,6 +29,7 @@ GenerationPlannerParams::GenerationPlannerParams(
     float protectionPercentage,
     uint32_t protectionThreshold,
     uint32_t speciesEliminationThreshold,
+    uint32_t minActiveSpeciesCount,
     
     // Random Number Generation
     uint32_t randomSeed
@@ -50,6 +51,7 @@ GenerationPlannerParams::GenerationPlannerParams(
     _protectionPercentage(protectionPercentage),
     _protectionThreshold(protectionThreshold),
     _speciesEliminationThreshold(speciesEliminationThreshold),
+    _minActiveSpeciesCount(minActiveSpeciesCount),
     _randomGenerator(randomSeed) {
     
     // Parameter validation
@@ -68,6 +70,8 @@ GenerationPlannerParams::GenerationPlannerParams(
     assert(protectionPercentage >= 0.0f && protectionPercentage <= 1.0f && "Protection percentage must be [0.0, 1.0]");
     assert(protectionThreshold > 0 && "Protection threshold must be positive");
     assert(speciesEliminationThreshold > 0 && "Species elimination threshold must be positive");
+    // minActiveSpeciesCount can be 0 to disable the minimum species protection mechanism
+    assert(minActiveSpeciesCount >= 0 && "Minimum active species count must be non-negative");
     
     // Validate scaling arrays have positive values
     for (size_t i = 0; i < eliteScalingByRank.size(); ++i) {
@@ -243,6 +247,7 @@ GenerationPlannerParams GenerationPlannerParamsFactory::createConservative(uint3
         0.4f,                                 // protectionPercentage (40% protected)
         3,                                    // protectionThreshold
         5,                                    // speciesEliminationThreshold
+        3,                                    // minActiveSpeciesCount (conservative: maintain at least 3 species)
         
         // Random number generation
         randomSeed                            // randomSeed
@@ -276,6 +281,7 @@ GenerationPlannerParams GenerationPlannerParamsFactory::createAggressive(uint32_
         0.2f,                                 // protectionPercentage (20% protected)
         2,                                    // protectionThreshold
         3,                                    // speciesEliminationThreshold
+        1,                                    // minActiveSpeciesCount (aggressive: allow down to 1 species)
         
         // Random number generation
         randomSeed                            // randomSeed
@@ -309,6 +315,7 @@ GenerationPlannerParams GenerationPlannerParamsFactory::createBalanced(uint32_t 
         0.3f,                                 // protectionPercentage (30% protected)
         3,                                    // protectionThreshold
         4,                                    // speciesEliminationThreshold
+        3,                                    // minActiveSpeciesCount (balanced: maintain at least 3 species)
         
         // Random number generation
         randomSeed                            // randomSeed

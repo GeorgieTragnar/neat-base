@@ -57,6 +57,7 @@ public:
         float protectionPercentage,
         uint32_t protectionThreshold,
         uint32_t speciesEliminationThreshold,
+        uint32_t minActiveSpeciesCount,
         
         // Random Number Generation
         uint32_t randomSeed
@@ -94,6 +95,7 @@ protected:
     const float _protectionPercentage;        // Percentage of remaining genomes marked for protection
     const uint32_t _protectionThreshold;      // Protection counter limit before instruction set denial
     const uint32_t _speciesEliminationThreshold; // Species protection rating limit
+    const uint32_t _minActiveSpeciesCount;    // Minimum number of active species before elimination/protection penalties are disabled
 
     // Random Number Generation (mutable for state-changing operations)
     mutable std::mt19937 _randomGenerator;    // Mersenne Twister generator for parent selection
@@ -120,6 +122,7 @@ public:
     float getProtectionPercentage() const { return _protectionPercentage; }
     uint32_t getProtectionThreshold() const { return _protectionThreshold; }
     uint32_t getSpeciesEliminationThreshold() const { return _speciesEliminationThreshold; }
+    uint32_t getMinActiveSpeciesCount() const { return _minActiveSpeciesCount; }
     
     // Utility methods for scaling factor retrieval
     float getEliteScalingFactor(uint32_t rank) const;

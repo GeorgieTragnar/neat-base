@@ -58,10 +58,7 @@ generate_operator_friend_declarations(
 add_custom_command(
     OUTPUT ${GENERATED_OPERATOR_FORWARDS_FILE} ${GENERATED_OPERATOR_FRIENDS_FILE}
     COMMAND ${CMAKE_COMMAND} -P ${GENERATE_SCRIPT}
-    DEPENDS ${CMAKE_SOURCE_DIR}/version3/operator/Init.hpp
-            ${CMAKE_SOURCE_DIR}/version3/operator/WeightMutation.hpp
-            ${CMAKE_SOURCE_DIR}/version3/operator/CycleDetection.hpp
-            ${CMAKE_SOURCE_DIR}/version3/generate_operator_forward_declarations.cmake
+    DEPENDS ${CMAKE_SOURCE_DIR}/version3/generate_operator_forward_declarations.cmake
             ${CMAKE_SOURCE_DIR}/version3/generate_operator_friend_declarations.cmake
     COMMENT "Generating operator forward and friend declarations"
     VERBATIM

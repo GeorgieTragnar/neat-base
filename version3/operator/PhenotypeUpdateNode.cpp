@@ -12,7 +12,12 @@ void phenotypeUpdateNode(Genome& genome)
 	const auto& connectionGenes = genome.get_connectionGenes();
 	const auto& nodeGenes = genome.get_nodeGenes();
 	
-	// Assert that connection deltas contains exactly 3 IDs
+	// Early return if no connection deltas to process (valid state - no mutations occurred)
+	if (connectionDeltas.empty()) {
+		return;
+	}
+	
+	// Assert that connection deltas contains exactly 3 IDs when mutations did occur
 	assert(connectionDeltas.size() == 3 && "Connection deltas must contain exactly 3 IDs for node phenotype update");
 	
 	uint32_t disabledConnectionID = connectionDeltas[0];  // First ID is the disabled connection

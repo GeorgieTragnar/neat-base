@@ -24,7 +24,8 @@ public:
         uint32_t maxProtectionLimit,
         uint32_t maxSpeciesProtectionRating,
         double protectedTierPercentage,
-        uint32_t worstSpeciesCount = 1
+        uint32_t worstSpeciesCount = 1,
+        uint32_t minActiveSpeciesCount = 1
     );
 
 protected:
@@ -40,6 +41,7 @@ protected:
     const uint32_t _maxSpeciesProtectionRating;  // Max species protection rating before elimination
     const double _protectedTierPercentage;       // Percentage of population in protected tier (e.g., 0.3 for 30%)
     const uint32_t _worstSpeciesCount;           // Number of worst species to penalize each generation
+    const uint32_t _minActiveSpeciesCount;       // Minimum number of active species before elimination/protection penalties are disabled
 };
 
 // Helper function declarations
@@ -154,6 +156,18 @@ void dynamicDataUpdate(
     }
     
     // Phase 3: Individual Genome Protection Updates
+    
+    // Count active species before applying protection penalties
+    uint32_t activeSpeciesCount = 0;
+    for (const auto& [speciesId, data] : speciesData) {
+        if (!data.isMarkedForElimination) {
+            activeSpeciesCount++;
+        }
+    }
+    
+    // Only apply protection penalties if we have more than minimum active species
+    const bool applyProtectionPenalties = activeSpeciesCount > params._minActiveSpeciesCount;
+    
     const size_t totalPopulation = orderedGenomeData.size();
     const size_t protectedTierThreshold = static_cast<size_t>(
         totalPopulation * params._protectedTierPercentage
@@ -170,16 +184,19 @@ void dynamicDataUpdate(
         // Check if genome is in protected tier (bottom X% by rank)
         const bool isInProtectedTier = rank >= (totalPopulation - protectedTierThreshold);
         
-        if (isInProtectedTier) {
-            genomeData.protectionCounter++;
-        } else {
-            genomeData.protectionCounter = 0;
+        if (applyProtectionPenalties) {
+            if (isInProtectedTier) {
+                genomeData.protectionCounter++;
+            } else {
+                genomeData.protectionCounter = 0;
+            }
+            
+            // Mark for elimination if protection limit exceeded
+            if (genomeData.protectionCounter > params._maxProtectionLimit) {
+                genomeData.isMarkedForElimination = true;
+            }
         }
-        
-        // Mark for elimination if protection limit exceeded
-        if (genomeData.protectionCounter > params._maxProtectionLimit) {
-            genomeData.isMarkedForElimination = true;
-        }
+        // If we're at/below minimum species count, don't increase protection counters or mark genomes for elimination
         
         ++rank;
     }
@@ -192,19 +209,21 @@ void dynamicDataUpdate(
     }
     
     // Update protection ratings: penalize worst species, reset others
+    // Only apply penalties if we have more than minimum active species
     for (auto& [speciesId, data] : speciesData) {
-        if (worstSpeciesIds.find(speciesId) != worstSpeciesIds.end()) {
-            // This species is in worst N - apply penalty
+        if (applyProtectionPenalties && worstSpeciesIds.find(speciesId) != worstSpeciesIds.end()) {
+            // This species is in worst N - apply penalty (only if above minimum species count)
             data.protectionRating++;
             
             // Mark species for elimination if rating threshold exceeded
             if (data.protectionRating > params._maxSpeciesProtectionRating) {
                 data.isMarkedForElimination = true;
             }
-        } else {
-            // This species escaped worst N - reset rating
+        } else if (applyProtectionPenalties) {
+            // This species escaped worst N - reset rating (only if above minimum species count)
             data.protectionRating = 0;
         }
+        // If we're at/below minimum species count, don't modify protection ratings or mark species for elimination
     }
     
     // Phase 5: State Consistency Validation (Debug assertions)

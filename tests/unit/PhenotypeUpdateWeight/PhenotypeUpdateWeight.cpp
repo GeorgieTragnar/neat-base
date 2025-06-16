@@ -307,12 +307,16 @@ TEST_F(PhenotypeUpdateWeightTest, NonEmptyDeltas_Succeeds) {
     validateDeltasEmpty(genome);
 }
 
-TEST_F(PhenotypeUpdateWeightTest, EmptyDeltas_Fails) {
+TEST_F(PhenotypeUpdateWeightTest, EmptyDeltas_ExitsGracefully) {
     auto genome = createBasicGenome();
     
     setConnectionDeltas(genome, {});
     
-    EXPECT_DEATH(Operator::phenotypeUpdateWeight(genome), "Connection deltas must be non-empty");
+    // Should not crash when deltas are empty - this is a valid state
+    EXPECT_NO_THROW(Operator::phenotypeUpdateWeight(genome));
+    
+    // Deltas should still be empty after the operation
+    validateDeltasEmpty(genome);
 }
 
 TEST_F(PhenotypeUpdateWeightTest, NonExistentConnectionIds_Ignores) {

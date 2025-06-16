@@ -26,6 +26,7 @@
 #include "version3/operator/ConnectionReactivation.hpp"
 #include "version3/operator/CycleDetection.hpp"
 #include "version3/operator/CompatibilityDistance.hpp"
+#include "version3/operator/RepairOperator.hpp"
 
 // Population management
 #include "version3/population/PopulationData.hpp"
@@ -79,6 +80,7 @@ public:
         const Population::GenerationPlannerParams& plannerParams,
         const Population::DynamicDataUpdateParams& updateParams,
         const Operator::CompatibilityDistanceParams& compatibilityParams,
+        const Operator::RepairOperatorParams& repairParams,
         uint32_t randomSeed = std::random_device{}()
     );
 
@@ -102,6 +104,7 @@ private:
     Population::GenerationPlannerParams _plannerParams;
     Population::DynamicDataUpdateParams _updateParams;
     Operator::CompatibilityDistanceParams _compatibilityParams;
+    Operator::RepairOperatorParams _repairParams;
     std::mt19937 _rng;
 
 protected:
@@ -120,6 +123,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     const Population::GenerationPlannerParams& plannerParams,
     const Population::DynamicDataUpdateParams& updateParams,
     const Operator::CompatibilityDistanceParams& compatibilityParams,
+    const Operator::RepairOperatorParams& repairParams,
     uint32_t randomSeed
 ) : _fitnessStrategy(std::move(fitnessStrategy)),
     _targetPopulationSize(targetPopulationSize),
@@ -127,6 +131,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     _plannerParams(plannerParams),
     _updateParams(updateParams),
     _compatibilityParams(compatibilityParams),
+    _repairParams(repairParams),
     _rng(randomSeed),
     _historyTracker(std::make_shared<HistoryTracker>()) {
     
@@ -199,6 +204,14 @@ Genome EvolutionPrototype<FitnessResultType>::createOffspring(
     const std::vector<decltype(_genomeData[_lastGeneration].begin())>& indexToIterator,
     bool& hasCycles) 
 {
+    if (indexToIterator[instruction.globalParentIndices[0]]->second.isUnderRepair) {
+        // Handle cycles with repair operator
+        Genome offspring = Operator::repair(_population[_lastGeneration][indexToIterator[instruction.globalParentIndices[0]]->second.genomeIndex]
+            , indexToIterator[instruction.globalParentIndices[0]]->second, _repairParams);
+        Operator::CycleDetectionParams cycleParams;
+        hasCycles = Operator::hasCycles(offspring, cycleParams); // Repair isn't guaranteed to produce offspring without cycles
+        return std::move(offspring);
+    }
     switch (instruction.operationType) {
         case Population::OperationType::PRESERVE: {
             return _population[_lastGeneration][indexToIterator[instruction.globalParentIndices[0]]->second.genomeIndex];
@@ -225,7 +238,10 @@ Genome EvolutionPrototype<FitnessResultType>::createOffspring(
                     hasCycles = Operator::hasCycles(offspring, cycleParams);
                     
                     if (!hasCycles) {
+                        static auto logger = LOGGER("evolution.EvolutionPrototype");
+                        LOG_DEBUG("Calling phenotypeUpdateWeight after weight mutation");
                         Operator::phenotypeUpdateWeight(offspring);
+                        LOG_DEBUG("phenotypeUpdateWeight completed");
                     }
                     return std::move(offspring);
                 }
@@ -240,7 +256,10 @@ Genome EvolutionPrototype<FitnessResultType>::createOffspring(
                     hasCycles = Operator::hasCycles(offspring, cycleParams);
                     
                     if (!hasCycles) {
+                        static auto logger = LOGGER("evolution.EvolutionPrototype");
+                        LOG_DEBUG("Calling phenotypeUpdateNode after node mutation");
                         Operator::phenotypeUpdateNode(offspring);
+                        LOG_DEBUG("phenotypeUpdateNode completed");
                     }
                     return std::move(offspring);
                 }
@@ -257,7 +276,10 @@ Genome EvolutionPrototype<FitnessResultType>::createOffspring(
                     hasCycles = Operator::hasCycles(offspring, cycleParams);
                     
                     if (!hasCycles) {
+                        static auto logger = LOGGER("evolution.EvolutionPrototype");
+                        LOG_DEBUG("Calling phenotypeUpdateConnection after connection mutation");
                         Operator::phenotypeUpdateConnection(offspring);
+                        LOG_DEBUG("phenotypeUpdateConnection completed");
                     }
                     return std::move(offspring);
                 }
@@ -403,7 +425,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 bool hasCycles = false;
                 Genome offspring = createOffspring(instruction, indexToIterator, hasCycles);
 
-                // Create dynamic genome data for offspring
+                // Create dynamic genome data for offspring (based on parent)
                 Population::DynamicGenomeData genomeData = indexToIterator[instruction.globalParentIndices[0]]->second;
                 genomeData.genomeIndex = static_cast<uint32_t>(_population[_currentGeneration].size());
                 

@@ -1,4 +1,5 @@
 #include "PhenotypeUpdateWeight.hpp"
+#include "../logger/Logger.hpp"
 #include <unordered_map>
 #include <cassert>
 
@@ -10,8 +11,14 @@ void phenotypeUpdateWeight(Genome& genome)
 	auto& connectionDeltas = genome.get_connectionGeneDeltas();
 	const auto& connectionGenes = genome.get_connectionGenes();
 	
-	// Assert that connection deltas is non-empty
-	assert(!connectionDeltas.empty() && "Connection deltas must be non-empty for weight phenotype update");
+	static auto logger = LOGGER("operator.PhenotypeUpdateWeight");
+	LOG_DEBUG("phenotypeUpdateWeight called with {} connection deltas", connectionDeltas.size());
+	
+	// Early return if no connection deltas to process (valid state - no mutations occurred)
+	if (connectionDeltas.empty()) {
+		LOG_DEBUG("phenotypeUpdateWeight: no deltas to process, returning early");
+		return;
+	}
 	
 	// Create a map of history ID to connection gene for quick lookup
 	std::unordered_map<uint32_t, const ConnectionGene*> historyIDToConnection;
@@ -77,6 +84,7 @@ void phenotypeUpdateWeight(Genome& genome)
 	
 	// Clear connection deltas after update
 	connectionDeltas.clear();
+	LOG_DEBUG("phenotypeUpdateWeight: completed successfully, deltas cleared");
 }
 
 }

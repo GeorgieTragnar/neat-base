@@ -56,16 +56,16 @@ function(generate_operator_forward_declarations OPERATOR_DIR OUTPUT_FILE)
                         endforeach()
                     endif()
                     
-                    # Find parameter class names, including namespaced ones
-                    string(REGEX MATCHALL "const[ \t]+([A-Za-z_][A-Za-z0-9_]*::)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*&" 
+                    # Find parameter class names, including namespaced ones (both const and non-const references)
+                    string(REGEX MATCHALL "(const[ \t]+)?([A-Za-z_][A-Za-z0-9_]*::)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*&" 
                            PARAM_MATCHES "${FUNCTION_PARAMS}")
                     
                     foreach(PARAM_MATCH ${PARAM_MATCHES})
-                        string(REGEX MATCH "const[ \t]+([A-Za-z_][A-Za-z0-9_]*::)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*&" 
+                        string(REGEX MATCH "(const[ \t]+)?([A-Za-z_][A-Za-z0-9_]*::)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*&" 
                                PARAM_CLASS_MATCH "${PARAM_MATCH}")
-                        if(PARAM_CLASS_MATCH AND NOT CMAKE_MATCH_2 STREQUAL "Genome")
-                            set(PARAM_NAMESPACE "${CMAKE_MATCH_1}")
-                            set(PARAM_CLASS "${CMAKE_MATCH_2}")
+                        if(PARAM_CLASS_MATCH AND NOT CMAKE_MATCH_3 STREQUAL "Genome")
+                            set(PARAM_NAMESPACE "${CMAKE_MATCH_2}")
+                            set(PARAM_CLASS "${CMAKE_MATCH_3}")
                             
                             # Skip if this is a template parameter
                             list(FIND TEMPLATE_PARAM_NAMES "${PARAM_CLASS}" TEMPLATE_PARAM_INDEX)

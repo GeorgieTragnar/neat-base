@@ -15,6 +15,8 @@
 #include "data/NodeGene.hpp"
 #include "data/ConnectionGene.hpp"
 #include "operator/Init.hpp"
+#include "operator/DisplayGenome.hpp"
+#include "operator/DisplayPhenotype.hpp"
 #include "population/GenerationPlannerParams.hpp"
 #include "population/DynamicDataUpdate.hpp"
 #include "operator/CompatibilityDistance.hpp"
@@ -121,7 +123,7 @@ int main(int argc, char* argv[])
     try {
         // Evolution parameters
         const uint32_t populationSize = 150;
-        const uint32_t maxGenerations = 5;
+        const uint32_t maxGenerations = 500;
         const uint32_t randomSeed = 12345;
         
         // Create input node attributes (2 inputs for XOR)
@@ -198,20 +200,21 @@ int main(int argc, char* argv[])
         LOG_INFO("Best fitness achieved: {}", results.getBestFitness().getValue());
         LOG_INFO("Final population size: {}", results.getFinalPopulation().size());
         
-        // Test the best solution
+        // Display the best solution
         auto bestGenome = results.getBestGenome();
-        // const auto& bestPhenotype = bestGenome.get_phenotype();
         
-        // std::cout << "\n=== XOR Problem Solution ===\n";
-        // std::cout << "Best fitness: " << results.getBestFitness() << "\n";
-        // std::cout << "Testing best network:\n";
+        std::cout << "\n=== XOR Problem Solution ===\n";
+        std::cout << "Best fitness: " << results.getBestFitness().getValue() << "\n\n";
         
-        // // Show network structure instead of activation results
-        // std::cout << "Network structure:\n";
-        // std::cout << "Nodes: " << bestPhenotype._nodeGeneAttributes.size() << "\n";
-        // std::cout << "Connections: " << bestPhenotype._orderedConnections.size() << "\n";
-        // std::cout << "Inputs: " << bestPhenotype._inputIndices.size() << "\n";
-        // std::cout << "Outputs: " << bestPhenotype._outputIndices.size() << "\n";
+        // Display genome structure
+        std::stringstream genomeOutput;
+        Operator::displayGenome(bestGenome, genomeOutput);
+        std::cout << genomeOutput.str();
+        
+        // Display phenotype structure
+        std::stringstream phenotypeOutput;
+        Operator::displayPhenotype(bestGenome, phenotypeOutput);
+        std::cout << phenotypeOutput.str();
         
         LOG_INFO("NEAT XOR Evolution completed successfully");
         

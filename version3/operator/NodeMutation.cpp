@@ -1,4 +1,5 @@
 #include "NodeMutation.hpp"
+#include "../logger/Logger.hpp"
 #include <random>
 #include <cassert>
 #include <algorithm>
@@ -70,40 +71,66 @@ namespace {
                                  uint32_t sourceNodeID,
                                  uint32_t targetNodeID) {
         
+        static auto logger = LOGGER("operator.NodeMutation");
+        LOG_DEBUG("determineSplitNodeID: connectionID={}, sourceNodeID={}, targetNodeID={}", 
+                 connectionID, sourceNodeID, targetNodeID);
+        
         // Step 1: Get primary split node ID for this connection
         uint32_t primarySplitNodeID = historyTracker->get_splitNode(connectionID);
+        LOG_DEBUG("  Step 1: primarySplitNodeID={}", primarySplitNodeID);
         
         // Step 2: Check if split node exists in genome
         if (!nodeExistsInGenome(genomeNodes, primarySplitNodeID)) {
             // Node doesn't exist - use primary node ID
+            LOG_DEBUG("  Step 2: primarySplitNodeID doesn't exist in genome, returning {}", primarySplitNodeID);
             return primarySplitNodeID;
         }
         
         // Step 3: Check if primary split node is valid (not source or target of connection being split)
         if (primarySplitNodeID == sourceNodeID || primarySplitNodeID == targetNodeID) {
             // Primary node conflicts with connection being split - create new split branch immediately
-            return historyTracker->create_splitBranch(connectionID);
+            uint32_t newSplitBranch = historyTracker->create_splitBranch(connectionID);
+            LOG_DEBUG("  Step 3: primarySplitNodeID conflicts ({}=={}||{}=={}), creating new split branch: {}", 
+                     primarySplitNodeID, sourceNodeID, primarySplitNodeID, targetNodeID, newSplitBranch);
+            return newSplitBranch;
         }
         
         // Step 4: Primary node is valid - check if it has active connections
         if (!nodeHasActiveConnections(genomeConnections, genomeNodes, primarySplitNodeID)) {
             // Node exists but has no active connections - reuse it
+            LOG_DEBUG("  Step 4: primarySplitNodeID has no active connections, returning {}", primarySplitNodeID);
             return primarySplitNodeID;
         }
         
+        LOG_DEBUG("  Step 4: primarySplitNodeID has active connections, proceeding to alternatives");
+        
         // Step 5: Node exists with active connections - get all split node alternatives
         std::vector<uint32_t> allSplitNodes = historyTracker->get_allSplitNodes(connectionID);
+        LOG_DEBUG("  Step 5: Got {} alternative split nodes", allSplitNodes.size());
         
         // Step 6: Find first available alternative that doesn't conflict
         for (uint32_t nodeID : allSplitNodes) {
+            LOG_DEBUG("  Step 6: Checking alternative nodeID={}", nodeID);
             if (nodeID != sourceNodeID && nodeID != targetNodeID && 
                 !nodeExistsInGenome(genomeNodes, nodeID)) {
+                LOG_DEBUG("  Step 6: Using alternative nodeID={}", nodeID);
                 return nodeID;
             }
         }
         
         // Step 7: No alternatives available - create new split branch
-        return historyTracker->create_splitBranch(connectionID);
+        uint32_t finalSplitBranch = historyTracker->create_splitBranch(connectionID);
+        LOG_DEBUG("  Step 7: No alternatives available, creating new split branch: {}", finalSplitBranch);
+        
+        // Validate that the new split branch doesn't conflict with source/target nodes
+        if (finalSplitBranch == sourceNodeID || finalSplitBranch == targetNodeID) {
+            LOG_DEBUG("  Step 7: ERROR - new split branch {} conflicts with source {} or target {}", 
+                     finalSplitBranch, sourceNodeID, targetNodeID);
+            // This indicates a bug in the history tracker - it should never return conflicting IDs
+            assert(false && "History tracker returned split node ID that conflicts with source/target nodes");
+        }
+        
+        return finalSplitBranch;
     }
 }
 
@@ -155,6 +182,9 @@ Genome Operator::nodeMutation(const Genome& genome,
         targetNodeID
     );
     
+    static auto logger = LOGGER("operator.NodeMutation");
+    LOG_DEBUG("nodeMutation: determineSplitNodeID returned splitNodeID={}", splitNodeID);
+    
     // Check if we need to create a new node or reuse existing one
     bool createNewNode = !nodeExistsInGenome(nodes, splitNodeID);
     
@@ -192,6 +222,20 @@ Genome Operator::nodeMutation(const Genome& genome,
             splitNodeIndex = i;
         }
     }
+    
+    // Debug: Log what we're looking for and what we found
+    if (sourceNodeIndex == SIZE_MAX || targetNodeIndex == SIZE_MAX || splitNodeIndex == SIZE_MAX) {
+        static auto logger = LOGGER("operator.NodeMutation");
+        LOG_DEBUG("NodeMutation: Failed to find node indices. Looking for source={}, target={}, split={}", 
+                 sourceNodeID, targetNodeID, splitNodeID);
+        LOG_DEBUG("NodeMutation: Available nodes ({} total):", nodes.size());
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            LOG_DEBUG("  Node[{}]: historyID={}", i, nodes[i].get_historyID());
+        }
+        LOG_DEBUG("NodeMutation: Found indices - source={}, target={}, split={}", 
+                 sourceNodeIndex, targetNodeIndex, splitNodeIndex);
+    }
+    
     assert(sourceNodeIndex != SIZE_MAX && targetNodeIndex != SIZE_MAX && splitNodeIndex != SIZE_MAX);
     
     // Disable the original connection (safe - no reallocation)

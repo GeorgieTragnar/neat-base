@@ -12,6 +12,7 @@ namespace Population {
 struct DynamicGenomeData {
     uint32_t speciesId = UINT32_MAX;
     uint32_t protectionCounter = 0;
+    uint32_t repairAttempts = 0;
     bool isUnderRepair = false;
     bool isMarkedForElimination = false;
     uint32_t genomeIndex = UINT32_MAX;
