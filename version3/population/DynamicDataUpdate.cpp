@@ -19,7 +19,7 @@ DynamicDataUpdateParams::DynamicDataUpdateParams(
     
     assert(protectedTierPercentage >= 0.0 && protectedTierPercentage <= 1.0);
     assert(worstSpeciesCount > 0);
-    // minActiveSpeciesCount can be 0 to disable the minimum species protection mechanism
+    assert(minActiveSpeciesCount > 0);
 }
 
 // Internal helper function for Phase 1: Instruction Set Counting and Size Updates

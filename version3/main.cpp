@@ -25,7 +25,7 @@
 // Evolution prototype
 #include "evolution/EvolutionPrototype.hpp"
 
-static auto logger = LOGGER("main");
+static auto logger = LOGGER("evolution.EvolutionPrototype");
 
 // User-defined fitness result type for XOR problem
 class DoubleFitnessResult {
@@ -123,7 +123,7 @@ int main(int argc, char* argv[])
     try {
         // Evolution parameters
         const uint32_t populationSize = 150;
-        const uint32_t maxGenerations = 500;
+        const uint32_t maxGenerations = 20;
         const uint32_t randomSeed = 12345;
         
         // Create input node attributes (2 inputs for XOR)

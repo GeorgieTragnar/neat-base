@@ -182,8 +182,8 @@ Genome Operator::nodeMutation(const Genome& genome,
         targetNodeID
     );
     
-    static auto logger = LOGGER("operator.NodeMutation");
-    LOG_DEBUG("nodeMutation: determineSplitNodeID returned splitNodeID={}", splitNodeID);
+    // static auto logger = LOGGER("operator.NodeMutation");
+    // LOG_DEBUG("nodeMutation: determineSplitNodeID returned splitNodeID={}", splitNodeID);
     
     // Check if we need to create a new node or reuse existing one
     bool createNewNode = !nodeExistsInGenome(nodes, splitNodeID);

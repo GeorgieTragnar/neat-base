@@ -209,21 +209,19 @@ void dynamicDataUpdate(
     }
     
     // Update protection ratings: penalize worst species, reset others
-    // Only apply penalties if we have more than minimum active species
     for (auto& [speciesId, data] : speciesData) {
-        if (applyProtectionPenalties && worstSpeciesIds.find(speciesId) != worstSpeciesIds.end()) {
-            // This species is in worst N - apply penalty (only if above minimum species count)
+        if (worstSpeciesIds.find(speciesId) != worstSpeciesIds.end()) {
+            // This species is in worst N - apply penalty
             data.protectionRating++;
             
             // Mark species for elimination if rating threshold exceeded
             if (data.protectionRating > params._maxSpeciesProtectionRating) {
                 data.isMarkedForElimination = true;
             }
-        } else if (applyProtectionPenalties) {
-            // This species escaped worst N - reset rating (only if above minimum species count)
+        } else {
+            // This species escaped worst N - reset rating
             data.protectionRating = 0;
         }
-        // If we're at/below minimum species count, don't modify protection ratings or mark species for elimination
     }
     
     // Phase 5: State Consistency Validation (Debug assertions)

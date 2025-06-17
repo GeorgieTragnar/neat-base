@@ -32,6 +32,10 @@ function(generate_operator_forward_declarations OPERATOR_DIR OUTPUT_FILE)
             string(REGEX MATCHALL "void[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^)]*Genome[ \t]*&[^)]*\\)" 
                    VOID_FUNCTION_MATCHES "${NAMESPACE_CONTENT}")
             
+            # Also find bool functions that take const Genome& (assertion operators)
+            string(REGEX MATCHALL "bool[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^)]*const[ \t]+Genome[ \t]*&[^)]*\\)" 
+                   BOOL_FUNCTION_MATCHES "${NAMESPACE_CONTENT}")
+            
             foreach(FUNCTION_MATCH ${FUNCTION_MATCHES})
                 # Extract function signature (including template part)
                 string(REGEX MATCH "(template[ \t]*<[^>]*>[ \t\n]*)?Genome[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\(([^)]*)\\)" 
@@ -135,6 +139,66 @@ function(generate_operator_forward_declarations OPERATOR_DIR OUTPUT_FILE)
                         # Add void function forward declaration
                         string(APPEND FORWARD_DECLARATIONS 
                                "\tvoid ${FUNCTION_NAME}(${FUNCTION_PARAMS});\n")
+                    endif()
+                endif()
+            endforeach()
+            
+            # Process bool functions that take const Genome& (assertion operators)
+            foreach(BOOL_FUNCTION_MATCH ${BOOL_FUNCTION_MATCHES})
+                # Extract function signature for bool functions
+                string(REGEX MATCH "bool[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\(([^)]*)\\)" 
+                       BOOL_SIGNATURE_MATCH "${BOOL_FUNCTION_MATCH}")
+                
+                if(BOOL_SIGNATURE_MATCH)
+                    set(FUNCTION_NAME "${CMAKE_MATCH_1}")
+                    set(FUNCTION_PARAMS "${CMAKE_MATCH_2}")
+                    
+                    # Find parameter class names, including namespaced ones (both const and non-const references)
+                    string(REGEX MATCHALL "(const[ \t]+)?([A-Za-z_][A-Za-z0-9_]*::)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*&" 
+                           PARAM_MATCHES "${FUNCTION_PARAMS}")
+                    
+                    foreach(PARAM_MATCH ${PARAM_MATCHES})
+                        string(REGEX MATCH "(const[ \t]+)?([A-Za-z_][A-Za-z0-9_]*::)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*&" 
+                               PARAM_CLASS_MATCH "${PARAM_MATCH}")
+                        if(PARAM_CLASS_MATCH AND NOT CMAKE_MATCH_3 STREQUAL "Genome")
+                            set(PARAM_NAMESPACE "${CMAKE_MATCH_2}")
+                            set(PARAM_CLASS "${CMAKE_MATCH_3}")
+                            
+                            # Create unique key for this class declaration
+                            if(PARAM_NAMESPACE)
+                                string(REGEX REPLACE "::" "" CLEAN_NAMESPACE "${PARAM_NAMESPACE}")
+                                set(CLASS_KEY "${CLEAN_NAMESPACE}::${PARAM_CLASS}")
+                            else()
+                                set(CLASS_KEY "::${PARAM_CLASS}")
+                            endif()
+                            
+                            # Only add if not already processed
+                            string(FIND "${PROCESSED_CLASSES}" "${CLASS_KEY};" CLASS_FOUND)
+                            if(CLASS_FOUND EQUAL -1)
+                                string(APPEND PROCESSED_CLASSES "${CLASS_KEY};")
+                                
+                                # Add forward declaration for parameter class
+                                if(PARAM_NAMESPACE)
+                                    string(APPEND NAMESPACE_DECLARATIONS 
+                                           "namespace ${CLEAN_NAMESPACE} { class ${PARAM_CLASS}; }\n")
+                                else()
+                                    string(APPEND FORWARD_DECLARATIONS 
+                                           "\tclass ${PARAM_CLASS};\n")
+                                endif()
+                            endif()
+                        endif()
+                    endforeach()
+                    
+                    # Create unique key for this function
+                    set(FUNCTION_KEY "${FUNCTION_NAME}(${FUNCTION_PARAMS})")
+                    
+                    # Only add if not already processed
+                    string(FIND "${PROCESSED_FUNCTIONS}" "${FUNCTION_KEY};" FUNCTION_FOUND)
+                    if(FUNCTION_FOUND EQUAL -1)
+                        string(APPEND PROCESSED_FUNCTIONS "${FUNCTION_KEY};")
+                        # Add bool function forward declaration
+                        string(APPEND FORWARD_DECLARATIONS 
+                               "\tbool ${FUNCTION_NAME}(${FUNCTION_PARAMS});\n")
                     endif()
                 endif()
             endforeach()
