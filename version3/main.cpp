@@ -230,6 +230,17 @@ int main(int argc, char* argv[])
         fitnessParams.evaluationFunction = evaluateXORFitness;
         auto fitnessStrategy = std::make_unique<Analysis::SingleSimpleFitnessStrategy<DoubleFitnessResult>>(fitnessParams);
         
+        // Create repair operator parameters (using defaults)
+        Operator::RepairOperatorParams repairParams(2);
+        
+        // Create mutation probability parameters with NEAT-appropriate values
+        Evolution::MutationProbabilityParams mutationParams(
+            0.8,   // Weight mutation probability (80% - most common)
+            0.03,  // Node mutation probability (3% - structural growth)
+            0.05,  // Connection mutation probability (5% - structural growth)
+            0.001  // Connection reactivation probability (0.1% - very rare)
+        );
+        
         // Create evolution prototype
         Evolution::EvolutionPrototype<DoubleFitnessResult> evolution(
             std::move(fitnessStrategy),
@@ -238,6 +249,8 @@ int main(int argc, char* argv[])
             plannerParams,
             updateParams,
             compatibilityParams,
+            repairParams,
+            mutationParams,
             randomSeed
         );
         

@@ -43,6 +43,32 @@
 namespace Evolution {
 
 auto logger = LOGGER("evolution.EvolutionPrototype");
+
+// Mutation probability parameters
+struct MutationProbabilityParams {
+    double weightMutationProbability;        // High probability for weight mutations
+    double nodeMutationProbability;         // Low probability for structural changes
+    double connectionMutationProbability;   // Low probability for structural changes
+    double connectionReactivationProbability; // Very low probability for reactivation
+    
+    MutationProbabilityParams() = delete;
+    
+    MutationProbabilityParams(double weightProb, double nodeProb, double connProb, double reactProb)
+        : weightMutationProbability(weightProb), 
+          nodeMutationProbability(nodeProb),
+          connectionMutationProbability(connProb),
+          connectionReactivationProbability(reactProb) {
+        
+        // Normalize probabilities to sum to 1.0
+        double total = weightProb + nodeProb + connProb + reactProb;
+        if (total > 0) {
+            weightMutationProbability /= total;
+            nodeMutationProbability /= total;
+            connectionMutationProbability /= total;
+            connectionReactivationProbability /= total;
+        }
+    }
+};
 // Simple results container
 template<typename FitnessResultType>
 class EvolutionResults {
@@ -85,6 +111,7 @@ public:
         const Population::DynamicDataUpdateParams& updateParams,
         const Operator::CompatibilityDistanceParams& compatibilityParams,
         const Operator::RepairOperatorParams& repairParams,
+        const MutationProbabilityParams& mutationParams = MutationProbabilityParams(),
         uint32_t randomSeed = std::random_device{}()
     );
 
@@ -109,6 +136,7 @@ private:
     Population::DynamicDataUpdateParams _updateParams;
     Operator::CompatibilityDistanceParams _compatibilityParams;
     Operator::RepairOperatorParams _repairParams;
+    MutationProbabilityParams _mutationParams;
     std::mt19937 _rng;
 
 protected:
@@ -128,6 +156,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     const Population::DynamicDataUpdateParams& updateParams,
     const Operator::CompatibilityDistanceParams& compatibilityParams,
     const Operator::RepairOperatorParams& repairParams,
+    const MutationProbabilityParams& mutationParams,
     uint32_t randomSeed
 ) : _fitnessStrategy(std::move(fitnessStrategy)),
     _targetPopulationSize(targetPopulationSize),
@@ -136,6 +165,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     _updateParams(updateParams),
     _compatibilityParams(compatibilityParams),
     _repairParams(repairParams),
+    _mutationParams(mutationParams),
     _rng(randomSeed),
     _historyTracker(std::make_shared<HistoryTracker>()) {
     
@@ -243,11 +273,20 @@ Genome EvolutionPrototype<FitnessResultType>::createOffspring(
         
         case Population::OperationType::MUTATE_UNPROTECTED:
         case Population::OperationType::MUTATE_PROTECTED: {                        
-            // Randomly select mutation type
-            // TODO: currently not allowing connection reactivation
-            // we are missing how to check if there deactivated connections
-            std::uniform_int_distribution<int> mutationDist(0, 2);
-            int mutationType = mutationDist(_rng);
+            // Select mutation type based on weighted probabilities
+            std::uniform_real_distribution<double> dist(0.0, 1.0);
+            double random = dist(_rng);
+            
+            int mutationType;
+            if (random < _mutationParams.weightMutationProbability) {
+                mutationType = 0; // Weight mutation
+            } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability) {
+                mutationType = 1; // Node mutation
+            } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability + _mutationParams.connectionMutationProbability) {
+                mutationType = 2; // Connection mutation
+            } else {
+                mutationType = 3; // Connection reactivation
+            }
             
             switch (mutationType) {
                 case 0: { // Weight mutation
@@ -315,21 +354,55 @@ Genome EvolutionPrototype<FitnessResultType>::createOffspring(
                 }
                 
                 case 3: { // Connection reactivation
-                    // TODO: currently disabled
-                    // TODO: Check if disabled connections exist first
-                    Operator::ConnectionReactivationParams reactParams(
-                        Operator::ConnectionReactivationParams::SelectionStrategy::RANDOM
-                    );
-                    Genome offspring = Operator::connectionReactivation(_population[_lastGeneration][parentPopulationIndex]
-                        , reactParams);
-                    
-                    Operator::CycleDetectionParams cycleParams;
-                    hasCycles = Operator::hasCycles(offspring, cycleParams);
-                    
-                    if (!hasCycles) {
-                        Operator::phenotypeUpdateConnection(offspring);
+                    // Check if parent has any disabled connections first
+                    const Genome& parent = _population[_lastGeneration][parentPopulationIndex];
+                    bool hasDisabledConnections = false;
+                    for (const auto& conn : parent.get_connectionGenes()) {
+                        if (!conn.get_attributes().enabled) {
+                            hasDisabledConnections = true;
+                            break;
+                        }
                     }
-                    return std::move(offspring);
+                    
+                    if (hasDisabledConnections) {
+                        Operator::ConnectionReactivationParams reactParams(
+                            Operator::ConnectionReactivationParams::SelectionStrategy::RANDOM
+                        );
+                        Genome offspring = Operator::connectionReactivation(parent, reactParams);
+                        
+                        Operator::CycleDetectionParams cycleParams;
+                        hasCycles = Operator::hasCycles(offspring, cycleParams);
+                        
+                        if (!hasCycles) {
+                            // static auto logger = LOGGER("evolution.EvolutionPrototype");
+                            LOG_DEBUG("Calling phenotypeUpdateConnection after connection reactivation");
+                            Operator::phenotypeUpdateConnection(offspring);
+                            LOG_DEBUG("phenotypeUpdateConnection completed");
+                            // Assert deltas are cleared after phenotype update
+                            assert(Operator::emptyDeltas(offspring) && "Connection reactivation offspring has uncleared deltas after phenotype update");
+                        }
+                        return std::move(offspring);
+                    } else {
+                        // No disabled connections - fallback to weight mutation
+                        Operator::WeightMutationParams weightParams(
+                            instruction.evolutionParams.mutationRate,
+                            0.1, 0.5, 2.0, Operator::WeightMutationParams::MutationType::MIXED
+                        );
+                        Genome offspring = Operator::weightMutation(parent, weightParams);
+                        
+                        Operator::CycleDetectionParams cycleParams;
+                        hasCycles = Operator::hasCycles(offspring, cycleParams);
+                        
+                        if (!hasCycles) {
+                            // static auto logger = LOGGER("evolution.EvolutionPrototype");
+                            LOG_DEBUG("Calling phenotypeUpdateWeight after fallback weight mutation");
+                            Operator::phenotypeUpdateWeight(offspring);
+                            LOG_DEBUG("phenotypeUpdateWeight completed");
+                            // Assert deltas are cleared after phenotype update
+                            assert(Operator::emptyDeltas(offspring) && "Fallback weight mutation offspring has uncleared deltas after phenotype update");
+                        }
+                        return std::move(offspring);
+                    }
                 }
                 default: {
                     assert(false && "we cannot do nothing for an instruction set");
