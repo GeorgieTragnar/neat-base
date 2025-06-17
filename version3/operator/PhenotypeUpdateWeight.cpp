@@ -1,5 +1,5 @@
 #include "PhenotypeUpdateWeight.hpp"
-#include "../logger/Logger.hpp"
+// #include "../logger/Logger.hpp"
 #include <unordered_map>
 #include <cassert>
 
@@ -11,12 +11,12 @@ void phenotypeUpdateWeight(Genome& genome)
 	auto& connectionDeltas = genome.get_connectionGeneDeltas();
 	const auto& connectionGenes = genome.get_connectionGenes();
 	
-	static auto logger = LOGGER("operator.PhenotypeUpdateWeight");
-	LOG_DEBUG("phenotypeUpdateWeight called with {} connection deltas", connectionDeltas.size());
+	// static auto logger = LOGGER("operator.PhenotypeUpdateWeight");
+	// LOG_DEBUG("phenotypeUpdateWeight called with {} connection deltas", connectionDeltas.size());
 	
 	// Early return if no connection deltas to process (valid state - no mutations occurred)
 	if (connectionDeltas.empty()) {
-		LOG_DEBUG("phenotypeUpdateWeight: no deltas to process, returning early");
+		// LOG_DEBUG("phenotypeUpdateWeight: no deltas to process, returning early");
 		return;
 	}
 	
@@ -84,7 +84,7 @@ void phenotypeUpdateWeight(Genome& genome)
 	
 	// Clear connection deltas after update
 	connectionDeltas.clear();
-	LOG_DEBUG("phenotypeUpdateWeight: completed successfully, deltas cleared");
+	// LOG_DEBUG("phenotypeUpdateWeight: completed successfully, deltas cleared");
 }
 
 }

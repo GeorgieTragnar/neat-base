@@ -1,5 +1,5 @@
 #include "WeightMutation.hpp"
-#include "../logger/Logger.hpp"
+// #include "../logger/Logger.hpp"
 #include <random>
 #include <cassert>
 #include <algorithm>
@@ -38,8 +38,8 @@ Genome Operator::weightMutation(const Genome& genome, const WeightMutationParams
     
     if (connectionGenes.empty()) {
         // Debug: Log when no connections exist
-        static auto logger = LOGGER("operator.WeightMutation");
-        LOG_DEBUG("WeightMutation: No connections to mutate, returning unchanged genome");
+        // static auto logger = LOGGER("operator.WeightMutation");
+        // LOG_DEBUG("WeightMutation: No connections to mutate, returning unchanged genome");
         return mutatedGenome; // No connections to mutate
     }
     
@@ -103,10 +103,10 @@ Genome Operator::weightMutation(const Genome& genome, const WeightMutationParams
         }
     }
     
-    // Debug: Log final mutation results
-    static auto logger = LOGGER("operator.WeightMutation");
-    LOG_DEBUG("WeightMutation: Processed {} connections, {} mutations made (deltas: {})", 
-             connectionGenes.size(), connectionDeltas.size(), connectionDeltas.size());
+    // // Debug: Log final mutation results
+    // static auto logger = LOGGER("operator.WeightMutation");
+    // LOG_DEBUG("WeightMutation: Processed {} connections, {} mutations made (deltas: {})", 
+    //          connectionGenes.size(), connectionDeltas.size(), connectionDeltas.size());
     
     return mutatedGenome;
 }

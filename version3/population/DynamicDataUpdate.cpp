@@ -32,7 +32,7 @@ void updateInstructionSetSizes(
     
     // Reset all instruction set sizes to 0 first
     for (auto& [speciesId, data] : speciesData) {
-        LOG_DEBUG("  Resetting species {} instructionSetsSize from {} to 0", speciesId, data.instructionSetsSize);
+        // LOG_DEBUG("  Resetting species {} instructionSetsSize from {} to 0", speciesId, data.instructionSetsSize);
         data.instructionSetsSize = 0;
     }
     

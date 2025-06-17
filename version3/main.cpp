@@ -97,21 +97,77 @@ const std::vector<std::vector<double>> XOR_INPUTS = {
 };
 const std::vector<double> XOR_OUTPUTS = {0, 1, 1, 0};
 
+// Forward declaration
+double simulateNetworkOutput(const Genome::Phenotype& phenotype, const std::vector<double>& inputs);
+
 // XOR fitness evaluation function
 DoubleFitnessResult evaluateXORFitness(const Genome::Phenotype& phenotype) {
-    // For now, return a simple fitness based on network complexity
-    // TODO: Implement proper network activation when available
-    double fitness = 1.0;
+    double fitness = 0.0;
+    double totalError = 0.0;
     
-    // Simple fitness based on network structure
+    // Test each XOR input pattern
+    for (size_t i = 0; i < XOR_INPUTS.size(); ++i) {
+        const auto& inputs = XOR_INPUTS[i];
+        double expectedOutput = XOR_OUTPUTS[i];
+        
+        // TODO: Once network activation is available, replace this simulation
+        // For now, simulate network behavior based on structure
+        double networkOutput = simulateNetworkOutput(phenotype, inputs);
+        
+        // Calculate squared error
+        double error = networkOutput - expectedOutput;
+        totalError += error * error;
+    }
+    
+    // Convert error to fitness (lower error = higher fitness)
+    double performanceFitness = 4.0 - totalError; // Max fitness is 4.0 (perfect)
+    
+    // Add complexity penalization
     size_t nodeCount = phenotype._nodeGeneAttributes.size();
-    size_t connectionCount = phenotype._orderedConnections.size();
+    size_t connectionCount = 0;
     
-    // Reward having some connections and nodes
-    fitness += connectionCount * 0.1;
-    fitness += nodeCount * 0.05;
+    // Count only enabled connections
+    for (const auto& conn : phenotype._orderedConnections) {
+        if (conn._connectionGeneAttribute.enabled) {
+            connectionCount++;
+        }
+    }
+    
+    // Penalize excessive complexity (minimal network: 4 nodes, 3 connections)
+    double complexityPenalty = (nodeCount > 4 ? (nodeCount - 4) * 0.1 : 0.0) + 
+                              (connectionCount > 3 ? (connectionCount - 3) * 0.05 : 0.0);
+    
+    fitness = std::max(0.0, performanceFitness - complexityPenalty); // Ensure non-negative fitness
     
     return DoubleFitnessResult(fitness);
+}
+
+// Simulate network output based on structure (placeholder until network activation is implemented)
+double simulateNetworkOutput(const Genome::Phenotype& phenotype, const std::vector<double>& inputs) {
+    // Simple simulation: just return a weighted sum of inputs through direct connections
+    // This is a placeholder - replace with proper network activation when available
+    
+    double output = 0.0;
+    const auto& connections = phenotype._orderedConnections;
+    
+    // Find direct connections from inputs to output
+    for (const auto& conn : connections) {
+        if (conn._connectionGeneAttribute.enabled) {
+            // Check if this is an input->output connection
+            if (conn._sourceNodeIndex < inputs.size() && conn._targetNodeIndex == phenotype._outputIndices[0]) {
+                output += inputs[conn._sourceNodeIndex] * conn._connectionGeneAttribute.weight;
+            }
+            // Add bias if source is bias node (assuming bias node index is 2)
+            else if (conn._sourceNodeIndex == 2 && conn._targetNodeIndex == phenotype._outputIndices[0]) {
+                output += 1.0 * conn._connectionGeneAttribute.weight;
+            }
+        }
+    }
+    
+    // Apply sigmoid activation
+    output = 1.0 / (1.0 + std::exp(-output));
+    
+    return output;
 }
 
 int main(int argc, char* argv[])
@@ -122,7 +178,7 @@ int main(int argc, char* argv[])
     
     try {
         // Evolution parameters
-        const uint32_t populationSize = 150;
+        const uint32_t populationSize = 200;
         const uint32_t maxGenerations = 20;
         const uint32_t randomSeed = 12345;
         
