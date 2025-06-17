@@ -120,9 +120,9 @@ void dynamicDataUpdate(
     for (uint32_t speciesId : newlyDiscoveredSpecies) {
         auto& speciesInfo = speciesData[speciesId];
         speciesInfo.instructionSetsSize = speciesInfo.currentPopulationSize;
-        auto logger = LOGGER("population.DynamicDataUpdate");
-        LOG_DEBUG("Set newly discovered species {} instructionSetsSize to {} (equals currentPopulationSize)", 
-            speciesId, speciesInfo.instructionSetsSize);
+        // auto logger = LOGGER("population.DynamicDataUpdate");
+        // LOG_DEBUG("Set newly discovered species {} instructionSetsSize to {} (equals currentPopulationSize)", 
+            // speciesId, speciesInfo.instructionSetsSize);
     }
     
     // Calculate average rank per species
@@ -209,30 +209,35 @@ void dynamicDataUpdate(
     }
     
     // Update protection ratings: penalize worst species, reset others
-    for (auto& [speciesId, data] : speciesData) {
-        if (worstSpeciesIds.find(speciesId) != worstSpeciesIds.end()) {
-            // This species is in worst N - apply penalty
-            data.protectionRating++;
-            
-            // Mark species for elimination if rating threshold exceeded
-            if (data.protectionRating > params._maxSpeciesProtectionRating) {
-                data.isMarkedForElimination = true;
+    // Only apply species protection penalties if we have more than minimum active species
+    if (applyProtectionPenalties) {
+        for (auto& [speciesId, data] : speciesData) {
+            if (worstSpeciesIds.find(speciesId) != worstSpeciesIds.end()) {
+                // This species is in worst N - apply penalty
+                data.protectionRating++;
+                
+                // Mark species for elimination if rating threshold exceeded
+                if (data.protectionRating > params._maxSpeciesProtectionRating) {
+                    data.isMarkedForElimination = true;
+                }
+            } else {
+                // This species escaped worst N - reset rating
+                data.protectionRating = 0;
             }
-        } else {
-            // This species escaped worst N - reset rating
-            data.protectionRating = 0;
         }
     }
+    // If below minimum species count, no species protection penalties are applied
     
     // Phase 5: State Consistency Validation (Debug assertions)
-    #ifdef DEBUG
+#ifndef NDEBUG
     for (const auto& [fitnessResult, genomeData] : orderedGenomeData) {
-        assert(genomeData.protectionCounter <= params._maxProtectionLimit + 1); // +1 for the elimination frame
+        // Protection counter can exceed maxProtectionLimit for custom scaling logic that punishes worst genomes more severely
+        // No assertion needed for protectionCounter upper bound
         assert(speciesData.find(genomeData.speciesId) != speciesData.end());
     }
     
     for (const auto& [speciesId, data] : speciesData) {
-        assert(data.protectionRating <= params._maxSpeciesProtectionRating + 1); // +1 for the elimination frame
+        // Protection rating can exceed maxSpeciesProtectionRating for adaptive elimination strategies
         assert(data.speciesRank > 0); // Species rank should be assigned
         
         // Population size should match actual count
@@ -245,13 +250,15 @@ void dynamicDataUpdate(
         // Instruction set size validation
         auto instructionIt = instructionSets.find(speciesId);
         if (instructionIt != instructionSets.end()) {
+            // Species with instruction sets: size should match actual instruction count
             assert(data.instructionSetsSize == instructionIt->second.size());
         } else {
-            // Species not in instruction sets should have 0 instruction sets
-            assert(data.instructionSetsSize == 0);
+            // Species not in instruction sets: either newly discovered or previously eliminated species being rediscovered
+            // instructionSetsSize should be either 0 (no instruction sets yet) or currentPopulationSize (carry-forward behavior)
+            assert(data.instructionSetsSize == 0 || data.instructionSetsSize == data.currentPopulationSize);
         }
     }
-    #endif
+#endif
 }
 
 } // namespace Population

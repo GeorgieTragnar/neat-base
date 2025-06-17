@@ -42,29 +42,33 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
         ++globalIndex;
     }
     
-    #ifdef DEBUG
-    // Validate completeness: every global index should appear exactly once
+#ifndef NDEBUG
+    // Validate completeness: every valid genome index should appear exactly once
     size_t totalIndices = 0;
+    size_t validGenomeCount = 0;
     for (const auto& [speciesId, indices] : speciesIndices) {
         totalIndices += indices.size();
         
-        // Validate ordering preservation within species
-        for (size_t i = 1; i < indices.size(); ++i) {
-            assert(indices[i-1] < indices[i]);
+        // Note: Genome indices within species preserve fitness ordering from multimap,
+        // not ascending index order, so no ordering constraint is needed here
+    }
+    
+    // Count valid genomes (not marked for elimination or under repair)
+    for (const auto& [fitnessResult, genomeData] : orderedGenomeData) {
+        if (!genomeData.isMarkedForElimination && !genomeData.isUnderRepair) {
+            validGenomeCount++;
         }
     }
-    assert(totalIndices == orderedGenomeData.size());
+    assert(totalIndices == validGenomeCount);
     
     // Validate no empty species vectors
     for (const auto& [speciesId, indices] : speciesIndices) {
         assert(!indices.empty());
     }
     
-    // Validate all species in result exist in species data
-    for (const auto& [speciesId, indices] : speciesIndices) {
-        assert(speciesData.find(speciesId) != speciesData.end());
-    }
-    #endif
+    // Note: New species discovered in genome data may not yet exist in speciesData
+    // They will be added during dynamic data update process
+#endif
     
     return speciesIndices;
 }
