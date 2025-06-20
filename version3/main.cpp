@@ -15,6 +15,7 @@
 #include "data/NodeGene.hpp"
 #include "data/ConnectionGene.hpp"
 #include "operator/Init.hpp"
+#include "operator/WeightMutation.hpp"
 #include "operator/DisplayGenome.hpp"
 #include "operator/DisplayPhenotype.hpp"
 #include "population/GenerationPlannerParams.hpp"
@@ -178,8 +179,8 @@ int main(int argc, char* argv[])
     
     try {
         // Evolution parameters
-        const uint32_t populationSize = 200;
-        const uint32_t maxGenerations = 20;
+        const uint32_t populationSize = 500;
+        const uint32_t maxGenerations = 100;
         const uint32_t randomSeed = 12345;
         
         // Create input node attributes (2 inputs for XOR)
@@ -214,7 +215,8 @@ int main(int argc, char* argv[])
             5,    // maxProtectionLimit
             3,    // maxSpeciesProtectionRating  
             0.3,  // protectedTierPercentage (30%)
-            1     // worstSpeciesCount
+            1,    // worstSpeciesCount
+            1     // minActiveSpeciesCount
         );
         
         // Create compatibility distance parameters
@@ -222,7 +224,7 @@ int main(int argc, char* argv[])
             1.0,  // c1 - excess gene coefficient
             1.0,  // c2 - disjoint gene coefficient
             0.4,  // c3 - weight difference coefficient
-            3.0   // threshold - compatibility threshold
+            8.0  // threshold - compatibility threshold (drastically increased to prevent species explosion)
         );
         
         // Create fitness strategy
@@ -233,12 +235,21 @@ int main(int argc, char* argv[])
         // Create repair operator parameters (using defaults)
         Operator::RepairOperatorParams repairParams(2);
         
+        // Create weight mutation parameters for better convergence
+        Operator::WeightMutationParams weightMutationParams(
+            0.9,  // perturbationRate - high probability to perturb weights
+            0.1,  // replacementRate - low probability to replace entirely  
+            0.5,  // perturbationStrength
+            2.0,  // weightRange
+            Operator::WeightMutationParams::MutationType::MIXED
+        );
+        
         // Create mutation probability parameters with NEAT-appropriate values
         Evolution::MutationProbabilityParams mutationParams(
-            0.8,   // Weight mutation probability (80% - most common)
-            0.03,  // Node mutation probability (3% - structural growth)
-            0.05,  // Connection mutation probability (5% - structural growth)
-            0.001  // Connection reactivation probability (0.1% - very rare)
+            0.95,  // Weight mutation probability (95% - heavily favor weight mutations)
+            0.01,  // Node mutation probability (1% - drastically reduced structural growth)
+            0.03,  // Connection mutation probability (3% - reduced structural growth)
+            0.01   // Connection reactivation probability (1% - slightly increased)
         );
         
         // Create evolution prototype
@@ -251,6 +262,7 @@ int main(int argc, char* argv[])
             compatibilityParams,
             repairParams,
             mutationParams,
+            weightMutationParams,
             randomSeed
         );
         

@@ -111,7 +111,8 @@ public:
         const Population::DynamicDataUpdateParams& updateParams,
         const Operator::CompatibilityDistanceParams& compatibilityParams,
         const Operator::RepairOperatorParams& repairParams,
-        const MutationProbabilityParams& mutationParams = MutationProbabilityParams(),
+        const MutationProbabilityParams& mutationParams,
+        const Operator::WeightMutationParams& weightMutationParams,
         uint32_t randomSeed = std::random_device{}()
     );
 
@@ -137,6 +138,7 @@ private:
     Operator::CompatibilityDistanceParams _compatibilityParams;
     Operator::RepairOperatorParams _repairParams;
     MutationProbabilityParams _mutationParams;
+    Operator::WeightMutationParams _weightMutationParams;
     std::mt19937 _rng;
 
 protected:
@@ -157,6 +159,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     const Operator::CompatibilityDistanceParams& compatibilityParams,
     const Operator::RepairOperatorParams& repairParams,
     const MutationProbabilityParams& mutationParams,
+    const Operator::WeightMutationParams& weightMutationParams,
     uint32_t randomSeed
 ) : _fitnessStrategy(std::move(fitnessStrategy)),
     _targetPopulationSize(targetPopulationSize),
@@ -166,6 +169,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     _compatibilityParams(compatibilityParams),
     _repairParams(repairParams),
     _mutationParams(mutationParams),
+    _weightMutationParams(weightMutationParams),
     _rng(randomSeed),
     _historyTracker(std::make_shared<HistoryTracker>()) {
     
@@ -290,21 +294,17 @@ Genome EvolutionPrototype<FitnessResultType>::createOffspring(
             
             switch (mutationType) {
                 case 0: { // Weight mutation
-                    Operator::WeightMutationParams weightParams(
-                        instruction.evolutionParams.mutationRate,
-                        0.1, 0.5, 2.0, Operator::WeightMutationParams::MutationType::MIXED
-                    );
                     Genome offspring = Operator::weightMutation(_population[_lastGeneration][parentPopulationIndex]
-                        , weightParams);
+                        , _weightMutationParams);
                     
                     Operator::CycleDetectionParams cycleParams;
                     hasCycles = Operator::hasCycles(offspring, cycleParams);
                     
                     if (!hasCycles) {
                         // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                        LOG_DEBUG("Calling phenotypeUpdateWeight after weight mutation");
+                        // LOG_DEBUG("Calling phenotypeUpdateWeight after weight mutation");
                         Operator::phenotypeUpdateWeight(offspring);
-                        LOG_DEBUG("phenotypeUpdateWeight completed");
+                        // LOG_DEBUG("phenotypeUpdateWeight completed");
                         // Assert deltas are cleared after phenotype update
                         assert(Operator::emptyDeltas(offspring) && "Weight mutation offspring has uncleared deltas after phenotype update");
                     }
@@ -322,9 +322,9 @@ Genome EvolutionPrototype<FitnessResultType>::createOffspring(
                     
                     if (!hasCycles) {
                         // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                        LOG_DEBUG("Calling phenotypeUpdateNode after node mutation");
+                        // LOG_DEBUG("Calling phenotypeUpdateNode after node mutation");
                         Operator::phenotypeUpdateNode(offspring);
-                        LOG_DEBUG("phenotypeUpdateNode completed");
+                        // LOG_DEBUG("phenotypeUpdateNode completed");
                         // Assert deltas are cleared after phenotype update
                         assert(Operator::emptyDeltas(offspring) && "Node mutation offspring has uncleared deltas after phenotype update");
                     }
@@ -344,9 +344,9 @@ Genome EvolutionPrototype<FitnessResultType>::createOffspring(
                     
                     if (!hasCycles) {
                         // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                        LOG_DEBUG("Calling phenotypeUpdateConnection after connection mutation");
+                        // LOG_DEBUG("Calling phenotypeUpdateConnection after connection mutation");
                         Operator::phenotypeUpdateConnection(offspring);
-                        LOG_DEBUG("phenotypeUpdateConnection completed");
+                        // LOG_DEBUG("phenotypeUpdateConnection completed");
                         // Assert deltas are cleared after phenotype update
                         assert(Operator::emptyDeltas(offspring) && "Connection mutation offspring has uncleared deltas after phenotype update");
                     }
@@ -375,29 +375,25 @@ Genome EvolutionPrototype<FitnessResultType>::createOffspring(
                         
                         if (!hasCycles) {
                             // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                            LOG_DEBUG("Calling phenotypeUpdateConnection after connection reactivation");
+                            // LOG_DEBUG("Calling phenotypeUpdateConnection after connection reactivation");
                             Operator::phenotypeUpdateConnection(offspring);
-                            LOG_DEBUG("phenotypeUpdateConnection completed");
+                            // LOG_DEBUG("phenotypeUpdateConnection completed");
                             // Assert deltas are cleared after phenotype update
                             assert(Operator::emptyDeltas(offspring) && "Connection reactivation offspring has uncleared deltas after phenotype update");
                         }
                         return std::move(offspring);
                     } else {
                         // No disabled connections - fallback to weight mutation
-                        Operator::WeightMutationParams weightParams(
-                            instruction.evolutionParams.mutationRate,
-                            0.1, 0.5, 2.0, Operator::WeightMutationParams::MutationType::MIXED
-                        );
-                        Genome offspring = Operator::weightMutation(parent, weightParams);
+                        Genome offspring = Operator::weightMutation(parent, _weightMutationParams);
                         
                         Operator::CycleDetectionParams cycleParams;
                         hasCycles = Operator::hasCycles(offspring, cycleParams);
                         
                         if (!hasCycles) {
                             // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                            LOG_DEBUG("Calling phenotypeUpdateWeight after fallback weight mutation");
+                            // LOG_DEBUG("Calling phenotypeUpdateWeight after fallback weight mutation");
                             Operator::phenotypeUpdateWeight(offspring);
-                            LOG_DEBUG("phenotypeUpdateWeight completed");
+                            // LOG_DEBUG("phenotypeUpdateWeight completed");
                             // Assert deltas are cleared after phenotype update
                             assert(Operator::emptyDeltas(offspring) && "Fallback weight mutation offspring has uncleared deltas after phenotype update");
                         }
@@ -415,7 +411,7 @@ Genome EvolutionPrototype<FitnessResultType>::createOffspring(
             // Check if both parents are the same - if so, just copy the first parent
             if (parentPopulationIndex == instruction.globalParentIndices[1]) {
                 // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                LOG_DEBUG("Crossover with identical parents ({}), copying first parent instead", parentPopulationIndex);
+                // LOG_DEBUG("Crossover with identical parents ({}), copying first parent instead", parentPopulationIndex);
                 return _population[_lastGeneration][parentPopulationIndex];
             }
             
@@ -485,7 +481,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         _currentGeneration = (_currentGeneration + 1) % 2;
 
         // auto logger = LOGGER("evolution.EvolutionPrototype");
-        LOG_INFO("generation: {}", generation);
+        // LOG_INFO("generation: {}", generation);
 
         // Assert that all genomes in last generation with uncleared deltas are properly marked
         if (generation > 0) { // Skip first generation
@@ -529,12 +525,12 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             if (instructionIt != _instructionSets[_lastGeneration].end()) {
                 // Species has instruction sets (active or marked for elimination)
                 // auto logger = LOGGER("evolution.EvolutionPrototype");
-                LOG_DEBUG("Species {} has {} instruction sets", speciesId, instructionIt->second.size());
+                // LOG_DEBUG("Species {} has {} instruction sets", speciesId, instructionIt->second.size());
                 totalGenomesThisGeneration += static_cast<uint32_t>(instructionIt->second.size());
             } else {
                 // Species not in instruction sets = new/rediscovered, carry forward
                 // auto logger = LOGGER("evolution.EvolutionPrototype");
-                LOG_DEBUG("Species {} has no instructions, carrying forward {} genomes", speciesId, speciesData.currentPopulationSize);
+                // LOG_DEBUG("Species {} has no instructions, carrying forward {} genomes", speciesId, speciesData.currentPopulationSize);
                 totalGenomesThisGeneration += speciesData.currentPopulationSize;
             }
         }
@@ -547,8 +543,8 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         _population[_currentGeneration].reserve(totalGenomesThisGeneration);
         _genomeData[_currentGeneration].clear();
         
-        LOG_DEBUG("Generation {}: Reserved {} slots, current capacity = {}", 
-            generation, totalGenomesThisGeneration, _population[_currentGeneration].capacity());
+        // LOG_DEBUG("Generation {}: Reserved {} slots, current capacity = {}", 
+        //     generation, totalGenomesThisGeneration, _population[_currentGeneration].capacity());
 
         // Build index-to-iterator mapping once per generation
         std::vector<decltype(_genomeData[_lastGeneration].begin())> indexToIterator;
@@ -562,14 +558,14 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             for (const auto& instruction : instructions) {
                 // Debug: Log instruction details before createOffspring
                 // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                LOG_DEBUG("Executing instruction for species {}: operationType={}, globalParentIndices size={}", 
-                    speciesId, static_cast<int>(instruction.operationType), instruction.globalParentIndices.size());
-                if (!instruction.globalParentIndices.empty()) {
-                    LOG_DEBUG("  Parent 0 index: {}", instruction.globalParentIndices[0]);
-                    if (instruction.globalParentIndices.size() > 1) {
-                        LOG_DEBUG("  Parent 1 index: {}", instruction.globalParentIndices[1]);
-                    }
-                }
+                // LOG_DEBUG("Executing instruction for species {}: operationType={}, globalParentIndices size={}", 
+                //     speciesId, static_cast<int>(instruction.operationType), instruction.globalParentIndices.size());
+                // if (!instruction.globalParentIndices.empty()) {
+                //     LOG_DEBUG("  Parent 0 index: {}", instruction.globalParentIndices[0]);
+                //     if (instruction.globalParentIndices.size() > 1) {
+                //         LOG_DEBUG("  Parent 1 index: {}", instruction.globalParentIndices[1]);
+                //     }
+                // }
                 
                 // Execute the instruction to create offspring
                 bool hasCycles = false;
@@ -627,10 +623,10 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 }
                 
                 // Add to current generation
-                LOG_DEBUG("Adding offspring: population size before = {}, capacity = {}", 
-                    _population[_currentGeneration].size(), _population[_currentGeneration].capacity());
+                // LOG_DEBUG("Adding offspring: population size before = {}, capacity = {}", 
+                //     _population[_currentGeneration].size(), _population[_currentGeneration].capacity());
                 _population[_currentGeneration].push_back(std::move(offspring));
-                LOG_DEBUG("Adding offspring: population size after = {}", _population[_currentGeneration].size());
+                // LOG_DEBUG("Adding offspring: population size after = {}", _population[_currentGeneration].size());
                 
                 // Assert that any genome with uncleared deltas is properly marked
                 const Genome& addedGenome = _population[_currentGeneration].back();
@@ -661,8 +657,8 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         for (auto& [fitness, genomeData] : _genomeData[_lastGeneration]) {
             if (genomeData.isUnderRepair && !genomeData.isMarkedForElimination) {
                 // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                LOG_DEBUG("Repairing genome at index {} for species {} (repair attempts: {})", 
-                    genomeData.genomeIndex, genomeData.speciesId, genomeData.repairAttempts);
+                // LOG_DEBUG("Repairing genome at index {} for species {} (repair attempts: {})", 
+                //     genomeData.genomeIndex, genomeData.speciesId, genomeData.repairAttempts);
                 
                 Genome& genomeToRepair = _population[_lastGeneration][genomeData.genomeIndex];
                 Genome repairedGenome = Operator::repair(genomeToRepair, genomeData, _repairParams);
@@ -692,10 +688,10 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                     
                     _genomeData[_currentGeneration].insert({newFitness, newGenomeData});
                     
-                    LOG_DEBUG("Repair successful for genome at index {}, species: {}", 
-                        newGenomeData.genomeIndex, newSpeciesId);
+                    // LOG_DEBUG("Repair successful for genome at index {}, species: {}", 
+                    //     newGenomeData.genomeIndex, newSpeciesId);
                 } else {
-                    LOG_DEBUG("Repair failed for genome at index {}, will retry next generation", newGenomeData.genomeIndex);
+                    // LOG_DEBUG("Repair failed for genome at index {}, will retry next generation", newGenomeData.genomeIndex);
                     
                     // Still under repair, insert with default fitness
                     _genomeData[_currentGeneration].insert({FitnessResultType(), newGenomeData});
@@ -711,8 +707,8 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         for (const auto& [speciesId, speciesData] : _speciesData) {
             if (_instructionSets[_lastGeneration].find(speciesId) == _instructionSets[_lastGeneration].end()) {
                 // auto logger = LOGGER("evolution.EvolutionPrototype");
-                LOG_DEBUG("Processing new/rediscovered species {} with currentPopulationSize={}", 
-                    speciesId, speciesData.currentPopulationSize);
+                // LOG_DEBUG("Processing new/rediscovered species {} with currentPopulationSize={}", 
+                    // speciesId, speciesData.currentPopulationSize);
                 // This species has no instruction sets, copy its genomes from last generation
                 for (const auto& [fitness, genomeData] : _genomeData[_lastGeneration]) {
                     if (genomeData.speciesId == speciesId && !genomeData.isUnderRepair) {
@@ -730,10 +726,10 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                         
                         // Add to current generation
                         // auto logger = LOGGER("evolution.EvolutionPrototype");
-                        LOG_DEBUG("Adding copied genome: population size before = {}, capacity = {}", 
-                            _population[_currentGeneration].size(), _population[_currentGeneration].capacity());
+                        // LOG_DEBUG("Adding copied genome: population size before = {}, capacity = {}", 
+                            // _population[_currentGeneration].size(), _population[_currentGeneration].capacity());
                         _population[_currentGeneration].push_back(std::move(genomeCopy));
-                        LOG_DEBUG("Adding copied genome: population size after = {}", _population[_currentGeneration].size());
+                        // LOG_DEBUG("Adding copied genome: population size after = {}", _population[_currentGeneration].size());
                         _genomeData[_currentGeneration].insert({fitness, newGenomeData});
                     }
                 }
@@ -742,11 +738,11 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
 
         // Population operations
         // 1. Generate instruction sets for next generation based on current species data
-        LOG_DEBUG("Generation {}: Before generation planner:", generation);
-        for (const auto& [speciesId, speciesData] : _speciesData) {
-            LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
-                speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
-        }
+        // LOG_DEBUG("Generation {}: Before generation planner:", generation);
+        // for (const auto& [speciesId, speciesData] : _speciesData) {
+        //     LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
+        //         speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
+        // }
         
         for (const auto& [fitness, genomeData] : _genomeData[_currentGeneration]) {
             const Genome& genome = _population[_currentGeneration][genomeData.genomeIndex];
@@ -758,10 +754,10 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
 
         _instructionSets[_currentGeneration] = Population::generationPlanner(_speciesData, _plannerParams);
         
-        LOG_DEBUG("Generation {}: After generation planner, instruction sets created:", generation);
-        for (const auto& [speciesId, instructions] : _instructionSets[_currentGeneration]) {
-            LOG_DEBUG("  Species {}: {} instruction sets", speciesId, instructions.size());
-        }
+        // LOG_DEBUG("Generation {}: After generation planner, instruction sets created:", generation);
+        // for (const auto& [speciesId, instructions] : _instructionSets[_currentGeneration]) {
+        //     LOG_DEBUG("  Species {}: {} instruction sets", speciesId, instructions.size());
+        // }
 
         // Assert that all genomes entering species grouping either have empty deltas or are marked appropriately
         for (const auto& [fitness, genomeData] : _genomeData[_currentGeneration]) {
@@ -776,18 +772,18 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         auto speciesGrouping = Population::speciesGrouping(_genomeData[_currentGeneration], _speciesData);
         
         // Debug: Log species grouping results
-        LOG_DEBUG("Species grouping results:");
-        for (const auto& [speciesId, indices] : speciesGrouping) {
-            LOG_DEBUG("  Species {}: {} indices", speciesId, indices.size());
-            if (indices.size() <= 10) { // Only log if manageable size
-                for (size_t i = 0; i < indices.size(); ++i) {
-                    LOG_DEBUG("    index[{}] = {}", i, indices[i]);
-                }
-            } else if (indices.size() > 10) {
-                LOG_DEBUG("    First few indices: {}, {}, {} ... (total {})", 
-                    indices[0], indices[1], indices[2], indices.size());
-            }
-        }
+        // LOG_DEBUG("Species grouping results:");
+        // for (const auto& [speciesId, indices] : speciesGrouping) {
+        //     LOG_DEBUG("  Species {}: {} indices", speciesId, indices.size());
+        //     if (indices.size() <= 10) { // Only log if manageable size
+        //         for (size_t i = 0; i < indices.size(); ++i) {
+        //             LOG_DEBUG("    index[{}] = {}", i, indices[i]);
+        //         }
+        //     } else if (indices.size() > 10) {
+        //         LOG_DEBUG("    First few indices: {}, {}, {} ... (total {})", 
+        //             indices[0], indices[1], indices[2], indices.size());
+        //     }
+        // }
         
         // Assert that all genomes in species grouping have empty deltas
         for (const auto& [speciesId, indices] : speciesGrouping) {
@@ -804,7 +800,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             if (groupingIt == speciesGrouping.end()) {
                 // Species has no valid genomes in current generation - remove entire instruction set
                 // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                LOG_DEBUG("Removing instruction set for species {} (no valid genomes in current generation)", it->first);
+                // LOG_DEBUG("Removing instruction set for species {} (no valid genomes in current generation)", it->first);
                 it = _instructionSets[_currentGeneration].erase(it);
             } else {
                 ++it;
@@ -819,19 +815,19 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         }
 
         // 4. Update dynamic data for current generation (finishing operation of evolution loop)
-        LOG_DEBUG("Generation {}: Before dynamic data update:", generation);
-        for (const auto& [speciesId, speciesData] : _speciesData) {
-            LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
-                speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
-        }
+        // LOG_DEBUG("Generation {}: Before dynamic data update:", generation);
+        // for (const auto& [speciesId, speciesData] : _speciesData) {
+        //     LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
+        //         speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
+        // }
         
         Population::dynamicDataUpdate(_genomeData[_currentGeneration], _speciesData, _instructionSets[_currentGeneration], _updateParams);
         
-        LOG_DEBUG("Generation {}: After dynamic data update:", generation);
-        for (const auto& [speciesId, speciesData] : _speciesData) {
-            LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
-                speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
-        }
+        // LOG_DEBUG("Generation {}: After dynamic data update:", generation);
+        // for (const auto& [speciesId, speciesData] : _speciesData) {
+        //     LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
+        //         speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
+        // }
         // end of generation loop
     }
     
