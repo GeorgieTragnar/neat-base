@@ -24,8 +24,8 @@ public:
         uint32_t maxProtectionLimit,
         uint32_t maxSpeciesProtectionRating,
         double protectedTierPercentage,
-        uint32_t worstSpeciesCount = 1,
-        uint32_t minActiveSpeciesCount = 1
+        uint32_t worstSpeciesCount,
+        uint32_t minActiveSpeciesCount
     );
 
 protected:
@@ -98,8 +98,8 @@ void dynamicDataUpdate(
             speciesIt->second.currentPopulationSize++;
         } else {
             // Create new species data entry for species discovered in genome data
-            auto logger = LOGGER("population.DynamicDataUpdate");
-            LOG_DEBUG("Discovered new species {} in genome data, creating species entry", speciesId);
+            // auto logger = LOGGER("population.DynamicDataUpdate");
+            // LOG_DEBUG("Discovered new species {} in genome data, creating species entry", speciesId);
             DynamicSpeciesData newSpecies;
             newSpecies.currentPopulationSize = 1;     // First genome for this species
             newSpecies.instructionSetsSize = 0;       // Will be set to currentPopulationSize after the loop
@@ -110,7 +110,7 @@ void dynamicDataUpdate(
             
             // Track this as a newly discovered species
             newlyDiscoveredSpecies.push_back(speciesId);
-            LOG_DEBUG("Created species {}: currentPopulationSize=1, instructionSetsSize=0 (will be set to population size)", speciesId);
+            // LOG_DEBUG("Created species {}: currentPopulationSize=1, instructionSetsSize=0 (will be set to population size)", speciesId);
         }
         
         ++rank;
@@ -210,22 +210,22 @@ void dynamicDataUpdate(
     
     // Update protection ratings: penalize worst species, reset others
     // Only apply species protection penalties if we have more than minimum active species
-    if (applyProtectionPenalties) {
-        for (auto& [speciesId, data] : speciesData) {
-            if (worstSpeciesIds.find(speciesId) != worstSpeciesIds.end()) {
-                // This species is in worst N - apply penalty
-                data.protectionRating++;
+    // if (applyProtectionPenalties) {
+    //     for (auto& [speciesId, data] : speciesData) {
+    //         if (worstSpeciesIds.find(speciesId) != worstSpeciesIds.end()) {
+    //             // This species is in worst N - apply penalty
+    //             data.protectionRating++;
                 
-                // Mark species for elimination if rating threshold exceeded
-                if (data.protectionRating > params._maxSpeciesProtectionRating) {
-                    data.isMarkedForElimination = true;
-                }
-            } else {
-                // This species escaped worst N - reset rating
-                data.protectionRating = 0;
-            }
-        }
-    }
+    //             // Mark species for elimination if rating threshold exceeded
+    //             if (data.protectionRating > params._maxSpeciesProtectionRating) {
+    //                 data.isMarkedForElimination = true;
+    //             }
+    //         } else {
+    //             // This species escaped worst N - reset rating
+    //             data.protectionRating = 0;
+    //         }
+    //     }
+    // }
     // If below minimum species count, no species protection penalties are applied
     
     // Phase 5: State Consistency Validation (Debug assertions)
