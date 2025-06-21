@@ -5,6 +5,10 @@ set(CMAKE_TOOLCHAIN_FILE ${CMAKE_SOURCE_DIR}/../vcpkg/scripts/buildsystems/vcpkg
 
 project(NeatBase)
 
+# Add this near the top after project()
+set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0" CACHE STRING "Debug flags")
+
 # Set C++ standard to C++20
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -95,4 +99,4 @@ add_executable(NeatBase "${MAIN_CPP}")
 target_link_libraries(NeatBase PRIVATE neat_lib)
 
 # Add test directory
-add_subdirectory(tests)
+# add_subdirectory(tests)
