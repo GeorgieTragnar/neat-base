@@ -18,9 +18,16 @@
 #include "operator/WeightMutation.hpp"
 #include "operator/DisplayGenome.hpp"
 #include "operator/DisplayPhenotype.hpp"
-#include "population/GenerationPlannerParams.hpp"
 #include "population/DynamicDataUpdate.hpp"
+#include "population/PlotElites.hpp"
+#include "population/PlotCrossover.hpp"
 #include "operator/CompatibilityDistance.hpp"
+#include "operator/Crossover.hpp"
+#include "operator/CycleDetection.hpp"
+#include "operator/NodeMutation.hpp"
+#include "operator/ConnectionMutation.hpp"
+#include "operator/ConnectionReactivation.hpp"
+#include "operator/RepairOperator.hpp"
 #include "analysis/strategies/SingleSimpleFitnessStrategy.hpp"
 
 // Evolution prototype
@@ -180,7 +187,7 @@ int main(int argc, char* argv[])
     try {
         // Evolution parameters
         const uint32_t populationSize = 500;
-        const uint32_t maxGenerations = 100;
+        const uint32_t maxGenerations = 50;
         const uint32_t randomSeed = 12345;
         
         // Create input node attributes (2 inputs for XOR)
@@ -205,16 +212,50 @@ int main(int argc, char* argv[])
             Operator::InitParams::InputConnectionStrategy::CONNECT_TO_OUTPUTS
         );
         
-        // Create generation planner parameters
-        auto plannerParams = Population::GenerationPlannerParamsFactory::createBalanced(
-            populationSize, randomSeed
+        // Create plot elites parameters
+        Population::PlotElitesParams eliteParams(
+            0.2,  // elitePercentage - 20% of each species
+            1,    // minimumElitesPerSpecies
+            5     // maximumElitesPerSpecies
+        );
+        
+        // Create plot crossover parameters
+        Population::PlotCrossoverParams crossoverParams(
+            0.5,  // topPerformerPercentage - top 50% can be parents
+            2,    // baseCrossoversPerSpecies
+            0.3,  // crossoverScalingFactor
+            2     // minimumSpeciesSize for crossover
+        );
+        
+        // Create crossover operator parameters
+        Operator::CrossoverParams crossoverOperatorParams(
+            0.25  // disabledGeneReactivationProbability
+        );
+        
+        // Create cycle detection parameters
+        Operator::CycleDetectionParams cycleDetectionParams;
+        
+        // Create node mutation parameters
+        NodeGeneAttributes nodeAttribs{ActivationType::SIGMOID};
+        Operator::NodeMutationParams nodeMutationParams(nodeAttribs);
+        
+        // Create connection mutation parameters
+        Operator::ConnectionMutationParams connectionMutationParams(
+            0.5,  // weight
+            2.0,  // weightRange
+            Operator::ConnectionMutationParams::NetworkTopology::FEED_FORWARD
+        );
+        
+        // Create connection reactivation parameters
+        Operator::ConnectionReactivationParams connectionReactivationParams(
+            Operator::ConnectionReactivationParams::SelectionStrategy::RANDOM
         );
         
         // Create dynamic data update parameters
         Population::DynamicDataUpdateParams updateParams(
             5,    // maxProtectionLimit
             3,    // maxSpeciesProtectionRating  
-            0.3,  // protectedTierPercentage (30%)
+            1,  // protectedTierPercentage (30%)
             1,    // worstSpeciesCount
             1     // minActiveSpeciesCount
         );
@@ -257,12 +298,18 @@ int main(int argc, char* argv[])
             std::move(fitnessStrategy),
             populationSize,
             initParams,
-            plannerParams,
             updateParams,
+            eliteParams,
+            crossoverParams,
             compatibilityParams,
             repairParams,
             mutationParams,
             weightMutationParams,
+            crossoverOperatorParams,
+            cycleDetectionParams,
+            nodeMutationParams,
+            connectionMutationParams,
+            connectionReactivationParams,
             randomSeed
         );
         

@@ -11,10 +11,11 @@ namespace Population {
 // Main operator function - templated on fitness result type
 template<typename FitnessResultType>
 std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
-    const std::multimap<FitnessResultType, DynamicGenomeData>& orderedGenomeData,
+    const std::multimap<FitnessResultType, size_t>& fitnessResults,
+    const std::vector<DynamicGenomeData>& genomeData,
     std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
 ) {
-    assert(!orderedGenomeData.empty());
+    assert(!fitnessResults.empty());
     
     std::unordered_map<uint32_t, std::vector<size_t>> speciesIndices;
     
@@ -23,23 +24,20 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
         data.currentPopulationSize = 0;
     }
     
-    // Single pass through ordered genome data: O(n) time complexity
-    size_t globalIndex = 0;
-    for (const auto& [fitnessResult, genomeData] : orderedGenomeData) {
-        const uint32_t speciesId = genomeData.speciesId;
+    // Single pass through fitness results: O(n) time complexity
+    for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
+        const uint32_t speciesId = genomeData[globalIndex].speciesId;
         
         // Only include valid genomes (not marked for elimination or under repair)
-        if (!genomeData.isMarkedForElimination && !genomeData.isUnderRepair) {
+        if (!genomeData[globalIndex].isMarkedForElimination && !genomeData[globalIndex].isUnderRepair) {
             // Extract species ID from genome data and group indices
-            speciesIndices[speciesId].push_back(genomeData.genomeIndex);
+            speciesIndices[speciesId].push_back(globalIndex);
         }
         
         // Update species population size (count all genomes, valid or not)
         if (speciesData.find(speciesId) != speciesData.end()) {
             speciesData[speciesId].currentPopulationSize++;
         }
-        
-        ++globalIndex;
     }
     
 #ifndef NDEBUG
@@ -54,8 +52,8 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
     }
     
     // Count valid genomes (not marked for elimination or under repair)
-    for (const auto& [fitnessResult, genomeData] : orderedGenomeData) {
-        if (!genomeData.isMarkedForElimination && !genomeData.isUnderRepair) {
+    for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
+        if (!genomeData[globalIndex].isMarkedForElimination && !genomeData[globalIndex].isUnderRepair) {
             validGenomeCount++;
         }
     }

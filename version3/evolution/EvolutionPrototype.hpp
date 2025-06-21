@@ -11,6 +11,7 @@
 
 // Core data structures
 #include "version3/data/Genome.hpp"
+#include "version3/data/NodeGene.hpp"
 #include "version3/data/HistoryTracker.hpp"
 
 // Analysis and fitness
@@ -28,15 +29,14 @@
 #include "version3/operator/CompatibilityDistance.hpp"
 #include "version3/operator/RepairOperator.hpp"
 #include "version3/operator/EmptyDeltas.hpp"
+#include "version3/operator/HasDisabledConnections.hpp"
 
 // Population management
 #include "version3/population/PopulationData.hpp"
 #include "version3/population/DynamicDataUpdate.hpp"
-#include "version3/population/GenerationPlanner.hpp"
-#include "version3/population/GenerationPlannerParams.hpp"
 #include "version3/population/SpeciesGrouping.hpp"
-#include "version3/population/ResolveParentIndices.hpp"
-#include "version3/population/ReproductiveInstruction.hpp"
+#include "version3/population/PlotElites.hpp"
+#include "version3/population/PlotCrossover.hpp"
 
 #include "../logger/Logger.hpp"
 
@@ -107,23 +107,30 @@ public:
         std::unique_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
         uint32_t targetPopulationSize,
         const Operator::InitParams& initParams,
-        const Population::GenerationPlannerParams& plannerParams,
         const Population::DynamicDataUpdateParams& updateParams,
+        const Population::PlotElitesParams& eliteParams,
+        const Population::PlotCrossoverParams& crossoverParams,
         const Operator::CompatibilityDistanceParams& compatibilityParams,
         const Operator::RepairOperatorParams& repairParams,
         const MutationProbabilityParams& mutationParams,
         const Operator::WeightMutationParams& weightMutationParams,
+        const Operator::CrossoverParams& crossoverOperatorParams,
+        const Operator::CycleDetectionParams& cycleDetectionParams,
+        const Operator::NodeMutationParams& nodeMutationParams,
+        const Operator::ConnectionMutationParams& connectionMutationParams,
+        const Operator::ConnectionReactivationParams& connectionReactivationParams,
         uint32_t randomSeed = std::random_device{}()
     );
 
     EvolutionResults<FitnessResultType> run(uint32_t maxGenerations);
 
 private:
-    // Core data containers
+
+    // Core data containers - simplified architecture
     std::array<std::vector<Genome>, 2> _population;
-    std::array<std::multimap<FitnessResultType, Population::DynamicGenomeData>, 2> _genomeData;
+    std::array<std::vector<Population::DynamicGenomeData>, 2> _genomeData;
+    std::array<std::multimap<FitnessResultType, size_t>, 2> _fitnessResults;
     std::unordered_map<uint32_t, Population::DynamicSpeciesData> _speciesData;
-    std::array<std::unordered_map<uint32_t, std::vector<Population::ReproductiveInstruction>>, 2> _instructionSets;
     std::shared_ptr<HistoryTracker> _historyTracker;
 
     uint32_t _lastGeneration;
@@ -133,19 +140,20 @@ private:
     std::unique_ptr<Analysis::FitnessStrategy<FitnessResultType>> _fitnessStrategy;
     uint32_t _targetPopulationSize;
     Operator::InitParams _initParams;
-    Population::GenerationPlannerParams _plannerParams;
     Population::DynamicDataUpdateParams _updateParams;
+    Population::PlotElitesParams _eliteParams;
+    Population::PlotCrossoverParams _crossoverParams;
     Operator::CompatibilityDistanceParams _compatibilityParams;
     Operator::RepairOperatorParams _repairParams;
     MutationProbabilityParams _mutationParams;
     Operator::WeightMutationParams _weightMutationParams;
+    Operator::CrossoverParams _crossoverOperatorParams;
+    Operator::CycleDetectionParams _cycleDetectionParams;
+    Operator::NodeMutationParams _nodeMutationParams;
+    Operator::ConnectionMutationParams _connectionMutationParams;
+    Operator::ConnectionReactivationParams _connectionReactivationParams;
     std::mt19937 _rng;
 
-protected:
-    Genome createOffspring(
-        const Population::ReproductiveInstruction& instruction,
-        const std::vector<decltype(_genomeData[_lastGeneration].begin())>& indexToIterator,
-        bool& hasCycles);
 };
 
 // Template implementation
@@ -154,22 +162,34 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     std::unique_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
     uint32_t targetPopulationSize,
     const Operator::InitParams& initParams,
-    const Population::GenerationPlannerParams& plannerParams,
     const Population::DynamicDataUpdateParams& updateParams,
+    const Population::PlotElitesParams& eliteParams,
+    const Population::PlotCrossoverParams& crossoverParams,
     const Operator::CompatibilityDistanceParams& compatibilityParams,
     const Operator::RepairOperatorParams& repairParams,
     const MutationProbabilityParams& mutationParams,
     const Operator::WeightMutationParams& weightMutationParams,
+    const Operator::CrossoverParams& crossoverOperatorParams,
+    const Operator::CycleDetectionParams& cycleDetectionParams,
+    const Operator::NodeMutationParams& nodeMutationParams,
+    const Operator::ConnectionMutationParams& connectionMutationParams,
+    const Operator::ConnectionReactivationParams& connectionReactivationParams,
     uint32_t randomSeed
 ) : _fitnessStrategy(std::move(fitnessStrategy)),
     _targetPopulationSize(targetPopulationSize),
     _initParams(initParams),
-    _plannerParams(plannerParams),
     _updateParams(updateParams),
+    _eliteParams(eliteParams),
+    _crossoverParams(crossoverParams),
     _compatibilityParams(compatibilityParams),
     _repairParams(repairParams),
     _mutationParams(mutationParams),
     _weightMutationParams(weightMutationParams),
+    _crossoverOperatorParams(crossoverOperatorParams),
+    _cycleDetectionParams(cycleDetectionParams),
+    _nodeMutationParams(nodeMutationParams),
+    _connectionMutationParams(connectionMutationParams),
+    _connectionReactivationParams(connectionReactivationParams),
     _rng(randomSeed),
     _historyTracker(std::make_shared<HistoryTracker>()) {
     
@@ -179,30 +199,13 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     
     // Reserve capacity for initial population
     _population[0].reserve(_targetPopulationSize);
-    
-    // Create simple SpeciationControlUnit for fitness evaluation
-    // TODO: Replace with proper implementation if fitness strategy needs speciation context
-    class SimpleSpeciationControl : public Analysis::SpeciationControlUnit {
-    public:
-        std::vector<std::shared_ptr<const Analysis::Phenotype>> getChampions() const override { return {}; }
-        std::shared_ptr<const Analysis::Phenotype> getBestChampion() const override { return nullptr; }
-        std::shared_ptr<const Analysis::Phenotype> getRandomChampion() const override { return nullptr; }
-        size_t getChampionCount() const override { return 0; }
-    };
-    SimpleSpeciationControl speciationControl;
+    _population[1].reserve(_targetPopulationSize);
+    _genomeData[0].reserve(_targetPopulationSize);
+    _genomeData[1].reserve(_targetPopulationSize);
     
     // Create initial genome
     Genome initialGenome = Operator::init(_historyTracker, _initParams);
-    
-    // Build phenotype needed for fitness evaluation
     Operator::phenotypeConstruct(initialGenome);
-    
-    const auto& cgenome = initialGenome;
-    // Evaluate fitness
-    FitnessResultType fitness = _fitnessStrategy->evaluate(
-        cgenome.get_phenotype(), 
-        speciationControl
-    );
     
     // Determine species assignment
     uint32_t speciesId = Operator::compatibilityDistance(
@@ -217,241 +220,13 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     genomeData.protectionCounter = 0;
     genomeData.isUnderRepair = false;
     genomeData.isMarkedForElimination = false;
-    genomeData.genomeIndex = 0;
     
     // Add to population and genome data (generation 0)
     _population[0].push_back(std::move(initialGenome));
-    _genomeData[0].insert({fitness, genomeData});
+    _genomeData[0].push_back(genomeData);
     
-    // Run generation planner to create initial instruction sets
-    _instructionSets[0] = Population::generationPlanner(_speciesData, _plannerParams);
-
-    // instructionSets should be empty because it runs on last generation data 
-    // but that generation doesnt exist and the data is empty
-    assert(_instructionSets[0].empty()); 
-
-    Population::dynamicDataUpdate(_genomeData[0], _speciesData, _instructionSets[0], _updateParams);
-
     _currentGeneration = 0;
-    // at this point we should have bootstrapped the first evolution loop properly
-}
-
-template<typename FitnessResultType>
-Genome EvolutionPrototype<FitnessResultType>::createOffspring(
-    const Population::ReproductiveInstruction& instruction,
-    const std::vector<decltype(_genomeData[_lastGeneration].begin())>& indexToIterator,
-    bool& hasCycles) 
-{
-    // Find the genome data for the parent
-    uint32_t parentPopulationIndex = instruction.globalParentIndices[0];
-    const Population::DynamicGenomeData* parentGenomeData = nullptr;
-    for (const auto& [fitness, genomeData] : _genomeData[_lastGeneration]) {
-        if (genomeData.genomeIndex == parentPopulationIndex) {
-            parentGenomeData = &genomeData;
-            break;
-        }
-    }
-    if (parentGenomeData == nullptr) {
-        // static auto logger = LOGGER("evolution.EvolutionPrototype");
-        LOG_ERROR("Could not find parent genome data! Looking for parentPopulationIndex={}", parentPopulationIndex);
-        LOG_ERROR("Available genomeIndex values in _genomeData[_lastGeneration]:");
-        for (const auto& [fitness, genomeData] : _genomeData[_lastGeneration]) {
-            LOG_ERROR("  genomeIndex: {}", genomeData.genomeIndex);
-        }
-    }
-    assert(parentGenomeData != nullptr && "Could not find parent genome data");
-    
-    // Assert that no instruction set should have a parent that is under repair
-    assert(!parentGenomeData->isUnderRepair && "No instruction set should have a parent under repair - species grouping should exclude such parents");
-    
-    // Assert that parent genomes for normal operations have empty deltas
-    assert(Operator::emptyDeltas(_population[_lastGeneration][parentPopulationIndex]) && "Parent genome 0 has uncleared deltas for normal operation");
-    if (instruction.globalParentIndices.size() > 1) {
-        assert(Operator::emptyDeltas(_population[_lastGeneration][instruction.globalParentIndices[1]]) && "Parent genome 1 has uncleared deltas for normal operation");
-    }
-    
-    switch (instruction.operationType) {
-        case Population::OperationType::PRESERVE: {
-            return _population[_lastGeneration][parentPopulationIndex];
-        }
-        
-        case Population::OperationType::MUTATE_UNPROTECTED:
-        case Population::OperationType::MUTATE_PROTECTED: {                        
-            // Select mutation type based on weighted probabilities
-            std::uniform_real_distribution<double> dist(0.0, 1.0);
-            double random = dist(_rng);
-            
-            int mutationType;
-            if (random < _mutationParams.weightMutationProbability) {
-                mutationType = 0; // Weight mutation
-            } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability) {
-                mutationType = 1; // Node mutation
-            } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability + _mutationParams.connectionMutationProbability) {
-                mutationType = 2; // Connection mutation
-            } else {
-                mutationType = 3; // Connection reactivation
-            }
-            
-            switch (mutationType) {
-                case 0: { // Weight mutation
-                    Genome offspring = Operator::weightMutation(_population[_lastGeneration][parentPopulationIndex]
-                        , _weightMutationParams);
-                    
-                    Operator::CycleDetectionParams cycleParams;
-                    hasCycles = Operator::hasCycles(offspring, cycleParams);
-                    
-                    if (!hasCycles) {
-                        // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                        // LOG_DEBUG("Calling phenotypeUpdateWeight after weight mutation");
-                        Operator::phenotypeUpdateWeight(offspring);
-                        // LOG_DEBUG("phenotypeUpdateWeight completed");
-                        // Assert deltas are cleared after phenotype update
-                        assert(Operator::emptyDeltas(offspring) && "Weight mutation offspring has uncleared deltas after phenotype update");
-                    }
-                    return std::move(offspring);
-                }
-                
-                case 1: { // Node mutation
-                    NodeGeneAttributes nodeAttribs{ActivationType::SIGMOID}; // TODO: Configure
-                    Operator::NodeMutationParams nodeParams(nodeAttribs);
-                    Genome offspring = Operator::nodeMutation(_population[_lastGeneration][parentPopulationIndex]
-                        , _historyTracker, nodeParams);
-                    
-                    Operator::CycleDetectionParams cycleParams;
-                    hasCycles = Operator::hasCycles(offspring, cycleParams);
-                    
-                    if (!hasCycles) {
-                        // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                        // LOG_DEBUG("Calling phenotypeUpdateNode after node mutation");
-                        Operator::phenotypeUpdateNode(offspring);
-                        // LOG_DEBUG("phenotypeUpdateNode completed");
-                        // Assert deltas are cleared after phenotype update
-                        assert(Operator::emptyDeltas(offspring) && "Node mutation offspring has uncleared deltas after phenotype update");
-                    }
-                    return std::move(offspring);
-                }
-                
-                case 2: { // Connection mutation
-                    Operator::ConnectionMutationParams connParams(
-                        instruction.evolutionParams.mutationRate, 2.0,
-                        Operator::ConnectionMutationParams::NetworkTopology::FEED_FORWARD
-                    );
-                    Genome offspring = Operator::connectionMutation(_population[_lastGeneration][parentPopulationIndex]
-                        , _historyTracker, connParams);
-                    
-                    Operator::CycleDetectionParams cycleParams;
-                    hasCycles = Operator::hasCycles(offspring, cycleParams);
-                    
-                    if (!hasCycles) {
-                        // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                        // LOG_DEBUG("Calling phenotypeUpdateConnection after connection mutation");
-                        Operator::phenotypeUpdateConnection(offspring);
-                        // LOG_DEBUG("phenotypeUpdateConnection completed");
-                        // Assert deltas are cleared after phenotype update
-                        assert(Operator::emptyDeltas(offspring) && "Connection mutation offspring has uncleared deltas after phenotype update");
-                    }
-                    return std::move(offspring);
-                }
-                
-                case 3: { // Connection reactivation
-                    // Check if parent has any disabled connections first
-                    const Genome& parent = _population[_lastGeneration][parentPopulationIndex];
-                    bool hasDisabledConnections = false;
-                    for (const auto& conn : parent.get_connectionGenes()) {
-                        if (!conn.get_attributes().enabled) {
-                            hasDisabledConnections = true;
-                            break;
-                        }
-                    }
-                    
-                    if (hasDisabledConnections) {
-                        Operator::ConnectionReactivationParams reactParams(
-                            Operator::ConnectionReactivationParams::SelectionStrategy::RANDOM
-                        );
-                        Genome offspring = Operator::connectionReactivation(parent, reactParams);
-                        
-                        Operator::CycleDetectionParams cycleParams;
-                        hasCycles = Operator::hasCycles(offspring, cycleParams);
-                        
-                        if (!hasCycles) {
-                            // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                            // LOG_DEBUG("Calling phenotypeUpdateConnection after connection reactivation");
-                            Operator::phenotypeUpdateConnection(offspring);
-                            // LOG_DEBUG("phenotypeUpdateConnection completed");
-                            // Assert deltas are cleared after phenotype update
-                            assert(Operator::emptyDeltas(offspring) && "Connection reactivation offspring has uncleared deltas after phenotype update");
-                        }
-                        return std::move(offspring);
-                    } else {
-                        // No disabled connections - fallback to weight mutation
-                        Genome offspring = Operator::weightMutation(parent, _weightMutationParams);
-                        
-                        Operator::CycleDetectionParams cycleParams;
-                        hasCycles = Operator::hasCycles(offspring, cycleParams);
-                        
-                        if (!hasCycles) {
-                            // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                            // LOG_DEBUG("Calling phenotypeUpdateWeight after fallback weight mutation");
-                            Operator::phenotypeUpdateWeight(offspring);
-                            // LOG_DEBUG("phenotypeUpdateWeight completed");
-                            // Assert deltas are cleared after phenotype update
-                            assert(Operator::emptyDeltas(offspring) && "Fallback weight mutation offspring has uncleared deltas after phenotype update");
-                        }
-                        return std::move(offspring);
-                    }
-                }
-                default: {
-                    assert(false && "we cannot do nothing for an instruction set");
-                    return Operator::init(_historyTracker, _initParams);;
-                }
-            }
-        }
-        
-        case Population::OperationType::CROSSOVER: {
-            // Check if both parents are the same - if so, just copy the first parent
-            if (parentPopulationIndex == instruction.globalParentIndices[1]) {
-                // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                // LOG_DEBUG("Crossover with identical parents ({}), copying first parent instead", parentPopulationIndex);
-                return _population[_lastGeneration][parentPopulationIndex];
-            }
-            
-            // Find fitness values for both parents
-            const Population::DynamicGenomeData* parent1GenomeData = nullptr;
-            FitnessResultType parent0Fitness, parent1Fitness;
-            
-            for (const auto& [fitness, genomeData] : _genomeData[_lastGeneration]) {
-                if (genomeData.genomeIndex == parentPopulationIndex) {
-                    parent0Fitness = fitness;
-                } else if (genomeData.genomeIndex == instruction.globalParentIndices[1]) {
-                    parent1Fitness = fitness;
-                    parent1GenomeData = &genomeData;
-                }
-            }
-            assert(parent1GenomeData != nullptr && "Could not find parent 1 genome data");
-            
-            Operator::CrossoverParams crossoverParams;
-            Genome offspring = Operator::crossover(
-                _population[_lastGeneration][parentPopulationIndex],
-                parent0Fitness,
-                _population[_lastGeneration][instruction.globalParentIndices[1]],
-                parent1Fitness,
-                crossoverParams
-            );
-
-            Operator::CycleDetectionParams cycleParams;
-            hasCycles = Operator::hasCycles(offspring, cycleParams);
-
-            if (!hasCycles) {
-                Operator::phenotypeConstruct(offspring);
-            }
-            return std::move(offspring);
-        }
-
-        default: {
-            assert(false && "we cannot do nothing for an instruction set");
-            return Operator::init(_historyTracker, _initParams);;
-        }
-    }
+    _lastGeneration = 1;
 }
 
 template<typename FitnessResultType>
@@ -476,315 +251,139 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
     SimpleSpeciationControl speciationControl;
 
     for (uint32_t generation = 0; generation < maxGenerations; ++generation) {
-
         _lastGeneration = _currentGeneration;
         _currentGeneration = (_currentGeneration + 1) % 2;
 
-        // auto logger = LOGGER("evolution.EvolutionPrototype");
-        // LOG_INFO("generation: {}", generation);
-
-        // Assert that all genomes in last generation with uncleared deltas are properly marked
-        if (generation > 0) { // Skip first generation
-            for (const auto& [fitness, genomeData] : _genomeData[_lastGeneration]) {
-                const Genome& genome = _population[_lastGeneration][genomeData.genomeIndex];
-                if (!Operator::emptyDeltas(genome)) {
-                    assert((genomeData.isUnderRepair || genomeData.isMarkedForElimination) && 
-                           "Genome in last generation has uncleared deltas but is not marked for repair or elimination");
-                }
-            }
-        }
-
-        // Firstly calculate how many genomes the current generation is going to have
-        // Which is all instruction sets plus all species that dont have instructions sets
-        // but have population size in dynamic species data
-
-        // then we reserve this size inside the genome vector we are going to use
-        // to prevent reordering for performance, the ordering of genomes 
-        // is important because these indices are stored inside the dynamic genome data
-
-        // afterwards we start executing the instruction sets and fill the population up
-        // however we need to check for cycles in order to get fitness result
-        // and create new entries in the multimap of fitness results for dynamic genome data
-        // we also need to get compatibility distance result before we fully fillup 
-        // the dynamic genome data for inserting into the multimap
-        // we need to keep in mind that we have to work on the copy of parent dynamic genome data
-        // except when the instruction set was crossover, because that indicates we should
-        // create empty dynamic genome data
-
-        // afterwards we do all of the population operations
-        // which is generationplanner, speciesgrouping, resolveparentindices and dynamicdataupdate
-
-        // this makes the loop complete as the dynamic data update is the loops finishing operation
-
-
-        // Calculate total genomes for current generation
-        uint32_t totalGenomesThisGeneration = 0;
-
-        for (const auto& [speciesId, speciesData] : _speciesData) {
-            auto instructionIt = _instructionSets[_lastGeneration].find(speciesId);
-            if (instructionIt != _instructionSets[_lastGeneration].end()) {
-                // Species has instruction sets (active or marked for elimination)
-                // auto logger = LOGGER("evolution.EvolutionPrototype");
-                // LOG_DEBUG("Species {} has {} instruction sets", speciesId, instructionIt->second.size());
-                totalGenomesThisGeneration += static_cast<uint32_t>(instructionIt->second.size());
-            } else {
-                // Species not in instruction sets = new/rediscovered, carry forward
-                // auto logger = LOGGER("evolution.EvolutionPrototype");
-                // LOG_DEBUG("Species {} has no instructions, carrying forward {} genomes", speciesId, speciesData.currentPopulationSize);
-                totalGenomesThisGeneration += speciesData.currentPopulationSize;
-            }
-        }
-        
-        // auto logger = LOGGER("evolution.EvolutionPrototype");
-        LOG_DEBUG("Generation {}: Calculated total genomes = {}, Current population size = {}", 
-            generation, totalGenomesThisGeneration, _population[_currentGeneration].size());
-        
+        // Clear current generation containers
         _population[_currentGeneration].clear();
-        _population[_currentGeneration].reserve(totalGenomesThisGeneration);
         _genomeData[_currentGeneration].clear();
+        _fitnessResults[_currentGeneration].clear();
+
+        const size_t populationSize = _population[_lastGeneration].size();
         
-        // LOG_DEBUG("Generation {}: Reserved {} slots, current capacity = {}", 
-        //     generation, totalGenomesThisGeneration, _population[_currentGeneration].capacity());
-
-        // Build index-to-iterator mapping once per generation
-        std::vector<decltype(_genomeData[_lastGeneration].begin())> indexToIterator;
-        indexToIterator.reserve(_genomeData[_lastGeneration].size());
-        for (auto it = _genomeData[_lastGeneration].begin(); it != _genomeData[_lastGeneration].end(); ++it) {
-            indexToIterator.push_back(it);
-        }
-        
-        // Execute instruction sets and create new generation
-        for (const auto& [speciesId, instructions] : _instructionSets[_lastGeneration]) {
-            for (const auto& instruction : instructions) {
-                // Debug: Log instruction details before createOffspring
-                // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                // LOG_DEBUG("Executing instruction for species {}: operationType={}, globalParentIndices size={}", 
-                //     speciesId, static_cast<int>(instruction.operationType), instruction.globalParentIndices.size());
-                // if (!instruction.globalParentIndices.empty()) {
-                //     LOG_DEBUG("  Parent 0 index: {}", instruction.globalParentIndices[0]);
-                //     if (instruction.globalParentIndices.size() > 1) {
-                //         LOG_DEBUG("  Parent 1 index: {}", instruction.globalParentIndices[1]);
-                //     }
-                // }
-                
-                // Execute the instruction to create offspring
-                bool hasCycles = false;
-                Genome offspring = createOffspring(instruction, indexToIterator, hasCycles);
-                
-                // Assert createOffspring contract: either empty deltas or will be marked appropriately
-                if (!Operator::emptyDeltas(offspring)) {
-                    // If offspring has uncleared deltas, it must be due to cycles (hasCycles=true)
-                    assert(hasCycles && "createOffspring returned genome with uncleared deltas but hasCycles=false");
-                }
-
-                // Create dynamic genome data for offspring (based on parent)
-                // Find the parent's genome data
-                Population::DynamicGenomeData genomeData;
-                bool foundParentData = false;
-                for (const auto& [fitness, parentGenomeData] : _genomeData[_lastGeneration]) {
-                    if (parentGenomeData.genomeIndex == instruction.globalParentIndices[0]) {
-                        genomeData = parentGenomeData;
-                        foundParentData = true;
-                        break;
-                    }
-                }
-                assert(foundParentData && "Could not find parent genome data for offspring");
-                genomeData.genomeIndex = static_cast<uint32_t>(_population[_currentGeneration].size());
-                
-                if (instruction.operationType == Population::OperationType::CROSSOVER) {
-                    // Fresh data for crossover offspring
-                    genomeData.protectionCounter = 0;
-                    genomeData.isMarkedForElimination = false;
-                }
-                
-                if (!hasCycles) {
-                    // Evaluate fitness
-                    const auto& coffspring = offspring;
-                    FitnessResultType fitness = _fitnessStrategy->evaluate(
-                        coffspring.get_phenotype(), speciationControl
-                    );
-                    
-                    // Get species assignment
-                    uint32_t offspringSpeciesId = Operator::compatibilityDistance(
-                        offspring, _historyTracker, _compatibilityParams
-                    );
-
-                    genomeData.speciesId = offspringSpeciesId;
-                    genomeData.isUnderRepair = false;
-
-                    _genomeData[_currentGeneration].insert({fitness, genomeData});
-                }
-                else {
-                    // if the offspring needs repair and cant be evaluated
-                    // then assign it the species of the first parent
-                    // even for crossover
-                    genomeData.isUnderRepair = true;
-                    _genomeData[_currentGeneration].insert({FitnessResultType(), genomeData});
-                }
-                
-                // Add to current generation
-                // LOG_DEBUG("Adding offspring: population size before = {}, capacity = {}", 
-                //     _population[_currentGeneration].size(), _population[_currentGeneration].capacity());
-                _population[_currentGeneration].push_back(std::move(offspring));
-                // LOG_DEBUG("Adding offspring: population size after = {}", _population[_currentGeneration].size());
-                
-                // Assert that any genome with uncleared deltas is properly marked
-                const Genome& addedGenome = _population[_currentGeneration].back();
-                if (!Operator::emptyDeltas(addedGenome)) {
-                    assert((genomeData.isUnderRepair || genomeData.isMarkedForElimination) && 
-                           "Added genome has uncleared deltas but is not marked for repair or elimination");
-                }
-            }
-            for (const auto& [fitness, genomeData] : _genomeData[_currentGeneration]) {
-                const Genome& genome = _population[_currentGeneration][genomeData.genomeIndex];
-                if (!Operator::emptyDeltas(genome)) {
-                    assert((genomeData.isUnderRepair || genomeData.isMarkedForElimination) && 
-                        "Genome entering species grouping has uncleared deltas but is not marked for repair or elimination");
-                }
-            }
-            // instruction set end of loop
+        // Reserve capacity for growth
+        if (_population[_currentGeneration].capacity() < populationSize * 2) {
+            _population[_currentGeneration].reserve(populationSize * 2);
+            _genomeData[_currentGeneration].reserve(populationSize * 2);
         }
 
-        for (const auto& [fitness, genomeData] : _genomeData[_currentGeneration]) {
-            const Genome& genome = _population[_currentGeneration][genomeData.genomeIndex];
-            if (!Operator::emptyDeltas(genome)) {
-                assert((genomeData.isUnderRepair || genomeData.isMarkedForElimination) && 
-                       "Genome entering species grouping has uncleared deltas but is not marked for repair or elimination");
+        LOG_DEBUG("Generation {}: Starting with {} genomes", generation, populationSize);
+
+        // Phase 1: 1:1 Evolution - Copy and mutate each genome from last generation
+        for (size_t i = 0; i < populationSize; ++i) {
+            const Genome& parentGenome = _population[_lastGeneration][i];
+            const Population::DynamicGenomeData& parentData = _genomeData[_lastGeneration][i];
+            
+            if (parentData.isMarkedForElimination) {
+                _genomeData[_currentGeneration][i] = parentData;
+                continue;
             }
-        }
-        // 5. Repair parents from last generation that are under repair but not marked for elimination
-        // This must happen before carry-forward to ensure genomes have empty deltas
-        for (auto& [fitness, genomeData] : _genomeData[_lastGeneration]) {
-            if (genomeData.isUnderRepair && !genomeData.isMarkedForElimination) {
-                // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                // LOG_DEBUG("Repairing genome at index {} for species {} (repair attempts: {})", 
-                //     genomeData.genomeIndex, genomeData.speciesId, genomeData.repairAttempts);
-                
-                Genome& genomeToRepair = _population[_lastGeneration][genomeData.genomeIndex];
-                Genome repairedGenome = Operator::repair(genomeToRepair, genomeData, _repairParams);
+            
+            // Create corresponding genome data
+            Population::DynamicGenomeData offspringData = parentData;
+            
+            bool hasCycles = false;
+            
+            // Copy parent genome
+            Genome offspring = parentGenome;
+            
+            // Check if parent is under repair - if so, attempt repair instead of evolution
+            if (parentData.isUnderRepair) {
+                offspring = Operator::repair(offspring, offspringData, _repairParams);
                 
                 // Check if repair was successful
-                Operator::CycleDetectionParams cycleParams;
-                bool stillHasCycles = Operator::hasCycles(repairedGenome, cycleParams);
+                hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
                 
-                // Create genome data for current generation regardless of repair success
-                Population::DynamicGenomeData newGenomeData = genomeData;
-                newGenomeData.genomeIndex = static_cast<uint32_t>(_population[_currentGeneration].size());
-                
-                if (!stillHasCycles) {
-                    // Repair successful - update fitness and mark as no longer under repair
-                    const auto& crepairedGenome = repairedGenome;
-                    FitnessResultType newFitness = _fitnessStrategy->evaluate(
-                        crepairedGenome.get_phenotype(), speciationControl
-                    );
-                    
-                    // Get species assignment (might have changed after repair)
-                    uint32_t newSpeciesId = Operator::compatibilityDistance(
-                        repairedGenome, _historyTracker, _compatibilityParams
-                    );
-                    
-                    newGenomeData.speciesId = newSpeciesId;
-                    newGenomeData.isUnderRepair = false;
-                    
-                    _genomeData[_currentGeneration].insert({newFitness, newGenomeData});
-                    
-                    // LOG_DEBUG("Repair successful for genome at index {}, species: {}", 
-                    //     newGenomeData.genomeIndex, newSpeciesId);
+                if (!hasCycles) {
+                    // Repair successful - no longer under repair
+                    offspringData.isUnderRepair = false;
                 } else {
-                    // LOG_DEBUG("Repair failed for genome at index {}, will retry next generation", newGenomeData.genomeIndex);
-                    
-                    // Still under repair, insert with default fitness
-                    _genomeData[_currentGeneration].insert({FitnessResultType(), newGenomeData});
+                    // Repair failed - still under repair
+                    offspringData.isUnderRepair = true;
                 }
+            } else {
+                // Normal evolution path - apply mutations based on probability
+                std::uniform_real_distribution<double> dist(0.0, 1.0);
+                double random = dist(_rng);
                 
-                // Add the repaired/attempted genome to current generation
-                _population[_currentGeneration].push_back(std::move(repairedGenome));
-            }
-        }
-        
-        // Handle species that exist in _speciesData but not in instruction sets
-        // These are new/rediscovered species that should be copied as-is
-        for (const auto& [speciesId, speciesData] : _speciesData) {
-            if (_instructionSets[_lastGeneration].find(speciesId) == _instructionSets[_lastGeneration].end()) {
-                // auto logger = LOGGER("evolution.EvolutionPrototype");
-                // LOG_DEBUG("Processing new/rediscovered species {} with currentPopulationSize={}", 
-                    // speciesId, speciesData.currentPopulationSize);
-                // This species has no instruction sets, copy its genomes from last generation
-                for (const auto& [fitness, genomeData] : _genomeData[_lastGeneration]) {
-                    if (genomeData.speciesId == speciesId && !genomeData.isUnderRepair) {
-                        // Only copy genomes that are not under repair (repair logic handles those above)
-                        Genome& sourceGenome = _population[_lastGeneration][genomeData.genomeIndex];
-                        
-                        // Assert that deltas are empty before copying - genomes should not have uncleared deltas
-                        assert(Operator::emptyDeltas(sourceGenome) && "Source genome has uncleared deltas during carry-forward");
-                        
-                        Genome genomeCopy = sourceGenome;
-                        
-                        // Create new genome data with updated index
-                        Population::DynamicGenomeData newGenomeData = genomeData;
-                        newGenomeData.genomeIndex = static_cast<uint32_t>(_population[_currentGeneration].size());
-                        
-                        // Add to current generation
-                        // auto logger = LOGGER("evolution.EvolutionPrototype");
-                        // LOG_DEBUG("Adding copied genome: population size before = {}, capacity = {}", 
-                            // _population[_currentGeneration].size(), _population[_currentGeneration].capacity());
-                        _population[_currentGeneration].push_back(std::move(genomeCopy));
-                        // LOG_DEBUG("Adding copied genome: population size after = {}", _population[_currentGeneration].size());
-                        _genomeData[_currentGeneration].insert({fitness, newGenomeData});
+                if (random < _mutationParams.weightMutationProbability) {
+                    // Weight mutation
+                    offspring = Operator::weightMutation(offspring, _weightMutationParams);
+                    hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
+                    if (!hasCycles) {
+                        Operator::phenotypeUpdateWeight(offspring);
+                    }
+                } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability) {
+                    // Node mutation
+                    offspring = Operator::nodeMutation(offspring, _historyTracker, _nodeMutationParams);
+                    hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
+                    if (!hasCycles) {
+                        Operator::phenotypeUpdateNode(offspring);
+                    }
+                } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability + _mutationParams.connectionMutationProbability) {
+                    // Connection mutation
+                    offspring = Operator::connectionMutation(offspring, _historyTracker, _connectionMutationParams);
+                    hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
+                    if (!hasCycles) {
+                        Operator::phenotypeUpdateConnection(offspring);
+                    }
+                } else {
+                    // Connection reactivation
+                    // Check if genome has any disabled connections using analytical operator
+                    
+                    if (Operator::hasDisabledConnections(offspring)) {
+                        offspring = Operator::connectionReactivation(offspring, _connectionReactivationParams);
+                        hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
+                        if (!hasCycles) {
+                            Operator::phenotypeUpdateConnection(offspring);
+                        }
+                    } else {
+                        // Fallback to weight mutation
+                        offspring = Operator::weightMutation(offspring, _weightMutationParams);
+                        hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
+                        if (!hasCycles) {
+                            Operator::phenotypeUpdateWeight(offspring);
+                        }
                     }
                 }
             }
+            
+            // Mark as under repair if cycles detected
+            if (hasCycles) {
+                offspringData.isUnderRepair = true;
+            } else {
+                offspringData.isUnderRepair = false;
+            }
+            
+            // Add to current generation
+            _population[_currentGeneration].push_back(std::move(offspring));
+            _genomeData[_currentGeneration].push_back(offspringData);
         }
 
-        // Population operations
-        // 1. Generate instruction sets for next generation based on current species data
-        // LOG_DEBUG("Generation {}: Before generation planner:", generation);
-        // for (const auto& [speciesId, speciesData] : _speciesData) {
-        //     LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
-        //         speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
-        // }
-        
-        for (const auto& [fitness, genomeData] : _genomeData[_currentGeneration]) {
-            const Genome& genome = _population[_currentGeneration][genomeData.genomeIndex];
-            if (!Operator::emptyDeltas(genome)) {
-                assert((genomeData.isUnderRepair || genomeData.isMarkedForElimination) && 
-                       "Genome entering species grouping has uncleared deltas but is not marked for repair or elimination");
+        // Phase 2: Fitness Evaluation - Build fitness results multimap
+        for (size_t i = 0; i < _population[_currentGeneration].size(); ++i) {
+            const Genome& genome = _population[_currentGeneration][i];
+            const Population::DynamicGenomeData& genomeData = _genomeData[_currentGeneration][i];
+            
+            if (!genomeData.isUnderRepair) {
+                // Evaluate fitness for non-repair genomes
+                FitnessResultType fitness = _fitnessStrategy->evaluate(genome.get_phenotype(), speciationControl);
+                
+                // Update species assignment
+                uint32_t newSpeciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                _genomeData[_currentGeneration][i].speciesId = newSpeciesId;
+                
+                // Add to fitness results with global index
+                _fitnessResults[_currentGeneration].insert({fitness, i});
+            } else {
+                // For repair genomes, use default fitness and keep existing species
+                _fitnessResults[_currentGeneration].insert({FitnessResultType{}, i});
             }
         }
 
-        _instructionSets[_currentGeneration] = Population::generationPlanner(_speciesData, _plannerParams);
-        
-        // LOG_DEBUG("Generation {}: After generation planner, instruction sets created:", generation);
-        // for (const auto& [speciesId, instructions] : _instructionSets[_currentGeneration]) {
-        //     LOG_DEBUG("  Species {}: {} instruction sets", speciesId, instructions.size());
-        // }
+        // Phase 3: Population Analysis - Species grouping and dynamic data update
+        auto speciesGrouping = Population::speciesGrouping(_fitnessResults[_currentGeneration], _genomeData[_currentGeneration], _speciesData);
 
-        // Assert that all genomes entering species grouping either have empty deltas or are marked appropriately
-        for (const auto& [fitness, genomeData] : _genomeData[_currentGeneration]) {
-            const Genome& genome = _population[_currentGeneration][genomeData.genomeIndex];
-            if (!Operator::emptyDeltas(genome)) {
-                assert((genomeData.isUnderRepair || genomeData.isMarkedForElimination) && 
-                       "Genome entering species grouping has uncleared deltas but is not marked for repair or elimination");
-            }
-        }
-        
-        // 2. Group current generation by species to get index mappings
-        auto speciesGrouping = Population::speciesGrouping(_genomeData[_currentGeneration], _speciesData);
-        
-        // Debug: Log species grouping results
-        // LOG_DEBUG("Species grouping results:");
-        // for (const auto& [speciesId, indices] : speciesGrouping) {
-        //     LOG_DEBUG("  Species {}: {} indices", speciesId, indices.size());
-        //     if (indices.size() <= 10) { // Only log if manageable size
-        //         for (size_t i = 0; i < indices.size(); ++i) {
-        //             LOG_DEBUG("    index[{}] = {}", i, indices[i]);
-        //         }
-        //     } else if (indices.size() > 10) {
-        //         LOG_DEBUG("    First few indices: {}, {}, {} ... (total {})", 
-        //             indices[0], indices[1], indices[2], indices.size());
-        //     }
-        // }
-        
         // Assert that all genomes in species grouping have empty deltas
         for (const auto& [speciesId, indices] : speciesGrouping) {
             for (size_t globalIndex : indices) {
@@ -793,46 +392,92 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             }
         }
 
-        // 3. Remove instruction sets for species without valid genomes, then resolve parent indices
-        // First, remove instruction sets for species that have no valid genomes in current generation
-        for (auto it = _instructionSets[_currentGeneration].begin(); it != _instructionSets[_currentGeneration].end();) {
-            auto groupingIt = speciesGrouping.find(it->first);
-            if (groupingIt == speciesGrouping.end()) {
-                // Species has no valid genomes in current generation - remove entire instruction set
-                // static auto logger = LOGGER("evolution.EvolutionPrototype");
-                // LOG_DEBUG("Removing instruction set for species {} (no valid genomes in current generation)", it->first);
-                it = _instructionSets[_currentGeneration].erase(it);
-            } else {
-                ++it;
+        Population::dynamicDataUpdate(_fitnessResults[_currentGeneration], _genomeData[_currentGeneration], _speciesData, _updateParams);
+        
+        // Phase 4: Elite/Crossover Replacement
+        // Plot elites and crossover pairs
+        auto eliteIndices = Population::plotElites(speciesGrouping, _eliteParams);
+        auto crossoverPairs = Population::plotCrossover(speciesGrouping, _crossoverParams);
+        
+        // Find eliminated genomes for replacement
+        std::vector<size_t> eliminatedIndices;
+        for (size_t i = 0; i < _genomeData[_currentGeneration].size(); ++i) {
+            if (_genomeData[_currentGeneration][i].isMarkedForElimination) {
+                eliminatedIndices.push_back(i);
             }
         }
         
-        // Now resolve parent indices for remaining instruction sets
-        for (auto& [speciesId, instructions] : _instructionSets[_currentGeneration]) {
-            auto groupingIt = speciesGrouping.find(speciesId);
-            assert(groupingIt != speciesGrouping.end() && "Species grouping should exist after cleanup");
-            Population::resolveParentIndices(instructions, groupingIt->second);
+        LOG_DEBUG("Generation {}: Found {} elites, {} crossover pairs, {} eliminated genomes", 
+            generation, eliteIndices.size(), crossoverPairs.size(), eliminatedIndices.size());
+        
+        // Replace eliminated genomes with elites
+        size_t replacementIndex = 0;
+        for (size_t eliteIndex : eliteIndices) {
+            if (replacementIndex < eliminatedIndices.size()) {
+                size_t targetIndex = eliminatedIndices[replacementIndex];
+                // Copy elite genome
+                _population[_currentGeneration][targetIndex] = _population[_currentGeneration][eliteIndex];
+                // Reset genome data for elite (not marked for elimination)
+                _genomeData[_currentGeneration][targetIndex] = _genomeData[_currentGeneration][eliteIndex];
+                _genomeData[_currentGeneration][targetIndex].isMarkedForElimination = false;
+                replacementIndex++;
+            } else {
+                // Add new elite if we have space
+                _population[_currentGeneration].push_back(_population[_currentGeneration][eliteIndex]);
+                _genomeData[_currentGeneration].push_back(_genomeData[_currentGeneration][eliteIndex]);
+                _genomeData[_currentGeneration].back().isMarkedForElimination = false;
+            }
         }
-
-        // 4. Update dynamic data for current generation (finishing operation of evolution loop)
-        // LOG_DEBUG("Generation {}: Before dynamic data update:", generation);
-        // for (const auto& [speciesId, speciesData] : _speciesData) {
-        //     LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
-        //         speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
-        // }
         
-        Population::dynamicDataUpdate(_genomeData[_currentGeneration], _speciesData, _instructionSets[_currentGeneration], _updateParams);
+        // Replace remaining eliminated genomes with crossover offspring
+        for (const auto& [parentAIndex, parentBIndex] : crossoverPairs) {
+            if (replacementIndex < eliminatedIndices.size()) {
+                size_t targetIndex = eliminatedIndices[replacementIndex];
+                
+                // Get fitness values for crossover
+                FitnessResultType fitnessA, fitnessB;
+                for (const auto& [fitness, globalIndex] : _fitnessResults[_currentGeneration]) {
+                    if (globalIndex == parentAIndex) fitnessA = fitness;
+                    if (globalIndex == parentBIndex) fitnessB = fitness;
+                }
+                
+                // Perform crossover
+                Genome offspring = Operator::crossover(
+                    _population[_currentGeneration][parentAIndex], fitnessA,
+                    _population[_currentGeneration][parentBIndex], fitnessB,
+                    _crossoverOperatorParams
+                );
+                
+                // Check for cycles
+                bool hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
+                
+                if (!hasCycles) {
+                    Operator::phenotypeConstruct(offspring);
+                }
+                
+                // Create genome data for crossover offspring
+                Population::DynamicGenomeData crossoverData;
+                crossoverData.speciesId = _genomeData[_currentGeneration][parentAIndex].speciesId; // Inherit from first parent
+                crossoverData.protectionCounter = 0; // Fresh start for crossover
+                crossoverData.isUnderRepair = hasCycles;
+                crossoverData.isMarkedForElimination = false;
+                
+                // Replace eliminated genome
+                _population[_currentGeneration][targetIndex] = std::move(offspring);
+                _genomeData[_currentGeneration][targetIndex] = crossoverData;
+                replacementIndex++;
+            } else {
+                // Add new crossover offspring if we have space
+                // (Similar logic as above but push_back instead of replacement)
+                break; // For now, just stop if no more elimination slots
+            }
+        }
         
-        // LOG_DEBUG("Generation {}: After dynamic data update:", generation);
-        // for (const auto& [speciesId, speciesData] : _speciesData) {
-        //     LOG_DEBUG("  Species {}: currentPopulationSize={}, instructionSetsSize={}", 
-        //         speciesId, speciesData.currentPopulationSize, speciesData.instructionSetsSize);
-        // }
         // end of generation loop
     }
     
     // Build results directly
-    if (_genomeData[_currentGeneration].empty()) {
+    if (_population[_currentGeneration].empty()) {
         // Create a dummy genome for empty population case
         Genome dummyGenome = Operator::init(_historyTracker, _initParams);
         return EvolutionResults<FitnessResultType>(
@@ -844,23 +489,27 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         );
     }
     
-    // Extract best genome (last in multimap - highest fitness in reverse order)
-    auto bestIt = _genomeData[_currentGeneration].rbegin();
-    Genome bestGenome = _population[_currentGeneration][bestIt->second.genomeIndex];
+    // Extract best genome from fitness results (last in multimap - highest fitness)
+    auto bestIt = _fitnessResults[_currentGeneration].rbegin();
+    size_t bestIndex = bestIt->second;
+    Genome bestGenome = _population[_currentGeneration][bestIndex];
     FitnessResultType bestFitness = bestIt->first;
     
-    // Extract final population
-    std::vector<Genome> finalPopulation;
+    // Extract final population and fitness values
+    std::vector<Genome> finalPopulation = _population[_currentGeneration];
     std::vector<FitnessResultType> finalFitnessValues;
-
-    std::vector<decltype(_genomeData[_currentGeneration].begin())> indexToIterator;
-    indexToIterator.reserve(_genomeData[_currentGeneration].size());
-    for (auto it = _genomeData[_currentGeneration].begin(); it != _genomeData[_currentGeneration].end(); ++it) {
-        indexToIterator.push_back(it);
-    }
     
-    for (const auto& [fitness, genomeData] : _genomeData[_currentGeneration]) {
-        finalPopulation.push_back(_population[_currentGeneration][genomeData.genomeIndex]);
+    // Build fitness values in the same order as the population
+    finalFitnessValues.reserve(_population[_currentGeneration].size());
+    for (size_t i = 0; i < _population[_currentGeneration].size(); ++i) {
+        // Find fitness for genome at index i
+        FitnessResultType fitness{};
+        for (const auto& [fitnessResult, globalIndex] : _fitnessResults[_currentGeneration]) {
+            if (globalIndex == i) {
+                fitness = fitnessResult;
+                break;
+            }
+        }
         finalFitnessValues.push_back(fitness);
     }
     
@@ -872,7 +521,6 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         maxGenerations
     );
 }
-
 
 
 } // namespace Evolution

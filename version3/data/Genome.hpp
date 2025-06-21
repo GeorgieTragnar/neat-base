@@ -31,11 +31,11 @@ public:
 	Genome(const GenomeParams& params);
 	Genome(const RawGenomeParams& params);
 
-	// Copy/move operations (assignment deleted due to NodeGene const members)
+	// Copy/move operations
 	Genome(const Genome& other) = default;
-	Genome& operator=(const Genome& other) = delete;  // Cannot assign due to NodeGene const members
+	Genome& operator=(const Genome& other) = default;
 	Genome(Genome&& other) noexcept = default;
-	Genome& operator=(Genome&& other) noexcept = delete;  // Cannot assign due to NodeGene const members
+	Genome& operator=(Genome&& other) noexcept = default;
 
 	// TODO: Implement when project-wide serialization is addressed
 	static Genome Deserialize(const std::vector<uint8_t>& serializedData) = delete;

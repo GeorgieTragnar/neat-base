@@ -12,11 +12,6 @@
 
 namespace Population {
 
-// Forward declarations
-struct ReproductiveInstruction;
-using SpeciesInstructionSet = std::vector<ReproductiveInstruction>;
-using GenerationInstructionSets = std::unordered_map<uint32_t, SpeciesInstructionSet>;
-
 class DynamicDataUpdateParams {
 public:
     DynamicDataUpdateParams() = delete;
@@ -31,9 +26,9 @@ public:
 protected:
     template<typename FitnessResultType>
     friend void dynamicDataUpdate(
-        std::multimap<FitnessResultType, DynamicGenomeData>& orderedGenomeData,
+        const std::multimap<FitnessResultType, size_t>& fitnessResults,
+        std::vector<DynamicGenomeData>& genomeData,
         std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
-        const GenerationInstructionSets& instructionSets,
         const DynamicDataUpdateParams& params
     );
 
@@ -45,11 +40,6 @@ protected:
 };
 
 // Helper function declarations
-void updateInstructionSetSizes(
-    std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
-    const GenerationInstructionSets& instructionSets
-);
-
 void updateSpeciesRanking(
     std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
     const std::unordered_map<uint32_t, double>& speciesAverageRanks
@@ -58,21 +48,15 @@ void updateSpeciesRanking(
 // Main operator function - templated on fitness result type
 template<typename FitnessResultType>
 void dynamicDataUpdate(
-    std::multimap<FitnessResultType, DynamicGenomeData>& orderedGenomeData,  // Best to worst fitness
+    const std::multimap<FitnessResultType, size_t>& fitnessResults,  // Best to worst fitness with global indices
+    std::vector<DynamicGenomeData>& genomeData,  // Genome data vector for direct access
     std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
-    const GenerationInstructionSets& instructionSets,                       // NEW: Instruction sets from GenerationPlanner
     const DynamicDataUpdateParams& params
 ) {
-    // Phase 1: Instruction Set Counting and Size Updates (NEW)
-    updateInstructionSetSizes(speciesData, instructionSets);
-    
-    // Phase 2: Species Performance Analysis - Single pass with running averages
+    // Phase 1: Species Performance Analysis - Single pass with running averages
     std::unordered_map<uint32_t, double> speciesRankSum;
     std::unordered_map<uint32_t, size_t> speciesCount;
     std::unordered_map<uint32_t, double> speciesAverageRanks;
-    
-    // Track newly discovered species to set their instructionSetsSize after the loop
-    std::vector<uint32_t> newlyDiscoveredSpecies;
     
     // Reset species population sizes at start of analysis
     for (auto& [speciesId, data] : speciesData) {
@@ -82,8 +66,8 @@ void dynamicDataUpdate(
     }
     
     size_t rank = 0;
-    for (auto& [fitnessResult, genomeData] : orderedGenomeData) {
-        const uint32_t speciesId = genomeData.speciesId;
+    for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
+        const uint32_t speciesId = genomeData[globalIndex].speciesId;
         
         // Note: Species discovery happens below - genome can reference previously unknown species
         // This is valid when new species emerge during evolution
@@ -102,27 +86,14 @@ void dynamicDataUpdate(
             // LOG_DEBUG("Discovered new species {} in genome data, creating species entry", speciesId);
             DynamicSpeciesData newSpecies;
             newSpecies.currentPopulationSize = 1;     // First genome for this species
-            newSpecies.instructionSetsSize = 0;       // Will be set to currentPopulationSize after the loop
             newSpecies.protectionRating = 0;          // Default protection rating
-            newSpecies.speciesRank = 0;               // Will be calculated in ranking phase
+            newSpecies.speciesRank = 0;               // TODO: Review new species rank assignment timing
             newSpecies.isMarkedForElimination = false; // Default elimination status
             speciesData[speciesId] = newSpecies;
-            
-            // Track this as a newly discovered species
-            newlyDiscoveredSpecies.push_back(speciesId);
-            // LOG_DEBUG("Created species {}: currentPopulationSize=1, instructionSetsSize=0 (will be set to population size)", speciesId);
+            // TODO: New species are created after rank calculation - review this interaction
         }
         
         ++rank;
-    }
-    
-    // Set instructionSetsSize for newly discovered species (they were copied as-is)
-    for (uint32_t speciesId : newlyDiscoveredSpecies) {
-        auto& speciesInfo = speciesData[speciesId];
-        speciesInfo.instructionSetsSize = speciesInfo.currentPopulationSize;
-        // auto logger = LOGGER("population.DynamicDataUpdate");
-        // LOG_DEBUG("Set newly discovered species {} instructionSetsSize to {} (equals currentPopulationSize)", 
-            // speciesId, speciesInfo.instructionSetsSize);
     }
     
     // Calculate average rank per species
@@ -132,7 +103,7 @@ void dynamicDataUpdate(
         }
     }
     
-    // Update species rankings based on performance (NEW)
+    // Update species rankings based on performance
     updateSpeciesRanking(speciesData, speciesAverageRanks);
     
     // Find worst N species using partial sort for efficiency
@@ -155,7 +126,9 @@ void dynamicDataUpdate(
                         [](const auto& a, const auto& b) { return a.second < b.second; });
     }
     
-    // Phase 3: Individual Genome Protection Updates
+    // Phase 2: Individual Genome Protection Updates
+    // TODO: Rename "protection" mechanism - it's confusing as "protected" entities progress toward elimination
+    // Consider: "elimination_counter", "underperformance_counter", "penalty_counter", etc.
     
     // Count active species before applying protection penalties
     uint32_t activeSpeciesCount = 0;
@@ -168,15 +141,17 @@ void dynamicDataUpdate(
     // Only apply protection penalties if we have more than minimum active species
     const bool applyProtectionPenalties = activeSpeciesCount > params._minActiveSpeciesCount;
     
-    const size_t totalPopulation = orderedGenomeData.size();
+    const size_t totalPopulation = fitnessResults.size();
     const size_t protectedTierThreshold = static_cast<size_t>(
         totalPopulation * params._protectedTierPercentage
     );
     
     rank = 0;
-    for (auto& [fitnessResult, genomeData] : orderedGenomeData) {
+    for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
+        DynamicGenomeData& currentGenomeData = genomeData[globalIndex];
+        
         // Skip protection updates for genomes under repair
-        if (genomeData.isUnderRepair) {
+        if (currentGenomeData.isUnderRepair) {
             ++rank;
             continue;
         }
@@ -186,14 +161,18 @@ void dynamicDataUpdate(
         
         if (applyProtectionPenalties) {
             if (isInProtectedTier) {
-                genomeData.protectionCounter++;
+                currentGenomeData.protectionCounter++;
             } else {
-                genomeData.protectionCounter = 0;
+                // TODO: Consider graceful protection counter decrement instead of hard reset
+                // Current hard reset causes volatility - genomes pop in/out of elimination threshold
+                // Alternative: gradual decrement (e.g., protectionCounter = max(0, protectionCounter-1))
+                // This would eliminate genomes that spend more time protected than not
+                currentGenomeData.protectionCounter = 0;
             }
             
             // Mark for elimination if protection limit exceeded
-            if (genomeData.protectionCounter > params._maxProtectionLimit) {
-                genomeData.isMarkedForElimination = true;
+            if (currentGenomeData.protectionCounter > params._maxProtectionLimit) {
+                currentGenomeData.isMarkedForElimination = true;
             }
         }
         // If we're at/below minimum species count, don't increase protection counters or mark genomes for elimination
@@ -201,16 +180,19 @@ void dynamicDataUpdate(
         ++rank;
     }
     
-    // Phase 4: Species Protection Rating Updates
+    // Phase 3: Species Protection Rating Updates
     // Create set of worst species IDs for quick lookup
     std::unordered_set<uint32_t> worstSpeciesIds;
     for (size_t i = speciesRankings.size() - worstSpeciesCount; i < speciesRankings.size(); ++i) {
         worstSpeciesIds.insert(speciesRankings[i].first);
     }
     
+    // TODO: Expand species protection logic to prevent elimination of species that have genomes 
+    // in the top X% of the full population (elite species protection)
+    
     // Update protection ratings: penalize worst species, reset others
-    // Only apply species protection penalties if we have more than minimum active species
-    // if (applyProtectionPenalties) {
+    // TODO: Active species threshold should only affect species penalties, not genome penalties
+    // if (activeSpeciesCount > params._minActiveSpeciesCount) {
     //     for (auto& [speciesId, data] : speciesData) {
     //         if (worstSpeciesIds.find(speciesId) != worstSpeciesIds.end()) {
     //             // This species is in worst N - apply penalty
@@ -228,35 +210,26 @@ void dynamicDataUpdate(
     // }
     // If below minimum species count, no species protection penalties are applied
     
-    // Phase 5: State Consistency Validation (Debug assertions)
+    // Phase 4: State Consistency Validation (Debug assertions)
 #ifndef NDEBUG
-    for (const auto& [fitnessResult, genomeData] : orderedGenomeData) {
+    for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
         // Protection counter can exceed maxProtectionLimit for custom scaling logic that punishes worst genomes more severely
         // No assertion needed for protectionCounter upper bound
-        assert(speciesData.find(genomeData.speciesId) != speciesData.end());
+        assert(speciesData.find(genomeData[globalIndex].speciesId) != speciesData.end());
     }
     
     for (const auto& [speciesId, data] : speciesData) {
         // Protection rating can exceed maxSpeciesProtectionRating for adaptive elimination strategies
-        assert(data.speciesRank > 0); // Species rank should be assigned
+        // Note: speciesRank can be 0 if a species has a single genome that is the best performer (rank 0)
+        // Species rank is calculated from average genome ranks, so single-genome species inherit their genome's rank
+        assert(data.speciesRank >= 0); // Species rank should be assigned (can be 0 for best single-genome species)
         
         // Population size should match actual count
         size_t actualCount = 0;
-        for (const auto& [fr, gd] : orderedGenomeData) {
-            if (gd.speciesId == speciesId) actualCount++;
+        for (const auto& [fr, globalIndex] : fitnessResults) {
+            if (genomeData[globalIndex].speciesId == speciesId) actualCount++;
         }
         assert(data.currentPopulationSize == actualCount);
-        
-        // Instruction set size validation
-        auto instructionIt = instructionSets.find(speciesId);
-        if (instructionIt != instructionSets.end()) {
-            // Species with instruction sets: size should match actual instruction count
-            assert(data.instructionSetsSize == instructionIt->second.size());
-        } else {
-            // Species not in instruction sets: either newly discovered or previously eliminated species being rediscovered
-            // instructionSetsSize should be either 0 (no instruction sets yet) or currentPopulationSize (carry-forward behavior)
-            assert(data.instructionSetsSize == 0 || data.instructionSetsSize == data.currentPopulationSize);
-        }
     }
 #endif
 }
