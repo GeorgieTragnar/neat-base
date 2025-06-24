@@ -192,6 +192,24 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     _connectionReactivationParams(connectionReactivationParams),
     _rng(randomSeed),
     _historyTracker(std::make_shared<HistoryTracker>()) {
+    // Create a simple concrete implementation of SpeciationControlUnit
+    class SimpleSpeciationControl : public Analysis::SpeciationControlUnit {
+    public:
+        std::vector<std::shared_ptr<const Analysis::Phenotype>> getChampions() const override {
+            return {};
+        }
+        std::shared_ptr<const Analysis::Phenotype> getBestChampion() const override {
+            return nullptr;
+        }
+        std::shared_ptr<const Analysis::Phenotype> getRandomChampion() const override {
+            return nullptr;
+        }
+        size_t getChampionCount() const override {
+            return 0;
+        }
+    };
+    
+    SimpleSpeciationControl speciationControl;
     
     // Basic parameter validation
     assert(_fitnessStrategy != nullptr);
@@ -224,6 +242,12 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     // Add to population and genome data (generation 0)
     _population[0].push_back(std::move(initialGenome));
     _genomeData[0].push_back(genomeData);
+
+    const Genome& genome = _population[0][0];
+    
+    // Evaluate fitness for initial genome
+    FitnessResultType initialFitness = _fitnessStrategy->evaluate(genome.get_phenotype(), speciationControl);
+    _fitnessResults[0].insert({initialFitness, 0});
     
     _currentGeneration = 0;
     _lastGeneration = 1;
@@ -249,6 +273,24 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
     };
     
     SimpleSpeciationControl speciationControl;
+
+    // Helper function to log complete population state
+    auto logPopulationState = [&](const std::string& phase, uint32_t generation, uint32_t genNumber) {
+        LOG_DEBUG("{} - Generation {} Population State ({} genomes):", phase, generation, _population[genNumber].size());
+        for (size_t i = 0; i < _population[genNumber].size(); ++i) {
+            FitnessResultType fitness{};
+            // Find fitness for this genome
+            for (const auto& [fit, globalIndex] : _fitnessResults[genNumber]) {
+                if (globalIndex == i) {
+                    fitness = fit;
+                    break;
+                }
+            }
+            LOG_DEBUG("  Genome[{}]: species={}, fitness={:.3f}, eliminated={}", 
+                     i, _genomeData[genNumber][i].speciesId, fitness.getValue(), 
+                     _genomeData[genNumber][i].isMarkedForElimination);
+        }
+    };
 
     for (uint32_t generation = 0; generation < maxGenerations; ++generation) {
         _lastGeneration = _currentGeneration;
@@ -368,7 +410,6 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             if (!genomeData.isUnderRepair) {
                 // Evaluate fitness for non-repair genomes
                 FitnessResultType fitness = _fitnessStrategy->evaluate(genome.get_phenotype(), speciationControl);
-                
                 // Update species assignment
                 uint32_t newSpeciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
                 _genomeData[_currentGeneration][i].speciesId = newSpeciesId;
@@ -382,17 +423,17 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         }
 
         // Phase 3: Population Analysis - Species grouping and dynamic data update
-        auto speciesGrouping = Population::speciesGrouping(_fitnessResults[_currentGeneration], _genomeData[_currentGeneration], _speciesData);
+        auto speciesGrouping = Population::speciesGrouping(_fitnessResults[_lastGeneration], _genomeData[_lastGeneration], _speciesData);
 
         // Assert that all genomes in species grouping have empty deltas
         for (const auto& [speciesId, indices] : speciesGrouping) {
             for (size_t globalIndex : indices) {
-                assert(Operator::emptyDeltas(_population[_currentGeneration][globalIndex]) && 
+                assert(Operator::emptyDeltas(_population[_lastGeneration][globalIndex]) && 
                        "Species grouping contains genome with uncleared deltas");
             }
         }
 
-        Population::dynamicDataUpdate(_fitnessResults[_currentGeneration], _genomeData[_currentGeneration], _speciesData, speciesGrouping, _updateParams);
+        Population::dynamicDataUpdate(_fitnessResults[_lastGeneration], _genomeData[_lastGeneration], _speciesData, speciesGrouping, _updateParams);
         
         // Phase 4: Elite/Crossover Replacement
         // Plot elites and crossover pairs
@@ -420,14 +461,18 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                     }
                 }
                 
-                LOG_TRACE("ELIMINATED GENOME {}: species={}, pendingEliminationCounter={}, fitness={:.3f}, underRepair={}", 
-                         i, genomeData.speciesId, genomeData.pendingEliminationCounter, eliminatedFitness.getValue(), genomeData.isUnderRepair);
+                // LOG_TRACE("ELIMINATED GENOME {}: species={}, pendingEliminationCounter={}, fitness={:.3f}, underRepair={}", 
+                //          i, genomeData.speciesId, genomeData.pendingEliminationCounter, eliminatedFitness.getValue(), genomeData.isUnderRepair);
             }
         }
         
-        LOG_DEBUG("Generation {}: Found {} elites, {} crossover pairs, {} eliminated genomes ({}% population)", 
-            generation, eliteIndices.size(), crossoverPairs.size(), eliminatedIndices.size(), 
-            (eliminatedIndices.size() * 100.0) / _genomeData[_currentGeneration].size());
+        // LOG_DEBUG("Generation {}: Found {} elites, {} crossover pairs, {} eliminated genomes ({}% population)", 
+        //     generation, eliteIndices.size(), crossoverPairs.size(), eliminatedIndices.size(), 
+        //     (eliminatedIndices.size() * 100.0) / _genomeData[_currentGeneration].size());
+        
+        // Log current generation state after mutation but before elite/crossover
+        // logPopulationState("POST-MUTATION - last", generation, _lastGeneration);
+        // logPopulationState("POST-MUTATION - current", generation, _currentGeneration);
         
         // Log elimination distribution by species
         if (!eliminatedBySpecies.empty()) {
@@ -440,8 +485,8 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 elimBySpeciesStr += fmt::format("{}:{}", elimBySpecies[i].first, elimBySpecies[i].second);
             }
             elimBySpeciesStr += "]";
-            LOG_DEBUG("ELIMINATION DISTRIBUTION: {} under repair, by species: {}", 
-                      eliminatedUnderRepair, elimBySpeciesStr);
+            // LOG_DEBUG("ELIMINATION DISTRIBUTION: {} under repair, by species: {}", 
+            //           eliminatedUnderRepair, elimBySpeciesStr);
         }
         
         // Replace eliminated genomes with elites
@@ -449,66 +494,103 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         size_t elitesUsedForReplacement = 0;
         size_t elitesAddedToPopulation = 0;
         
-        LOG_DEBUG("ELITE REPLACEMENT: Starting replacement of {} eliminated genomes with {} elites", 
-                  eliminatedIndices.size(), eliteIndices.size());
+        // LOG_DEBUG("ELITE REPLACEMENT: Starting replacement of {} eliminated genomes with {} elites", 
+        //           eliminatedIndices.size(), eliteIndices.size());
+        
+        // Log population state before elite operations
+        // logPopulationState("PRE-ELITE-OPS - last", generation, _lastGeneration);
+        // logPopulationState("PRE-ELITE-OPS - current", generation, _currentGeneration);
+        
+        // Debug log: Elite indices and their fitness from last generation
+        // LOG_DEBUG("ELITE SELECTION DEBUG: {} elites selected from last generation", eliteIndices.size());
+        for (size_t eliteIndex : eliteIndices) {
+            FitnessResultType eliteFitness{};
+            bool found = false;
+            for (const auto& [fitness, globalIndex] : _fitnessResults[_lastGeneration]) {
+                if (globalIndex == eliteIndex) {
+                    eliteFitness = fitness;
+                    found = true;
+                    break;
+                }
+            }
+            // LOG_DEBUG("  Elite[{}]: species={}, fitness={:.3f}, found_in_last_gen={}", 
+            //          eliteIndex, _genomeData[_lastGeneration][eliteIndex].speciesId, 
+            //          eliteFitness.getValue(), found);
+        }
         
         for (size_t eliteIndex : eliteIndices) {
-            if (replacementIndex < eliminatedIndices.size()) {
+            if (replacementIndex < eliminatedIndices.size() && false) {
                 size_t targetIndex = eliminatedIndices[replacementIndex];
                 
                 // Get fitness values for logging
                 FitnessResultType eliteFitness{}, eliminatedFitness{};
-                for (const auto& [fitness, globalIndex] : _fitnessResults[_currentGeneration]) {
+                for (const auto& [fitness, globalIndex] : _fitnessResults[_lastGeneration]) {
                     if (globalIndex == eliteIndex) eliteFitness = fitness;
                     if (globalIndex == targetIndex) eliminatedFitness = fitness;
                 }
                 
-                LOG_TRACE("ELITE REPLACEMENT: Elite {} (species={}, fitness={:.3f}) -> target {} (species={}, fitness={:.3f})", 
-                         eliteIndex, _genomeData[_currentGeneration][eliteIndex].speciesId, eliteFitness.getValue(),
-                         targetIndex, _genomeData[_currentGeneration][targetIndex].speciesId, eliminatedFitness.getValue());
                 
                 // Validate replacement is valid
-                assert(!_genomeData[_currentGeneration][eliteIndex].isMarkedForElimination && 
+                assert(!_genomeData[_lastGeneration][eliteIndex].isMarkedForElimination && 
                        "Elite genome should not be marked for elimination");
                 assert(_genomeData[_currentGeneration][targetIndex].isMarkedForElimination && 
                        "Target genome should be marked for elimination");
                 
-                // Copy elite genome
-                _population[_currentGeneration][targetIndex] = _population[_currentGeneration][eliteIndex];
-                // Reset genome data for elite (not marked for elimination)
-                _genomeData[_currentGeneration][targetIndex] = _genomeData[_currentGeneration][eliteIndex];
+                // Copy elite genome from last generation
+                _population[_currentGeneration][targetIndex] = _population[_lastGeneration][eliteIndex];
+                // Reset genome data for elite (copy from last generation, not marked for elimination)
+                _genomeData[_currentGeneration][targetIndex] = _genomeData[_lastGeneration][eliteIndex];
                 _genomeData[_currentGeneration][targetIndex].isMarkedForElimination = false;
+                _fitnessResults[_currentGeneration].insert({eliteFitness, targetIndex});
                 replacementIndex++;
                 elitesUsedForReplacement++;
             } else {
                 // Add new elite if we have space
                 FitnessResultType eliteFitness{};
-                for (const auto& [fitness, globalIndex] : _fitnessResults[_currentGeneration]) {
+                bool fitnessFound = false;
+                // LOG_DEBUG("ELITE FITNESS LOOKUP: Searching for eliteIndex {} in {} fitness entries", 
+                        //  eliteIndex, _fitnessResults[_lastGeneration].size());
+                for (const auto& [fitness, globalIndex] : _fitnessResults[_lastGeneration]) {
+                    // LOG_TRACE("  Checking fitness entry: globalIndex={}, fitness={:.3f}", 
+                    //          globalIndex, fitness.getValue());
                     if (globalIndex == eliteIndex) {
                         eliteFitness = fitness;
+                        fitnessFound = true;
+                        // LOG_DEBUG("  MATCH FOUND: eliteIndex {} has fitness {:.3f}", 
+                        //          eliteIndex, fitness.getValue());
                         break;
                     }
                 }
                 
-                LOG_TRACE("ELITE ADDITION: Elite {} (species={}, fitness={:.3f}) added to population", 
-                         eliteIndex, _genomeData[_currentGeneration][eliteIndex].speciesId, eliteFitness.getValue());
+                if (!fitnessFound) {
+                    LOG_ERROR("CRITICAL ERROR: Could not find fitness for eliteIndex {} in _fitnessResults[_lastGeneration]", eliteIndex);
+                }
                 
-                _population[_currentGeneration].push_back(_population[_currentGeneration][eliteIndex]);
-                _genomeData[_currentGeneration].push_back(_genomeData[_currentGeneration][eliteIndex]);
+                // LOG_TRACE("ELITE ADDITION: Elite {} (species={}, fitness={:.3f}, fitness_found={}) from last generation added to population", 
+                //          eliteIndex, _genomeData[_lastGeneration][eliteIndex].speciesId, 
+                //          eliteFitness.getValue(), fitnessFound);
+                
+                _population[_currentGeneration].push_back(_population[_lastGeneration][eliteIndex]);
+                _genomeData[_currentGeneration].push_back(_genomeData[_lastGeneration][eliteIndex]);
                 _genomeData[_currentGeneration].back().isMarkedForElimination = false;
+                _fitnessResults[_currentGeneration].insert({eliteFitness, _population[_currentGeneration].size() - 1});
                 elitesAddedToPopulation++;
             }
         }
         
-        LOG_DEBUG("ELITE REPLACEMENT COMPLETE: {} elites used for replacement, {} elites added to population", 
-                  elitesUsedForReplacement, elitesAddedToPopulation);
+        // LOG_DEBUG("ELITE REPLACEMENT COMPLETE: {} elites used for replacement, {} elites added to population", 
+        //           elitesUsedForReplacement, elitesAddedToPopulation);
+        
+        // Log population state after elite operations
+        // logPopulationState("POST-ELITE-OPS - last", generation, _lastGeneration);
+        // logPopulationState("POST-ELITE-OPS - current", generation, _currentGeneration);
         
         // Replace remaining eliminated genomes with crossover offspring
         size_t crossoverReplacements = 0;
         size_t crossoverWithCycles = 0;
         
-        LOG_DEBUG("CROSSOVER REPLACEMENT: Starting replacement of {} remaining eliminated genomes with crossover offspring", 
-                  eliminatedIndices.size() - replacementIndex);
+        // LOG_DEBUG("CROSSOVER REPLACEMENT: Starting replacement of {} remaining eliminated genomes with crossover offspring", 
+        //           eliminatedIndices.size() - replacementIndex);
         
         for (const auto& [parentAIndex, parentBIndex] : crossoverPairs) {
             if (replacementIndex < eliminatedIndices.size()) {
@@ -522,10 +604,10 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                     if (globalIndex == targetIndex) eliminatedFitness = fitness;
                 }
                 
-                LOG_TRACE("CROSSOVER REPLACEMENT: Parents {} (species={}, fitness={:.3f}) x {} (species={}, fitness={:.3f}) -> target {} (fitness={:.3f})", 
-                         parentAIndex, _genomeData[_currentGeneration][parentAIndex].speciesId, fitnessA.getValue(),
-                         parentBIndex, _genomeData[_currentGeneration][parentBIndex].speciesId, fitnessB.getValue(),
-                         targetIndex, eliminatedFitness.getValue());
+                // LOG_TRACE("CROSSOVER REPLACEMENT: Parents {} (species={}, fitness={:.3f}) x {} (species={}, fitness={:.3f}) -> target {} (fitness={:.3f})", 
+                //          parentAIndex, _genomeData[_currentGeneration][parentAIndex].speciesId, fitnessA.getValue(),
+                //          parentBIndex, _genomeData[_currentGeneration][parentBIndex].speciesId, fitnessB.getValue(),
+                //          targetIndex, eliminatedFitness.getValue());
                 
                 // Validate crossover parents are not eliminated
                 assert(!_genomeData[_currentGeneration][parentAIndex].isMarkedForElimination && 
@@ -557,8 +639,8 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 crossoverData.isUnderRepair = hasCycles;
                 crossoverData.isMarkedForElimination = false;
                 
-                LOG_TRACE("CROSSOVER OFFSPRING: Created for target {}, species={}, hasCycles={}", 
-                         targetIndex, crossoverData.speciesId, hasCycles);
+                // LOG_TRACE("CROSSOVER OFFSPRING: Created for target {}, species={}, hasCycles={}", 
+                //          targetIndex, crossoverData.speciesId, hasCycles);
                 
                 // Replace eliminated genome
                 _population[_currentGeneration][targetIndex] = std::move(offspring);
@@ -568,13 +650,13 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             } else {
                 // Add new crossover offspring if we have space
                 // (Similar logic as above but push_back instead of replacement)
-                LOG_DEBUG("CROSSOVER EXPANSION: No more elimination slots, stopping crossover expansion");
+                // LOG_DEBUG("CROSSOVER EXPANSION: No more elimination slots, stopping crossover expansion");
                 break; // For now, just stop if no more elimination slots
             }
         }
         
-        LOG_DEBUG("CROSSOVER REPLACEMENT COMPLETE: {} crossover replacements made, {} with cycles", 
-                  crossoverReplacements, crossoverWithCycles);
+        // LOG_DEBUG("CROSSOVER REPLACEMENT COMPLETE: {} crossover replacements made, {} with cycles", 
+        //           crossoverReplacements, crossoverWithCycles);
         
         // Final replacement validation
         size_t unreplacedEliminations = eliminatedIndices.size() - replacementIndex;
@@ -594,9 +676,9 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         // Log final population composition
         const size_t finalPopSize = _population[_currentGeneration].size();
         const size_t initialPopSize = finalPopSize - elitesAddedToPopulation; // Approximate initial size
-        LOG_DEBUG("GENERATION {} REPLACEMENT SUMMARY: Pop size {} -> {}, Eliminated: {}, Elite replacements: {}, Crossover replacements: {}, Elite additions: {}", 
-                  generation, initialPopSize, finalPopSize, eliminatedIndices.size(), 
-                  elitesUsedForReplacement, crossoverReplacements, elitesAddedToPopulation);
+        // LOG_DEBUG("GENERATION {} REPLACEMENT SUMMARY: Pop size {} -> {}, Eliminated: {}, Elite replacements: {}, Crossover replacements: {}, Elite additions: {}", 
+        //           generation, initialPopSize, finalPopSize, eliminatedIndices.size(), 
+        //           elitesUsedForReplacement, crossoverReplacements, elitesAddedToPopulation);
         
         // Validate final population state
         size_t finalEliminatedCount = 0;
@@ -612,6 +694,10 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         LOG_DEBUG("GENERATION {} FINAL STATE: {} genomes, {} still marked for elimination, {} species active", 
                   generation, _genomeData[_currentGeneration].size(), finalEliminatedCount, finalSpeciesDistribution.size());
+        
+        // Log final generation state after all replacements
+        // logPopulationState("FINAL-STATE - last", generation, _lastGeneration);
+        // logPopulationState("FINAL-STATE - current", generation, _currentGeneration);
         
         // Assert no genomes should be marked for elimination after replacement
         assert(finalEliminatedCount == 0 && "No genomes should remain marked for elimination after replacement");

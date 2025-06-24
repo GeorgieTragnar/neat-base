@@ -61,20 +61,20 @@ void dynamicDataUpdate(
 ) {
     // Phase 1: Species Performance Analysis - Single pass with running averages
     auto logger = LOGGER("population.DynamicDataUpdate");
-    LOG_DEBUG("ELIMINATION PHASE 1: Starting species performance analysis for {} genomes", fitnessResults.size());
+    // LOG_DEBUG("ELIMINATION PHASE 1: Starting species performance analysis for {} genomes", fitnessResults.size());
     
     std::unordered_map<uint32_t, size_t> speciesRankSum;
     std::unordered_map<uint32_t, size_t> speciesCount;
     std::unordered_map<uint32_t, double> speciesAverageRanks;
     
     // Reset species population sizes at start of analysis
-    LOG_DEBUG("ELIMINATION PHASE 1: Resetting {} species population counters", speciesData.size());
+    // LOG_DEBUG("ELIMINATION PHASE 1: Resetting {} species population counters", speciesData.size());
     size_t speciesWithEliminated = 0;
     for (auto& [speciesId, data] : speciesData) {
         if (data.isMarkedForElimination) speciesWithEliminated++;
         data.currentPopulationSize = 0;
     }
-    LOG_DEBUG("ELIMINATION PHASE 1: Found {} species currently marked for elimination", speciesWithEliminated);
+    // LOG_DEBUG("ELIMINATION PHASE 1: Found {} species currently marked for elimination", speciesWithEliminated);
     
     size_t rank = 0;
     for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
@@ -107,11 +107,11 @@ void dynamicDataUpdate(
     }
     
     // Calculate average rank per species
-    LOG_DEBUG("ELIMINATION PHASE 1: Calculating average ranks for {} species", speciesCount.size());
+    // LOG_DEBUG("ELIMINATION PHASE 1: Calculating average ranks for {} species", speciesCount.size());
     for (const auto& [speciesId, count] : speciesCount) {
         if (count > 0) {
             speciesAverageRanks[speciesId] = speciesRankSum[speciesId] / count;
-            LOG_TRACE("Species {}: {} genomes, avg rank {:.2f}", speciesId, count, speciesAverageRanks[speciesId]);
+            // LOG_TRACE("Species {}: {} genomes, avg rank {:.2f}", speciesId, count, speciesAverageRanks[speciesId]);
         }
     }
 
@@ -148,7 +148,7 @@ void dynamicDataUpdate(
 #endif
     
 // Phase 2: Individual Genome Pending Elimination Updates
-    LOG_DEBUG("ELIMINATION PHASE 2: Starting individual genome pending elimination updates");
+    // LOG_DEBUG("ELIMINATION PHASE 2: Starting individual genome pending elimination updates");
     
     
     const uint32_t excessSpeciesCount = (activeSpeciesCount > params._equilibriumSpeciesCount)

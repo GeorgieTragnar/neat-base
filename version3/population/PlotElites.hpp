@@ -62,9 +62,9 @@ inline std::vector<size_t> plotElites(
         eliteCount = std::min(eliteCount, params._maximumElitesPerSpecies);
         eliteCount = std::min(eliteCount, speciesSize); // Can't select more elites than genomes in species
         
-        // Select top performers (species groupings are already fitness-ordered)
+        // Select top performers (species groupings are fitness-ordered from worst to best, so take from end)
         for (size_t i = 0; i < eliteCount; ++i) {
-            eliteIndices.push_back(genomeIndices[i]);
+            eliteIndices.push_back(genomeIndices[genomeIndices.size() - 1 - i]);
         }
     }
     
