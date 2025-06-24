@@ -253,11 +253,13 @@ int main(int argc, char* argv[])
         
         // Create dynamic data update parameters
         Population::DynamicDataUpdateParams updateParams(
-            5,    // maxProtectionLimit
-            3,    // maxSpeciesProtectionRating  
-            1,  // protectedTierPercentage (30%)
-            1,    // worstSpeciesCount
-            1     // minActiveSpeciesCount
+            5, // maxGenomePendingEliminationLimit
+            20, // maxSpeciesPendingEliminationRating
+            0.5, // speciesElitePlacementProtectionPercentage
+            0.5, // speciesPendingEliminationPercentage
+            0.3, // genomesPendingEliminationPercentage
+            5, // equilibriumSpeciesCount
+            populationSize // targetPopulationSize
         );
         
         // Create compatibility distance parameters

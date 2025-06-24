@@ -5,20 +5,26 @@ namespace Population {
 
 // DynamicDataUpdateParams constructor implementation
 DynamicDataUpdateParams::DynamicDataUpdateParams(
-    uint32_t maxProtectionLimit,
-    uint32_t maxSpeciesProtectionRating,
-    double protectedTierPercentage,
-    uint32_t worstSpeciesCount,
-    uint32_t minActiveSpeciesCount
-) : _maxProtectionLimit(maxProtectionLimit),
-    _maxSpeciesProtectionRating(maxSpeciesProtectionRating),
-    _protectedTierPercentage(protectedTierPercentage),
-    _worstSpeciesCount(worstSpeciesCount),
-    _minActiveSpeciesCount(minActiveSpeciesCount) {
+    uint32_t maxGenomePendingEliminationLimit,
+    uint32_t maxSpeciesPendingEliminationRating,
+    double speciesElitePlacementProtectionPercentage,
+    double speciesPendingEliminationPercentage,
+    double genomesPendingEliminationPercentage,
+    uint32_t equilibriumSpeciesCount,
+    uint32_t targetPopulationSize
+) : _maxGenomePendingEliminationLimit(maxGenomePendingEliminationLimit),
+    _maxSpeciesPendingEliminationRating(maxSpeciesPendingEliminationRating),
+    _speciesElitePlacementProtectionPercentage(speciesElitePlacementProtectionPercentage),
+    _speciesPendingEliminationPercentage(speciesPendingEliminationPercentage),
+    _genomesPendingEliminationPercentage(genomesPendingEliminationPercentage),
+    _equilibriumSpeciesCount(equilibriumSpeciesCount),
+    _targetPopulationSize(targetPopulationSize) {
     
-    assert(protectedTierPercentage >= 0.0 && protectedTierPercentage <= 1.0);
-    assert(worstSpeciesCount > 0);
-    assert(minActiveSpeciesCount > 0);
+    assert(speciesElitePlacementProtectionPercentage >= 0.0 && speciesElitePlacementProtectionPercentage <= 1.0);
+    assert(speciesPendingEliminationPercentage >= 0.0 && speciesPendingEliminationPercentage <= 1.0);
+    assert(genomesPendingEliminationPercentage >= 0.0 && genomesPendingEliminationPercentage <= 1.0);
+    assert(equilibriumSpeciesCount > 0);
+    assert(targetPopulationSize > 0);
 }
 
 
