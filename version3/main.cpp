@@ -32,6 +32,7 @@
 #include "operator/ConnectionReactivation.hpp"
 #include "operator/RepairOperator.hpp"
 #include "analysis/strategies/SingleSimpleFitnessStrategy.hpp"
+#include "operator/NetworkExecution.hpp"
 
 // Evolution prototype
 #include "evolution/EvolutionPrototype.hpp"
@@ -134,8 +135,8 @@ DoubleFitnessResult evaluateXORFitness(const Genome::Phenotype& phenotype) {
     // Convert error to fitness (lower error = higher fitness)
     double performanceFitness = 4.0 - totalError; // Max fitness is 4.0 (perfect)
     
-    // Debug output for high-fitness networks (always show for debugging)
-    if (performanceFitness > 2.9) {
+    // Debug output for high-fitness networks (higher threshold for success)
+    if (performanceFitness > 3.9) {
         static int debugCount = 0;
         if (debugCount < 3) { // Show first 3 high-fitness networks
             LOG_DEBUG("=== HIGH FITNESS NETWORK #{} (fitness: {:.3f}) ===", debugCount + 1, performanceFitness);
@@ -181,7 +182,7 @@ DoubleFitnessResult evaluateXORFitness(const Genome::Phenotype& phenotype) {
     }
     
     
-    // Add complexity penalization
+    // Add complexity penalization to encourage simpler solutions
     size_t nodeCount = phenotype._nodeGeneAttributes.size();
     size_t connectionCount = 0;
     
@@ -192,155 +193,36 @@ DoubleFitnessResult evaluateXORFitness(const Genome::Phenotype& phenotype) {
         }
     }
     
-    // Very light complexity penalization (allow growth for XOR)
-    double complexityPenalty = (nodeCount > 8 ? (nodeCount - 8) * 0.01 : 0.0) + 
-                              (connectionCount > 10 ? (connectionCount - 10) * 0.005 : 0.0);
+    // Stronger complexity penalty starting earlier (ideal: 4 nodes, 6 connections)
+    double complexityPenalty = (nodeCount > 4 ? (nodeCount - 4) * 0.1 : 0.0) + 
+                              (connectionCount > 6 ? (connectionCount - 6) * 0.05 : 0.0);
     
     fitness = std::max(0.0, performanceFitness - complexityPenalty); // Ensure non-negative fitness
     
     return DoubleFitnessResult(fitness);
 }
 
-// Proper feed-forward network activation with single-pass processing
+// Use NetworkExecution operator for consistent network evaluation
 double simulateNetworkOutput(const Genome::Phenotype& phenotype, const std::vector<double>& inputs) {
-    const auto& connections = phenotype._orderedConnections;
-    const auto& nodes = phenotype._nodeGeneAttributes;
+    // Create NetworkExecution parameters with debug output for high-fitness networks
+    static bool debugOutput = true; // Enable debug for first few networks
+    static int executionCount = 0;
     
-    static bool detailedDebug = true; // Set to true for first network only
+    // Only debug first few executions or high-fitness networks
+    bool shouldDebug = debugOutput && executionCount < 3;
     
-    // Initialize node values
-    std::vector<double> nodeValues(nodes.size(), 0.0);
+    Operator::NetworkExecutionParams params(shouldDebug);
     
-    // Set input values
-    for (size_t i = 0; i < inputs.size() && i < phenotype._inputIndices.size(); ++i) {
-        nodeValues[phenotype._inputIndices[i]] = inputs[i];
-        if (detailedDebug) {
-            LOG_DEBUG("Set input node[{}] = {:.3f}", phenotype._inputIndices[i], inputs[i]);
-        }
+    // Execute network using the NetworkExecution operator
+    auto outputs = Operator::networkExecution(phenotype, inputs, params);
+    
+    executionCount++;
+    if (executionCount >= 3) {
+        debugOutput = false; // Disable debug after first few networks
     }
     
-    // Find bias node: it should be the node that is not input, not output, 
-    // and has outgoing connections but no incoming connections
-    for (size_t i = 0; i < nodes.size(); ++i) {
-        bool isInput = std::find(phenotype._inputIndices.begin(), phenotype._inputIndices.end(), i) != phenotype._inputIndices.end();
-        bool isOutput = std::find(phenotype._outputIndices.begin(), phenotype._outputIndices.end(), i) != phenotype._outputIndices.end();
-        
-        if (!isInput && !isOutput) {
-            // Check if this node has outgoing connections but no incoming connections
-            bool hasOutgoingConnections = false;
-            bool hasIncomingConnections = false;
-            
-            for (const auto& conn : connections) {
-                if (conn._connectionGeneAttribute.enabled) {
-                    if (conn._sourceNodeIndex == i) hasOutgoingConnections = true;
-                    if (conn._targetNodeIndex == i) hasIncomingConnections = true;
-                }
-            }
-            
-            // Bias node: has outgoing connections but no incoming connections
-            if (hasOutgoingConnections && !hasIncomingConnections) {
-                nodeValues[i] = 1.0; // Set bias value
-                if (detailedDebug) {
-                    LOG_DEBUG("Found bias node[{}] = 1.0 (outgoing: {}, incoming: {})", i, hasOutgoingConnections, hasIncomingConnections);
-                }
-            }
-        }
-    }
-    
-    if (detailedDebug) {
-        LOG_DEBUG("Initial node values after bias setup:");
-        for (size_t i = 0; i < nodeValues.size(); ++i) {
-            LOG_DEBUG("  node[{}] = {:.3f}", i, nodeValues[i]);
-        }
-    }
-    
-    // Create sets for faster lookup
-    std::unordered_set<size_t> inputSet(phenotype._inputIndices.begin(), phenotype._inputIndices.end());
-    std::unordered_set<size_t> outputSet(phenotype._outputIndices.begin(), phenotype._outputIndices.end());
-    
-    // Single pass: accumulate inputs for each non-input node, then apply activation
-    std::vector<double> nodeInputs(nodes.size(), 0.0);
-    
-    // Accumulate weighted inputs for all connections
-    for (const auto& conn : connections) {
-        if (conn._connectionGeneAttribute.enabled) {
-            size_t sourceIdx = conn._sourceNodeIndex;
-            size_t targetIdx = conn._targetNodeIndex;
-            
-            if (sourceIdx < nodeValues.size() && targetIdx < nodeValues.size()) {
-                // Skip if target is an input node (they shouldn't receive connections)
-                if (inputSet.find(targetIdx) != inputSet.end()) continue;
-                
-                // Accumulate weighted input
-                double weightedInput = nodeValues[sourceIdx] * conn._connectionGeneAttribute.weight;
-                nodeInputs[targetIdx] += weightedInput;
-                
-                if (detailedDebug) {
-                    LOG_DEBUG("Connection: node[{}]({:.3f}) -> node[{}], weight={:.3f}, contribution={:.3f}, total_input={:.3f}",
-                             sourceIdx, nodeValues[sourceIdx], targetIdx, conn._connectionGeneAttribute.weight, 
-                             weightedInput, nodeInputs[targetIdx]);
-                }
-            }
-        }
-    }
-    
-    // Apply activation functions to non-input nodes (but not bias nodes)
-    for (size_t i = 0; i < nodes.size(); ++i) {
-        // Skip input nodes - they keep their original values
-        if (inputSet.find(i) != inputSet.end()) continue;
-        
-        // Check if this is a bias node (has outgoing but no incoming connections)
-        bool isInput = inputSet.find(i) != inputSet.end();
-        bool isOutput = outputSet.find(i) != outputSet.end();
-        bool isBias = false;
-        
-        if (!isInput && !isOutput) {
-            bool hasOutgoingConnections = false;
-            bool hasIncomingConnections = false;
-            
-            for (const auto& conn : connections) {
-                if (conn._connectionGeneAttribute.enabled) {
-                    if (conn._sourceNodeIndex == i) hasOutgoingConnections = true;
-                    if (conn._targetNodeIndex == i) hasIncomingConnections = true;
-                }
-            }
-            
-            isBias = hasOutgoingConnections && !hasIncomingConnections;
-        }
-        
-        // Skip bias nodes - they keep their value of 1.0
-        if (isBias) {
-            if (detailedDebug) {
-                LOG_DEBUG("Skipping bias node[{}] (keeping value {:.3f})", i, nodeValues[i]);
-            }
-            continue;
-        }
-        
-        // Apply activation function to hidden and output nodes
-        double oldValue = nodeValues[i];
-        if (nodes[i].activationType == ActivationType::SIGMOID) {
-            nodeValues[i] = 1.0 / (1.0 + std::exp(-nodeInputs[i]));
-        } else {
-            nodeValues[i] = nodeInputs[i]; // No activation
-        }
-        
-        if (detailedDebug) {
-            LOG_DEBUG("Activate node[{}]: input={:.3f} -> output={:.3f} (was {:.3f})", 
-                     i, nodeInputs[i], nodeValues[i], oldValue);
-        }
-    }
-    
-    // Return output node value
-    if (!phenotype._outputIndices.empty()) {
-        size_t outputIdx = phenotype._outputIndices[0];
-        if (detailedDebug) {
-            LOG_DEBUG("Final output: node[{}] = {:.3f}", outputIdx, nodeValues[outputIdx]);
-            detailedDebug = false; // Only debug first network
-        }
-        return nodeValues[outputIdx];
-    }
-    
-    return 0.0;
+    // Return first output (XOR has only one output)
+    return outputs.empty() ? 0.0 : outputs[0];
 }
 
 int main(int argc, char* argv[])
@@ -366,9 +248,12 @@ int main(int argc, char* argv[])
             {ActivationType::SIGMOID}  // Output with sigmoid activation
         };
         
-        // Create bias attributes (bias->output connection for XOR)
+        // Create bias attributes with random initial weight for better learning
+        std::mt19937 rng(randomSeed);
+        std::uniform_real_distribution<double> biasWeightDist(-1.0, 1.0);
+        
         std::unordered_map<size_t, ConnectionGeneAttributes> biasAttributes;
-        biasAttributes[0] = {0.0, true}; // Bias to output with initial weight 0.0
+        biasAttributes[0] = {float(biasWeightDist(rng)), true}; // Random bias weight [-1.0, 1.0]
         
         // Create initialization parameters
         Operator::InitParams initParams(
@@ -453,12 +338,12 @@ int main(int argc, char* argv[])
             Operator::WeightMutationParams::MutationType::MIXED
         );
         
-        // Create mutation probability parameters optimized for XOR complexity
+        // Create mutation probability parameters tuned for simpler solutions
         Evolution::MutationProbabilityParams mutationParams(
-            0.70,  // Weight mutation probability (70% - reduced to allow more structural mutations)
-            0.10,  // Node mutation probability (10% - significantly increased for hidden nodes)
-            0.15,  // Connection mutation probability (15% - increased for new connections)
-            0.05   // Connection reactivation probability (5% - much higher to enable disabled connections)
+            0.80,  // Weight mutation probability (80% - increased for weight optimization)
+            0.05,  // Node mutation probability (5% - reduced to discourage complexity)
+            0.10,  // Connection mutation probability (10% - reduced to discourage complexity)
+            0.05   // Connection reactivation probability (5% - same)
         );
         
         // Create evolution prototype

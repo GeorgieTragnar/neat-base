@@ -53,6 +53,7 @@ public:
 	
 		std::vector<size_t>				_inputIndices;
 		std::vector<size_t>				_outputIndices;
+		size_t							_biasIndex;
 	};
 
 	const std::vector<NodeGene>& get_nodeGenes() const;

@@ -2,6 +2,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <cassert>
+#include <climits>
 
 namespace Operator {
 
@@ -15,6 +16,7 @@ void phenotypeConstruct(Genome& genome)
 	phenotype._outputIndices.clear();
 	phenotype._nodeGeneAttributes.clear();
 	phenotype._orderedConnections.clear();
+	phenotype._biasIndex = SIZE_MAX; // Initialize to invalid index
 
 	std::unordered_set<uint32_t> includedNodeGeneHistoryIDs;
 
@@ -47,6 +49,8 @@ void phenotypeConstruct(Genome& genome)
 				phenotype._inputIndices.push_back(nodeIndex);
 			} else if (node.get_type() == NodeType::OUTPUT) {
 				phenotype._outputIndices.push_back(nodeIndex);
+			} else if (node.get_type() == NodeType::BIAS) {
+				phenotype._biasIndex = nodeIndex;
 			}
 			
 			nodeIndex++;
