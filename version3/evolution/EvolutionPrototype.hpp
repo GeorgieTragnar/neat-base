@@ -30,6 +30,7 @@
 #include "version3/operator/RepairOperator.hpp"
 #include "version3/operator/EmptyDeltas.hpp"
 #include "version3/operator/HasDisabledConnections.hpp"
+#include "version3/operator/HasActiveConnections.hpp"
 
 // Population management
 #include "version3/population/PopulationData.hpp"
@@ -357,11 +358,15 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                     }
                 } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability) {
                     // Node mutation
-                    offspring = Operator::nodeMutation(offspring, _historyTracker, _nodeMutationParams);
-                    hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
-                    if (!hasCycles) {
-                        Operator::phenotypeUpdateNode(offspring);
+                    // Check if genome has any active connections using analytical operator
+                    if (Operator::hasActiveConnections(offspring)) {
+                        offspring = Operator::nodeMutation(offspring, _historyTracker, _nodeMutationParams);
+                        hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
+                        if (!hasCycles) {
+                            Operator::phenotypeUpdateNode(offspring);
+                        }
                     }
+                    // If no active connections, offspring remains unchanged
                 } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability + _mutationParams.connectionMutationProbability) {
                     // Connection mutation
                     offspring = Operator::connectionMutation(offspring, _historyTracker, _connectionMutationParams);
