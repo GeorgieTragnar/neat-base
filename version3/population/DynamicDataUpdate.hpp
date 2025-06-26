@@ -66,6 +66,7 @@ void dynamicDataUpdate(
     std::unordered_map<uint32_t, size_t> speciesRankSum;
     std::unordered_map<uint32_t, size_t> speciesCount;
     std::unordered_map<uint32_t, double> speciesAverageRanks;
+    std::unordered_map<uint32_t, size_t> speciesBestGenomeRank;
     
     // Reset species population sizes at start of analysis
     // LOG_DEBUG("ELIMINATION PHASE 1: Resetting {} species population counters", speciesData.size());
@@ -86,6 +87,10 @@ void dynamicDataUpdate(
         // Update species rank sum and count
         speciesRankSum[speciesId] += rank;
         speciesCount[speciesId]++;
+        
+        // Track best genome rank for each species (fitness results are ordered worst to best)
+        // Since we iterate worst to best, the last rank seen for each species is their best performer
+        speciesBestGenomeRank[speciesId] = rank;
         
         // Update species population size in single pass
         auto speciesIt = speciesData.find(speciesId);
@@ -163,15 +168,104 @@ void dynamicDataUpdate(
 
     assert(speciesPendingElimination < activeSpeciesCount && "there cannot be more species pending elimination that active species");
 
-    // TODO: if speciesPendingElimination is higher than 0 then find this amount
-    // of species inside speciesAverageRanks where you first order 
-    // speciesPendingElimination amount worst species and check if their worst performing elite
-    // is inside top speciesElitePlacementProtectionPercentage percentage of the whole population
-    // if not then increase the pending elimination ratings
-    // this will require careful design alteration and assesment before implementation
-    // as we cannot just use the param value from PlotELites operator
-    // but instead we need a way to mark genomes as elites inside genome dynamic data through the
-    // elite operator - before that is working we cant safely mark species for elimination
+    // Species elimination logic: Check if worst performing species need pending elimination
+    std::unordered_set<uint32_t> speciesWithIncreasedRating;
+    std::unordered_set<uint32_t> eliminatedSpeciesIds;
+    
+    if (speciesPendingElimination > 0) {
+        // Create vector of species sorted by average rank (worst to best performance)
+        std::vector<std::pair<uint32_t, double>> speciesRanking;
+        for (const auto& [speciesId, avgRank] : speciesAverageRanks) {
+            // Only consider active species that aren't already marked for elimination
+            auto speciesIt = speciesData.find(speciesId);
+            if (speciesIt != speciesData.end() && !speciesIt->second.isMarkedForElimination && 
+                speciesIt->second.currentPopulationSize > 0) {
+                speciesRanking.emplace_back(speciesId, avgRank);
+            }
+        }
+        
+        // Sort by average rank (ascending - worst performers first)
+        std::sort(speciesRanking.begin(), speciesRanking.end(), 
+                  [](const auto& a, const auto& b) { return a.second < b.second; });
+        
+        // Check the worst performing species for elite placement protection
+        const size_t totalPopulation = fitnessResults.size();
+        const size_t speciesToCheck = std::min(static_cast<size_t>(speciesPendingElimination), 
+                                               speciesRanking.size());
+        
+        for (size_t i = 0; i < speciesToCheck; ++i) {
+            const uint32_t speciesId = speciesRanking[i].first;
+            
+            // Get the best genome rank for this species (their champion)
+            auto championRankIt = speciesBestGenomeRank.find(speciesId);
+            if (championRankIt == speciesBestGenomeRank.end()) {
+                // This shouldn't happen, but handle gracefully
+                LOG_WARN("Species {} has no champion rank recorded, skipping elimination check", speciesId);
+                continue;
+            }
+            
+            const size_t championRank = championRankIt->second;
+            
+            // Calculate champion's percentile in population (0.0 = worst, 1.0 = best)
+            const double championPercentile = (totalPopulation > 1) ? 
+                static_cast<double>(championRank) / (totalPopulation - 1) : 1.0;
+            
+            // Check if champion is protected by elite placement percentage
+            if (championPercentile >= params._speciesElitePlacementProtectionPercentage) {
+                // Champion is in top X% of population - species is protected from elimination
+                LOG_DEBUG("Species {} protected: champion at rank {} (percentile {:.1f}%) >= protection threshold {:.1f}%", 
+                         speciesId, championRank, championPercentile * 100.0, 
+                         params._speciesElitePlacementProtectionPercentage * 100.0);
+                continue;
+            }
+            
+            // Species is not protected - increase pending elimination rating
+            auto& speciesInfo = speciesData[speciesId];
+            speciesInfo.pendingEliminationRating++;
+            speciesWithIncreasedRating.insert(speciesId);
+            
+            LOG_DEBUG("Species {} pending elimination increased to {}: champion at rank {} (percentile {:.1f}%) < protection threshold {:.1f}%", 
+                     speciesId, speciesInfo.pendingEliminationRating, championRank, 
+                     championPercentile * 100.0, params._speciesElitePlacementProtectionPercentage * 100.0);
+            
+            // Mark species for elimination if rating exceeds limit
+            if (speciesInfo.pendingEliminationRating >= params._maxSpeciesPendingEliminationRating) {
+                speciesInfo.isMarkedForElimination = true;
+                eliminatedSpeciesIds.insert(speciesId);
+                LOG_INFO("Species {} marked for elimination: pending rating {} >= limit {}", 
+                        speciesId, speciesInfo.pendingEliminationRating, params._maxSpeciesPendingEliminationRating);
+            }
+        }
+    }
+    
+    // Decrease pending elimination rating for active species that weren't targeted for elimination
+    for (auto& [speciesId, data] : speciesData) {
+        // Only process active species that aren't marked for elimination and didn't have rating increased
+        if (data.currentPopulationSize > 0 && !data.isMarkedForElimination && 
+            speciesWithIncreasedRating.find(speciesId) == speciesWithIncreasedRating.end()) {
+            
+            if (data.pendingEliminationRating > 0) {
+                data.pendingEliminationRating--;
+                LOG_DEBUG("Species {} pending elimination decreased to {}: not targeted for elimination this generation", 
+                         speciesId, data.pendingEliminationRating);
+            }
+        }
+    }
+    
+    // Mark all genomes belonging to eliminated species for elimination
+    if (!eliminatedSpeciesIds.empty()) {
+        size_t genomesMarkedForElimination = 0;
+        for (auto& genome : genomeData) {
+            if (eliminatedSpeciesIds.find(genome.speciesId) != eliminatedSpeciesIds.end()) {
+                if (!genome.isMarkedForElimination) {
+                    genome.isMarkedForElimination = true;
+                    genomesMarkedForElimination++;
+                }
+            }
+        }
+        LOG_INFO("Marked {} genomes for elimination across {} eliminated species", 
+                genomesMarkedForElimination, eliminatedSpeciesIds.size());
+    }
     
     // for each active species identify genomes pending elimination
     for (auto& [speciesId, data] : speciesData) {
@@ -180,21 +274,21 @@ void dynamicDataUpdate(
             || speciesGrouping.find(speciesId) == speciesGrouping.end())
             continue;
 
-        const uint32_t excessGenomeCount = (data.currentPopulationSize > equilibrium)
-            ? data.currentPopulationSize - equilibrium : 0;
+        const std::vector<size_t>& validGenomes = speciesGrouping.at(speciesId);
+        const uint32_t activeGenomeCount = static_cast<uint32_t>(validGenomes.size());
+        const uint32_t excessGenomeCount = (activeGenomeCount > equilibrium)
+            ? activeGenomeCount - equilibrium : 0;
 
         bool skip = excessGenomeCount == 0;
 
-        assert(excessGenomeCount < data.currentPopulationSize && "we cannot have more excess genomes that the species population size");
+        assert(excessGenomeCount < activeGenomeCount && "we cannot have more excess genomes that the active species population size");
 
         const uint32_t genomesPendingElimination = excessGenomeCount > 0
             ? excessGenomeCount * params._genomesPendingEliminationPercentage : 0;
 
         skip = skip || genomesPendingElimination == 0;
 
-        assert(genomesPendingElimination < data.currentPopulationSize && "we cannot mark more genomes for pending elimination than the species population size");
-
-        const std::vector<size_t>& validGenomes = speciesGrouping.at(speciesId);
+        assert(genomesPendingElimination < activeGenomeCount && "we cannot mark more genomes for pending elimination than the active species population size");
 
         assert(!validGenomes.empty() && "at this point species without valid genomes should have been skipped already");
 
@@ -239,10 +333,16 @@ void dynamicDataUpdate(
         
         // Validate elimination logic consistency
         const auto& genome = genomeData[globalIndex];
-        if (genome.isMarkedForElimination && genome.pendingEliminationCounter <= params._maxGenomePendingEliminationLimit && !genome.isUnderRepair) {
-            LOG_ERROR("VALIDATION ERROR: Genome {} marked for elimination but pending counter {} <= limit {}", 
-                     globalIndex, genome.pendingEliminationCounter, params._maxGenomePendingEliminationLimit);
-            validationErrors++;
+        if (genome.isMarkedForElimination && !genome.isUnderRepair) {
+            // Check if genome was eliminated via species elimination or individual elimination
+            bool eliminatedViaSpecies = eliminatedSpeciesIds.find(genome.speciesId) != eliminatedSpeciesIds.end();
+            bool eliminatedViaCounter = genome.pendingEliminationCounter > params._maxGenomePendingEliminationLimit;
+            
+            if (!eliminatedViaSpecies && !eliminatedViaCounter) {
+                LOG_ERROR("VALIDATION ERROR: Genome {} marked for elimination but neither species eliminated nor counter {} > limit {}", 
+                         globalIndex, genome.pendingEliminationCounter, params._maxGenomePendingEliminationLimit);
+                validationErrors++;
+            }
         }
     }
     

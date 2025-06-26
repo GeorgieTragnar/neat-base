@@ -234,7 +234,7 @@ int main(int argc, char* argv[])
     try {
         // Evolution parameters
         const uint32_t populationSize = 500;
-        const uint32_t maxGenerations = 40;
+        const uint32_t maxGenerations = 100;
         const uint32_t randomSeed = 12345;
         
         // Create input node attributes (2 inputs for XOR)
@@ -304,9 +304,9 @@ int main(int argc, char* argv[])
         
         // Create dynamic data update parameters
         Population::DynamicDataUpdateParams updateParams(
-            5, // maxGenomePendingEliminationLimit
-            20, // maxSpeciesPendingEliminationRating
-            0.5, // speciesElitePlacementProtectionPercentage
+            2, // maxGenomePendingEliminationLimit
+            10, // maxSpeciesPendingEliminationRating
+            0.8, // speciesElitePlacementProtectionPercentage
             0.5, // speciesPendingEliminationPercentage
             0.3, // genomesPendingEliminationPercentage
             5, // equilibriumSpeciesCount
@@ -318,7 +318,7 @@ int main(int argc, char* argv[])
             1.0,  // c1 - excess gene coefficient
             1.0,  // c2 - disjoint gene coefficient
             0.4,  // c3 - weight difference coefficient
-            8.0  // threshold - compatibility threshold (drastically increased to prevent species explosion)
+            10.0  // threshold - compatibility threshold (drastically increased to prevent species explosion)
         );
         
         // Create fitness strategy
