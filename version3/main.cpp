@@ -182,22 +182,34 @@ DoubleFitnessResult evaluateXORFitness(const Genome::Phenotype& phenotype) {
     }
     
     
-    // Add complexity penalization to encourage simpler solutions
-    size_t nodeCount = phenotype._nodeGeneAttributes.size();
-    size_t connectionCount = 0;
-    
-    // Count only enabled connections
-    for (const auto& conn : phenotype._orderedConnections) {
-        if (conn._connectionGeneAttribute.enabled) {
-            connectionCount++;
+    // Apply new fitness calculation logic
+    if (performanceFitness <= 3.0) {
+        // Disincentivize structures that don't show capability of solving the problem
+        fitness = performanceFitness * 0.5; // Halve the fitness
+    } else {
+        // For structures showing signs of capability, quadruple and subtract complexity penalty
+        double quadrupledFitness = performanceFitness * 4.0; // Max becomes 16
+        
+        // Calculate complexity penalty with max of 12
+        size_t nodeCount = phenotype._nodeGeneAttributes.size();
+        size_t connectionCount = 0;
+        
+        // Count only enabled connections
+        for (const auto& conn : phenotype._orderedConnections) {
+            if (conn._connectionGeneAttribute.enabled) {
+                connectionCount++;
+            }
         }
+        
+        // Complexity penalty calculation (ideal: 4 nodes, 6 connections)
+        double complexityPenalty = (nodeCount > 4 ? (nodeCount - 4) * 0.1 : 0.0) + 
+                                  (connectionCount > 6 ? (connectionCount - 6) * 0.05 : 0.0);
+        
+        // Clamp complexity penalty to maximum of 12
+        complexityPenalty = std::min(complexityPenalty, 12.0);
+        
+        fitness = std::max(0.0, quadrupledFitness - complexityPenalty);
     }
-    
-    // Stronger complexity penalty starting earlier (ideal: 4 nodes, 6 connections)
-    double complexityPenalty = (nodeCount > 4 ? (nodeCount - 4) * 0.1 : 0.0) + 
-                              (connectionCount > 6 ? (connectionCount - 6) * 0.05 : 0.0);
-    
-    fitness = std::max(0.0, performanceFitness - complexityPenalty); // Ensure non-negative fitness
     
     return DoubleFitnessResult(fitness);
 }
@@ -233,7 +245,7 @@ int main(int argc, char* argv[])
     
     try {
         // Evolution parameters
-        const uint32_t populationSize = 500;
+        const uint32_t populationSize = 100;
         const uint32_t maxGenerations = 100;
         const uint32_t randomSeed = 12345;
         
@@ -306,8 +318,8 @@ int main(int argc, char* argv[])
         Population::DynamicDataUpdateParams updateParams(
             2, // maxGenomePendingEliminationLimit
             10, // maxSpeciesPendingEliminationRating
-            0.8, // speciesElitePlacementProtectionPercentage
-            0.5, // speciesPendingEliminationPercentage
+            0.98, // speciesElitePlacementProtectionPercentage
+            0.8, // speciesPendingEliminationPercentage
             0.3, // genomesPendingEliminationPercentage
             5, // equilibriumSpeciesCount
             populationSize // targetPopulationSize

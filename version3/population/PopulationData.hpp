@@ -16,6 +16,8 @@ struct DynamicGenomeData {
     bool isUnderRepair = false;
     bool isMarkedForElimination = false;
     uint32_t genomeIndex = UINT32_MAX;
+    uint32_t parentAIndex = UINT32_MAX;      // First parent global index (always set for offspring)
+    uint32_t parentBIndex = UINT32_MAX;      // Second parent global index (UINT32_MAX for non-crossover)
 };
 
 struct DynamicSpeciesData {
