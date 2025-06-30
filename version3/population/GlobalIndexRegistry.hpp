@@ -15,6 +15,10 @@ enum class GenomeState {
     ReadyForReplacement   // Cleaned, index can be reused
 };
 
+// Forward declaration for friend relationship
+template<typename FitnessResultType>
+class PopulationContainer;
+
 class GlobalIndexRegistry {
 public:
     explicit GlobalIndexRegistry(uint32_t maxIndices);
@@ -26,15 +30,20 @@ public:
     void markForElimination(uint32_t globalIndex);
     void transitionToCold(uint32_t globalIndex);
     void markReadyForReplacement(uint32_t globalIndex);
-    void resetToActive(uint32_t globalIndex);
     
     // Index management
     uint32_t getFreeIndex();  // Returns INVALID_INDEX if none available
-    void incrementMaxIndex();  // Extend the indexing range
     
     uint32_t getMaxIndex() const { return static_cast<uint32_t>(_states.size()); }
 
+protected:
+    template<typename FitnessResultType>
+    friend class PopulationContainer;
+    // Only PopulationContainer can extend the registry
+    uint32_t incrementMaxIndex();  // Extend the indexing range and return new index
+
 private:
+    
     std::vector<GenomeState> _states;
 };
 

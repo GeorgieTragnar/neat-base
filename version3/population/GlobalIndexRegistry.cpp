@@ -30,11 +30,6 @@ void GlobalIndexRegistry::markReadyForReplacement(uint32_t globalIndex) {
     _states[globalIndex] = GenomeState::ReadyForReplacement;
 }
 
-void GlobalIndexRegistry::resetToActive(uint32_t globalIndex) {
-    assert(globalIndex < _states.size() && "Global index out of range");
-    _states[globalIndex] = GenomeState::Active;
-}
-
 uint32_t GlobalIndexRegistry::getFreeIndex() {
     // Find first ReadyForReplacement index
     for (uint32_t i = 0; i < _states.size(); ++i) {
@@ -46,8 +41,9 @@ uint32_t GlobalIndexRegistry::getFreeIndex() {
     return INVALID_INDEX;
 }
 
-void GlobalIndexRegistry::incrementMaxIndex() {
+uint32_t GlobalIndexRegistry::incrementMaxIndex() {
     _states.emplace_back(GenomeState::Active);
+    return static_cast<uint32_t>(_states.size() - 1);  // Return the new index
 }
 
 } // namespace Population

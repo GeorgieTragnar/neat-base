@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cassert>
 #include "PopulationData.hpp"
+#include "GlobalIndexRegistry.hpp"
 #include "../logger/Logger.hpp"
 
 namespace Population {
@@ -32,7 +33,8 @@ protected:
         std::vector<DynamicGenomeData>& genomeData,
         std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
         const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGrouping,
-        const DynamicDataUpdateParams& params
+        const DynamicDataUpdateParams& params,
+        GlobalIndexRegistry& registry
     );
 
     const uint32_t _maxGenomePendingEliminationLimit;           // Max pending elimination counter before actual elimination
@@ -57,7 +59,8 @@ void dynamicDataUpdate(
     std::vector<DynamicGenomeData>& genomeData,  // Genome data vector for direct access
     std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
     const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGrouping,  // Species grouping data
-    const DynamicDataUpdateParams& params
+    const DynamicDataUpdateParams& params,
+    GlobalIndexRegistry& registry
 ) {
     // Phase 1: Species Performance Analysis - Single pass with running averages
     auto logger = LOGGER("population.DynamicDataUpdate");
@@ -255,10 +258,11 @@ void dynamicDataUpdate(
     // Mark all genomes belonging to eliminated species for elimination
     if (!eliminatedSpeciesIds.empty()) {
         size_t genomesMarkedForElimination = 0;
-        for (auto& genome : genomeData) {
+        for (size_t globalIndex = 0; globalIndex < genomeData.size(); ++globalIndex) {
+            auto& genome = genomeData[globalIndex];
             if (eliminatedSpeciesIds.find(genome.speciesId) != eliminatedSpeciesIds.end()) {
-                if (!genome.isMarkedForElimination) {
-                    genome.isMarkedForElimination = true;
+                if (registry.getState(globalIndex) == GenomeState::Active) {
+                    registry.markForElimination(globalIndex);
                     genomesMarkedForElimination++;
                 }
             }
@@ -297,10 +301,10 @@ void dynamicDataUpdate(
             auto& data = genomeData[validGenomes[i]];
 
             assert(!data.isUnderRepair && "invalid access to genome data under repair");
-            assert(!data.isMarkedForElimination && "invalid access to genome data marked for elimination");
+            assert(registry.getState(validGenomes[i]) == GenomeState::Active && "invalid access to genome data marked for elimination");
 
             if (data.pendingEliminationCounter++ >= params._maxGenomePendingEliminationLimit) {
-                data.isMarkedForElimination = true;
+                registry.markForElimination(validGenomes[i]);
             }
         }
 
@@ -309,7 +313,7 @@ void dynamicDataUpdate(
             auto& data = genomeData[validGenomes[i]];
 
             assert(!data.isUnderRepair && "invalid access to genome data under repair");
-            assert(!data.isMarkedForElimination && "invalid access to genome data marked for elimination");
+            assert(registry.getState(validGenomes[i]) == GenomeState::Active && "invalid access to genome data marked for elimination");
 
             if (data.pendingEliminationCounter != 0)
                 data.pendingEliminationCounter--;
@@ -333,7 +337,7 @@ void dynamicDataUpdate(
         
         // Validate elimination logic consistency
         const auto& genome = genomeData[globalIndex];
-        if (genome.isMarkedForElimination && !genome.isUnderRepair) {
+        if (registry.getState(globalIndex) != GenomeState::Active && !genome.isUnderRepair) {
             // Check if genome was eliminated via species elimination or individual elimination
             bool eliminatedViaSpecies = eliminatedSpeciesIds.find(genome.speciesId) != eliminatedSpeciesIds.end();
             bool eliminatedViaCounter = genome.pendingEliminationCounter > params._maxGenomePendingEliminationLimit;

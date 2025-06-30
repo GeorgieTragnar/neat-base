@@ -6,18 +6,20 @@
 #include <cstdint>
 #include <cassert>
 
+#include "GlobalIndexRegistry.hpp"
+
 // Forward declarations
 class Genome;
 
 namespace Population {
 
-// Forward declaration
+// Forward declarations
 struct DynamicGenomeData;
 
 template<typename FitnessResultType>
 class PopulationContainer {
 public:
-    PopulationContainer() = default;
+    explicit PopulationContainer(GlobalIndexRegistry& registry) : _registry(registry) {}
     ~PopulationContainer() = default;
 
     // Core generation-based access using modulo arithmetic
@@ -137,6 +139,31 @@ public:
         _fitnessResults[generation % 3].clear();
     }
     
+    // Synchronized addition to maintain vector consistency and registry synchronization
+    uint32_t push_back(uint32_t generation, Genome genome, DynamicGenomeData data) {
+        size_t targetGeneration = generation % 3;
+        
+        // Grow registry to match new size
+        uint32_t globalIndex = _registry.incrementMaxIndex();
+        
+        // Add to target generation
+        _genomes[targetGeneration].emplace_back(std::move(genome));
+        _genomeData[targetGeneration].emplace_back(std::move(data));
+        
+        // Ensure all other generations have matching sizes by adding copies
+        size_t targetSize = _genomes[targetGeneration].size();
+        for (size_t i = 0; i < 3; ++i) {
+            if (i != targetGeneration) {
+                while (_genomes[i].size() < targetSize) {
+                    _genomes[i].emplace_back(_genomes[targetGeneration].back());
+                    _genomeData[i].emplace_back(_genomeData[targetGeneration].back());
+                }
+            }
+        }
+        
+        return globalIndex;
+    }
+    
     void reserveCapacity(size_t capacity) {
         for (size_t i = 0; i < 3; ++i) {
             _genomes[i].reserve(capacity);
@@ -168,6 +195,9 @@ private:
     std::array<std::vector<Genome>, 3> _genomes;
     std::array<std::vector<DynamicGenomeData>, 3> _genomeData;
     std::array<std::multimap<FitnessResultType, size_t>, 3> _fitnessResults;
+    
+    // Reference to GlobalIndexRegistry for synchronization
+    GlobalIndexRegistry& _registry;
 };
 
 } // namespace Population
