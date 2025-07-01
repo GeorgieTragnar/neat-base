@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <map>
 #include <cassert>
 #include "PopulationData.hpp"
@@ -43,6 +44,18 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
     }
     
 #ifndef NDEBUG
+    // Validate that all global indices in fitnessResults are unique
+    std::unordered_set<size_t> uniqueGlobalIndices;
+    std::vector<size_t> duplicateIndices;
+    for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
+        if (uniqueGlobalIndices.find(globalIndex) != uniqueGlobalIndices.end()) {
+            duplicateIndices.push_back(globalIndex);
+        } else {
+            uniqueGlobalIndices.insert(globalIndex);
+        }
+    }
+    assert(duplicateIndices.empty() && "Duplicate global indices detected in fitnessResults multimap");
+    
     // Validate completeness: every valid genome index should appear exactly once
     size_t totalIndices = 0;
     size_t validGenomeCount = 0;

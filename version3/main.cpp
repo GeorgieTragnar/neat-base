@@ -277,9 +277,9 @@ int main(int argc, char* argv[])
         
         // Create plot elites parameters
         Population::PlotElitesParams eliteParams(
-            0.2,  // elitePercentage - 20% of each species
+            0.01,  // elitePercentage - 20% of each species
             1,    // minimumElitesPerSpecies
-            5     // maximumElitesPerSpecies
+            3     // maximumElitesPerSpecies
         );
         
         // Create plot crossover parameters
@@ -318,7 +318,7 @@ int main(int argc, char* argv[])
         Population::DynamicDataUpdateParams updateParams(
             2, // maxGenomePendingEliminationLimit
             10, // maxSpeciesPendingEliminationRating
-            0.98, // speciesElitePlacementProtectionPercentage
+            1, // speciesElitePlacementProtectionPercentage
             0.8, // speciesPendingEliminationPercentage
             0.3, // genomesPendingEliminationPercentage
             5, // equilibriumSpeciesCount

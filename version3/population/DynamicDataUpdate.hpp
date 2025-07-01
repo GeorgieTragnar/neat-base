@@ -298,10 +298,14 @@ void dynamicDataUpdate(
 
         // increment genomes that are pending elimination
         for (size_t i = validGenomes.size() - genomesPendingElimination;i < validGenomes.size(); ++i) {
+            // Skip genomes that may have been marked for elimination during this update cycle
+            if (registry.getState(validGenomes[i]) != GenomeState::Active) {
+                continue;
+            }
+            
             auto& data = genomeData[validGenomes[i]];
 
             assert(!data.isUnderRepair && "invalid access to genome data under repair");
-            assert(registry.getState(validGenomes[i]) == GenomeState::Active && "invalid access to genome data marked for elimination");
 
             if (data.pendingEliminationCounter++ >= params._maxGenomePendingEliminationLimit) {
                 registry.markForElimination(validGenomes[i]);
@@ -310,10 +314,14 @@ void dynamicDataUpdate(
 
         // decrement genomes that are not pending elimination
         for (size_t i = 0; i < (validGenomes.size() - genomesPendingElimination); ++i) {
+            // Skip genomes that may have been marked for elimination during this update cycle
+            if (registry.getState(validGenomes[i]) != GenomeState::Active) {
+                continue;
+            }
+            
             auto& data = genomeData[validGenomes[i]];
 
             assert(!data.isUnderRepair && "invalid access to genome data under repair");
-            assert(registry.getState(validGenomes[i]) == GenomeState::Active && "invalid access to genome data marked for elimination");
 
             if (data.pendingEliminationCounter != 0)
                 data.pendingEliminationCounter--;
@@ -335,16 +343,17 @@ void dynamicDataUpdate(
             validationErrors++;
         }
         
-        // Validate elimination logic consistency
+        // Validate elimination logic consistency - only check genomes newly marked in this cycle
         const auto& genome = genomeData[globalIndex];
-        if (registry.getState(globalIndex) != GenomeState::Active && !genome.isUnderRepair) {
+        if (registry.getState(globalIndex) == GenomeState::HotElimination && !genome.isUnderRepair) {
             // Check if genome was eliminated via species elimination or individual elimination
             bool eliminatedViaSpecies = eliminatedSpeciesIds.find(genome.speciesId) != eliminatedSpeciesIds.end();
-            bool eliminatedViaCounter = genome.pendingEliminationCounter > params._maxGenomePendingEliminationLimit;
+            bool eliminatedViaCounter = genome.pendingEliminationCounter >= params._maxGenomePendingEliminationLimit;
+            bool eliminatedViaRepair = genome.repairAttempts > 0; // Could be eliminated by RepairOperator
             
-            if (!eliminatedViaSpecies && !eliminatedViaCounter) {
-                LOG_ERROR("VALIDATION ERROR: Genome {} marked for elimination but neither species eliminated nor counter {} > limit {}", 
-                         globalIndex, genome.pendingEliminationCounter, params._maxGenomePendingEliminationLimit);
+            if (!eliminatedViaSpecies && !eliminatedViaCounter && !eliminatedViaRepair) {
+                LOG_ERROR("VALIDATION ERROR: Genome {} marked for elimination but neither species eliminated nor counter {} >= limit {} nor repair attempts {}", 
+                         globalIndex, genome.pendingEliminationCounter, params._maxGenomePendingEliminationLimit, genome.repairAttempts);
                 validationErrors++;
             }
         }

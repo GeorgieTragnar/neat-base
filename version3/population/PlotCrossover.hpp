@@ -8,6 +8,8 @@
 #include <cassert>
 #include <random>
 #include <utility>
+#include "GlobalIndexRegistry.hpp"
+#include "PopulationData.hpp"
 
 namespace Population {
 
@@ -15,7 +17,9 @@ class PlotCrossoverParams;
 
 std::vector<std::pair<size_t, size_t>> plotCrossover(
     const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
-    const PlotCrossoverParams& params
+    const PlotCrossoverParams& params,
+    const GlobalIndexRegistry& registry,
+    const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
 );
 
 class PlotCrossoverParams {
@@ -39,7 +43,9 @@ public:
 private:
     friend std::vector<std::pair<size_t, size_t>> plotCrossover(
         const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
-        const PlotCrossoverParams& params
+        const PlotCrossoverParams& params,
+        const GlobalIndexRegistry& registry,
+        const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
     );
     
     const double _topPerformerPercentage;
@@ -55,7 +61,9 @@ namespace {
 
 inline std::vector<std::pair<size_t, size_t>> plotCrossover(
     const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
-    const PlotCrossoverParams& params) {
+    const PlotCrossoverParams& params,
+    const GlobalIndexRegistry& registry,
+    const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData) {
     
     assert(!speciesGroupings.empty());
     
@@ -64,14 +72,31 @@ inline std::vector<std::pair<size_t, size_t>> plotCrossover(
     for (const auto& [speciesId, genomeIndices] : speciesGroupings) {
         assert(!genomeIndices.empty());
         
-        size_t speciesSize = genomeIndices.size();
+        // Skip species marked for elimination
+        auto speciesDataIt = speciesData.find(speciesId);
+        if (speciesDataIt != speciesData.end() && speciesDataIt->second.isMarkedForElimination) {
+            continue; // Skip this entire species
+        }
         
-        // Skip species below minimum size threshold
+        // Filter out genomes marked for elimination through global index registry
+        std::vector<size_t> activeGenomes;
+        for (size_t globalIndex : genomeIndices) {
+            if (registry.getState(static_cast<uint32_t>(globalIndex)) == GenomeState::Active) {
+                activeGenomes.push_back(globalIndex);
+            }
+        }
+        
+        // Remove duplicates from activeGenomes (in case speciesGrouping contains duplicates)
+        std::sort(activeGenomes.begin(), activeGenomes.end());
+        activeGenomes.erase(std::unique(activeGenomes.begin(), activeGenomes.end()), activeGenomes.end());
+        
+        // Skip species with no active genomes or below minimum size threshold
+        size_t speciesSize = activeGenomes.size();
         if (speciesSize < params._minimumSpeciesSize) {
             continue;
         }
         
-        // Calculate parent pool size from top performers
+        // Calculate parent pool size from top performers (based on active genomes)
         size_t parentPoolSize = static_cast<size_t>(std::ceil(speciesSize * params._topPerformerPercentage));
         parentPoolSize = std::max(parentPoolSize, size_t(2)); // Need at least 2 parents
         parentPoolSize = std::min(parentPoolSize, speciesSize); // Can't exceed species size
@@ -92,9 +117,9 @@ inline std::vector<std::pair<size_t, size_t>> plotCrossover(
                 parentBIndex = parentDist(gen);
             }
             
-            // Convert to global indices (species groupings already contain global indices)
-            size_t globalParentA = genomeIndices[parentAIndex];
-            size_t globalParentB = genomeIndices[parentBIndex];
+            // Convert to global indices (active genomes already contain global indices)
+            size_t globalParentA = activeGenomes[parentAIndex];
+            size_t globalParentB = activeGenomes[parentBIndex];
             
             crossoverPairs.emplace_back(globalParentA, globalParentB);
         }

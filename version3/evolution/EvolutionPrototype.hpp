@@ -449,7 +449,10 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             const Genome& genome = currentGenomes[i];
             const Population::DynamicGenomeData& genomeData = currentGenomeData[i];
             
-            if (!genomeData.isUnderRepair) {
+            if (_globalIndexRegistry.getState(i) == Population::GenomeState::ReadyForReplacement) {
+                // Skip ReadyForReplacement genomes entirely - they are recycled slots
+                continue;
+            } else if (!genomeData.isUnderRepair) {
                 // Evaluate fitness for non-repair genomes
                 FitnessResultType fitness = _fitnessStrategy->evaluate(genome.get_phenotype(), speciationControl);
                 // Update species assignment
@@ -482,8 +485,8 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         // Phase 4: Elite/Crossover Replacement
         // Plot elites and crossover pairs
-        auto eliteIndices = Population::plotElites(speciesGrouping, _eliteParams);
-        auto crossoverPairs = Population::plotCrossover(speciesGrouping, _crossoverParams);
+        auto eliteIndices = Population::plotElites(speciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
+        auto crossoverPairs = Population::plotCrossover(speciesGrouping, _crossoverParams, _globalIndexRegistry, _speciesData);
         
         // Count eliminated genomes for statistics (no longer collecting indices)
         std::unordered_map<uint32_t, size_t> eliminatedBySpecies;
