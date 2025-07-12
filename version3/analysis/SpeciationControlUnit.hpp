@@ -5,7 +5,7 @@
 
 namespace Analysis {
 
-using Phenotype = Genome::Phenotype;
+using Phenotype = Phenotype;
 
 class SpeciationControlUnit {
 public:

@@ -3,9 +3,11 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <unordered_map>
 
 #include "NodeGene.hpp"
 
+#include "data_forward_declarations.inc"
 #include "operator_forward_declarations.inc"
 
 struct ConnectionGeneAttributes {

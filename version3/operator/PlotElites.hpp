@@ -7,11 +7,11 @@
 #include <cmath>
 #include <algorithm>
 #include <cassert>
-#include "GlobalIndexRegistry.hpp"
-#include "PopulationData.hpp"
+#include "../data/GlobalIndexRegistry.hpp"
+#include "../data/PopulationData.hpp"
 #include "../logger/Logger.hpp"
 
-namespace Population {
+namespace Operator {
 
 class PlotElitesParams;
 
@@ -50,7 +50,7 @@ private:
     const size_t _maximumElitesPerSpecies;
 };
 
-inline void plotElites(
+void plotElites(
     const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
     const PlotElitesParams& params,
     GlobalIndexRegistry& registry,

@@ -5,8 +5,8 @@
 #include <unordered_set>
 #include <map>
 #include <cassert>
-#include "PopulationData.hpp"
-#include "GlobalIndexRegistry.hpp"
+#include "../data/PopulationData.hpp"
+#include "../data/GlobalIndexRegistry.hpp"
 
 namespace Population {
 

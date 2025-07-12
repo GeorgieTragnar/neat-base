@@ -12,10 +12,10 @@ bool hasCycles(const Genome& genome, const CycleDetectionParams& params);
 class CycleDetectionParams {
 public:
     // Constructor with default parameters
-    CycleDetectionParams() = default;
+    CycleDetectionParams() = delete;
     
     // Constructor with explicit configuration options
-    explicit CycleDetectionParams(bool includeAllNodeTypes, bool failFast = true);
+    CycleDetectionParams(bool includeAllNodeTypes, bool failFast);
 
 protected:
     friend bool hasCycles(const Genome& genome, const CycleDetectionParams& params);

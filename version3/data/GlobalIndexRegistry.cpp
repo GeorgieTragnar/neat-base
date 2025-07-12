@@ -1,8 +1,6 @@
 #include "GlobalIndexRegistry.hpp"
 #include <cassert>
 
-namespace Population {
-
 GlobalIndexRegistry::GlobalIndexRegistry(uint32_t maxIndices) 
     : _states(maxIndices, GenomeState::Active) {
 }
@@ -60,5 +58,3 @@ void GlobalIndexRegistry::clearAllEliteStatus() {
         }
     }
 }
-
-} // namespace Population

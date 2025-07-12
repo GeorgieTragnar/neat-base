@@ -4,9 +4,15 @@
 
 class Genome;
 
-namespace Population {
+// Dynamic species data structure - moved to global scope for operator access
+struct DynamicSpeciesData {
+    uint32_t pendingEliminationRating = 0;  // Tracks species underperformance leading to elimination
+    uint32_t currentPopulationSize = 0;
+    uint32_t speciesRank = 0;          // Ordinal ranking (1st, 2nd, 3rd...) from DynamicDataUpdate - needs implementation
+    bool isMarkedForElimination = false;
+};
 
-// Dynamic data structures for genome and species tracking
+// Dynamic data structures for genome tracking
 // Shared across population operators for consistent data management
 
 struct DynamicGenomeData {
@@ -19,12 +25,3 @@ struct DynamicGenomeData {
     uint32_t parentAIndex = UINT32_MAX;      // First parent global index (always set for offspring)
     uint32_t parentBIndex = UINT32_MAX;      // Second parent global index (UINT32_MAX for non-crossover)
 };
-
-struct DynamicSpeciesData {
-    uint32_t pendingEliminationRating = 0;  // Tracks species underperformance leading to elimination
-    uint32_t currentPopulationSize = 0;
-    uint32_t speciesRank = 0;          // Ordinal ranking (1st, 2nd, 3rd...) from DynamicDataUpdate - needs implementation
-    bool isMarkedForElimination = false;
-};
-
-}

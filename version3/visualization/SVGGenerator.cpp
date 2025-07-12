@@ -62,7 +62,7 @@ struct NodePosition {
 struct ConnectionLayout {
     size_t sourceIndex, targetIndex;
     NodePosition source, target;
-    Genome::Phenotype::Connection connection;
+    Phenotype::Connection connection;
 };
 
 class LayoutEngine {
@@ -73,7 +73,7 @@ public:
         double totalWidth, totalHeight;
     };
     
-    LayoutResult computeLayout(const Genome::Phenotype& phenotype) {
+    LayoutResult computeLayout(const Phenotype& phenotype) {
         LayoutResult result;
         
         if (phenotype._nodeGeneAttributes.empty()) {
@@ -95,7 +95,7 @@ public:
     }
     
 private:
-    std::vector<std::vector<size_t>> assignLayers(const Genome::Phenotype& phenotype) {
+    std::vector<std::vector<size_t>> assignLayers(const Phenotype& phenotype) {
         const auto& inputIndices = phenotype._inputIndices;
         const auto& outputIndices = phenotype._outputIndices;
         
@@ -117,7 +117,7 @@ private:
     }
     
     void calculatePositions(const std::vector<std::vector<size_t>>& layers, 
-                           const Genome::Phenotype& phenotype,
+                           const Phenotype& phenotype,
                            LayoutResult& result) {
         
         // Calculate canvas dimensions based on layers
@@ -170,7 +170,7 @@ private:
         }
     }
     
-    void createConnectionLayouts(const Genome::Phenotype& phenotype, LayoutResult& result) {
+    void createConnectionLayouts(const Phenotype& phenotype, LayoutResult& result) {
         for (const auto& conn : phenotype._orderedConnections) {
             if (conn._sourceNodeIndex < result.nodes.size() && 
                 conn._targetNodeIndex < result.nodes.size()) {
@@ -306,7 +306,7 @@ private:
     }
 };
 
-void generateVisualization(const Genome::Phenotype& phenotype, 
+void generateVisualization(const Phenotype& phenotype, 
                           size_t generation, 
                           size_t speciesIndex) {
     if (!g_initialized) {

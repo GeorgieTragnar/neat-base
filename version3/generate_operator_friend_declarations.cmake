@@ -27,9 +27,16 @@ function(generate_operator_friend_declarations OPERATOR_DIR OUTPUT_FILE)
             string(REGEX MATCHALL "(template[ \t]*<[^>]*>[ \t\n]*)?Genome[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^{;]*\\)" 
                    FUNCTION_MATCHES "${NAMESPACE_CONTENT}")
             
-            # Also find void functions that take Genome& (phenotype operators)
-            string(REGEX MATCHALL "void[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^{;]*Genome[ \t]*&[^{;]*\\)" 
+            # Also find void functions that take Genome& or const Genome& (including template functions)
+            string(REGEX MATCHALL "(template[ \t]*<[^>]*>[ \t\n]*)?void[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^{;]*const[ \t]+Genome[ \t]*&[^{;]*\\)" 
                    VOID_FUNCTION_MATCHES "${NAMESPACE_CONTENT}")
+                   
+            # Also find void functions that take mutable Genome& (phenotype operators)  
+            string(REGEX MATCHALL "(template[ \t]*<[^>]*>[ \t\n]*)?void[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^{;]*Genome[ \t]*&[^{;]*\\)" 
+                   VOID_MUTABLE_FUNCTION_MATCHES "${NAMESPACE_CONTENT}")
+                   
+            # Combine both void function match lists
+            list(APPEND VOID_FUNCTION_MATCHES ${VOID_MUTABLE_FUNCTION_MATCHES})
             
             # Also find bool functions that take const Genome& (assertion operators)
             string(REGEX MATCHALL "bool[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\([^{;]*const[ \t]+Genome[ \t]*&[^{;]*\\)" 
@@ -71,15 +78,16 @@ function(generate_operator_friend_declarations OPERATOR_DIR OUTPUT_FILE)
                 endif()
             endforeach()
             
-            # Process void functions that take Genome& (phenotype operators)
+            # Process void functions that take Genome& (phenotype operators and template functions)
             foreach(VOID_FUNCTION_MATCH ${VOID_FUNCTION_MATCHES})
-                # Extract function signature for void functions
-                string(REGEX MATCH "void[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\(([^{;]*)\\)" 
+                # Extract function signature for void functions (including template part)
+                string(REGEX MATCH "(template[ \t]*<[^>]*>[ \t\n]*)?void[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*\\(([^{;]*)\\)" 
                        VOID_SIGNATURE_MATCH "${VOID_FUNCTION_MATCH}")
                 
                 if(VOID_SIGNATURE_MATCH)
-                    set(FUNCTION_NAME "${CMAKE_MATCH_1}")
-                    set(FUNCTION_PARAMS "${CMAKE_MATCH_2}")
+                    set(TEMPLATE_PART "${CMAKE_MATCH_1}")
+                    set(FUNCTION_NAME "${CMAKE_MATCH_2}")
+                    set(FUNCTION_PARAMS "${CMAKE_MATCH_3}")
                     
                     # Clean up parameters (remove extra whitespace and newlines)
                     string(REGEX REPLACE "[ \t\n\r]+" " " CLEAN_PARAMS "${FUNCTION_PARAMS}")
@@ -92,9 +100,17 @@ function(generate_operator_friend_declarations OPERATOR_DIR OUTPUT_FILE)
                     string(FIND "${PROCESSED_FUNCTIONS}" "${FUNCTION_KEY};" FUNCTION_FOUND)
                     if(FUNCTION_FOUND EQUAL -1)
                         string(APPEND PROCESSED_FUNCTIONS "${FUNCTION_KEY};")
-                        # Add friend declaration for void function
-                        string(APPEND FRIEND_DECLARATIONS 
-                               "\tfriend void Operator::${FUNCTION_NAME}(${CLEAN_PARAMS});\n")
+                        # Add friend declaration for void function (include template part if present)
+                        if(TEMPLATE_PART)
+                            # Clean up template part
+                            string(REGEX REPLACE "[ \t\n\r]+" " " CLEAN_TEMPLATE "${TEMPLATE_PART}")
+                            string(STRIP "${CLEAN_TEMPLATE}" CLEAN_TEMPLATE)
+                            string(APPEND FRIEND_DECLARATIONS 
+                                   "\t${CLEAN_TEMPLATE} friend void Operator::${FUNCTION_NAME}(${CLEAN_PARAMS});\n")
+                        else()
+                            string(APPEND FRIEND_DECLARATIONS 
+                                   "\tfriend void Operator::${FUNCTION_NAME}(${CLEAN_PARAMS});\n")
+                        endif()
                     endif()
                 endif()
             endforeach()

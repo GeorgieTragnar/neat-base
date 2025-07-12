@@ -2,7 +2,10 @@
 #pragma once
 #include <cstdint>
 #include <memory>
+#include <unordered_map>
+#include <vector>
 
+#include "data_forward_declarations.inc"
 #include "operator_forward_declarations.inc"
 
 enum class NodeType {

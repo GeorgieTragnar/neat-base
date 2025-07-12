@@ -108,7 +108,7 @@ void phenotypeUpdateNode(Genome& genome)
 			uint32_t sourceID = nodeGenes[conn.get_sourceNodeIndex()].get_historyID();
 			uint32_t targetID = nodeGenes[conn.get_targetNodeIndex()].get_historyID();
 
-			Genome::Phenotype::Connection phenConn;
+			Phenotype::Connection phenConn;
 			phenConn._sourceNodeIndex = historyIDToIndex[sourceID];
 			phenConn._targetNodeIndex = historyIDToIndex[targetID];
 			phenConn._connectionGeneAttribute = conn.get_attributes();

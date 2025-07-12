@@ -8,8 +8,8 @@
 #include <cassert>
 #include <random>
 #include <utility>
-#include "GlobalIndexRegistry.hpp"
-#include "PopulationData.hpp"
+#include "../data/GlobalIndexRegistry.hpp"
+#include "../data/PopulationData.hpp"
 
 namespace Population {
 

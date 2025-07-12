@@ -22,7 +22,7 @@
 #include "operator/DisplayGenome.hpp"
 #include "operator/DisplayPhenotype.hpp"
 #include "population/DynamicDataUpdate.hpp"
-#include "population/PlotElites.hpp"
+#include "operator/PlotElites.hpp"
 #include "population/PlotCrossover.hpp"
 #include "operator/CompatibilityDistance.hpp"
 #include "operator/Crossover.hpp"
@@ -113,10 +113,10 @@ const std::vector<std::vector<double>> XOR_INPUTS = {
 const std::vector<double> XOR_OUTPUTS = {0, 1, 1, 0};
 
 // Forward declaration
-double simulateNetworkOutput(const Genome::Phenotype& phenotype, const std::vector<double>& inputs);
+double simulateNetworkOutput(const Phenotype& phenotype, const std::vector<double>& inputs);
 
 // XOR fitness evaluation function
-DoubleFitnessResult evaluateXORFitness(const Genome::Phenotype& phenotype) {
+DoubleFitnessResult evaluateXORFitness(const Phenotype& phenotype) {
     double fitness = 0.0;
     double totalError = 0.0;
     
@@ -221,7 +221,7 @@ DoubleFitnessResult evaluateXORFitness(const Genome::Phenotype& phenotype) {
 }
 
 // Use NetworkExecution operator for consistent network evaluation
-double simulateNetworkOutput(const Genome::Phenotype& phenotype, const std::vector<double>& inputs) {
+double simulateNetworkOutput(const Phenotype& phenotype, const std::vector<double>& inputs) {
     // Create NetworkExecution parameters with debug output for high-fitness networks
     static bool debugOutput = true; // Enable debug for first few networks
     static int executionCount = 0;
@@ -282,7 +282,7 @@ int main(int argc, char* argv[])
         );
         
         // Create plot elites parameters
-        Population::PlotElitesParams eliteParams(
+        Operator::PlotElitesParams eliteParams(
             0.01,  // elitePercentage - 20% of each species
             1,    // minimumElitesPerSpecies
             1     // maximumElitesPerSpecies
@@ -302,7 +302,7 @@ int main(int argc, char* argv[])
         );
         
         // Create cycle detection parameters
-        Operator::CycleDetectionParams cycleDetectionParams;
+        Operator::CycleDetectionParams cycleDetectionParams(true, true);
         
         // Create node mutation parameters
         NodeGeneAttributes nodeAttribs{ActivationType::SIGMOID};

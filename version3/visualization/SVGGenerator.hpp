@@ -2,7 +2,7 @@
 
 #include <string>
 #include <memory>
-#include "../data/Genome.hpp"
+#include "../data/Phenotype.hpp"
 
 namespace Visualization {
 
@@ -29,7 +29,7 @@ struct VisualizationConfig {
 
 // Main API functions
 void initialize(const VisualizationConfig& config = {});
-void generateVisualization(const Genome::Phenotype& phenotype, 
+void generateVisualization(const Phenotype& phenotype, 
                           size_t generation, 
                           size_t speciesIndex);
 

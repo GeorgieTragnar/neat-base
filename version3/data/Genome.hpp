@@ -5,8 +5,10 @@
 
 #include "NodeGene.hpp"
 #include "ConnectionGene.hpp"
+#include "Phenotype.hpp"
 
 // Auto-generated operator forward declarations
+#include "data_forward_declarations.inc"
 #include "operator_forward_declarations.inc"
 
 struct GenomeParams {
@@ -41,20 +43,8 @@ public:
 	static Genome Deserialize(const std::vector<uint8_t>& serializedData) = delete;
 	static const std::vector<uint8_t>& Serialize(const Genome& other) = delete;
 
-	class Phenotype {
-	public:	
-		struct Connection {
-			size_t						_sourceNodeIndex;
-			size_t						_targetNodeIndex;
-			ConnectionGeneAttributes	_connectionGeneAttribute;
-		};
-		std::vector<NodeGeneAttributes>	_nodeGeneAttributes;
-		std::vector<Connection> 		_orderedConnections;
-	
-		std::vector<size_t>				_inputIndices;
-		std::vector<size_t>				_outputIndices;
-		size_t							_biasIndex;
-	};
+	// Phenotype class moved to independent Phenotype.hpp file
+	// Manual friend relationship maintained through friend declaration in Phenotype class
 
 	const std::vector<NodeGene>& get_nodeGenes() const;
 	const std::vector<ConnectionGene>& get_connectionGenes() const;

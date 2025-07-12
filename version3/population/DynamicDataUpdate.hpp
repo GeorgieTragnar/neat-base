@@ -7,8 +7,8 @@
 #include <map>
 #include <algorithm>
 #include <cassert>
-#include "PopulationData.hpp"
-#include "GlobalIndexRegistry.hpp"
+#include "../data/PopulationData.hpp"
+#include "../data/GlobalIndexRegistry.hpp"
 #include "../logger/Logger.hpp"
 
 namespace Population {

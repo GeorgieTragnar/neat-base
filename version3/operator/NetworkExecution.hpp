@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vector>
-#include "version3/data/Genome.hpp"
+#include "version3/data/Phenotype.hpp"
 
 namespace Operator {
 
@@ -13,7 +13,7 @@ public:
 
 protected:
     friend std::vector<double> networkExecution(
-        const Genome::Phenotype& phenotype,
+        const Phenotype& phenotype,
         const std::vector<double>& inputs,
         const NetworkExecutionParams& params
     );
@@ -23,7 +23,7 @@ protected:
 
 // Execute network and return all output values
 std::vector<double> networkExecution(
-    const Genome::Phenotype& phenotype,
+    const Phenotype& phenotype,
     const std::vector<double>& inputs,
     const NetworkExecutionParams& params
 );

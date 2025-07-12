@@ -10,7 +10,7 @@ RepairOperatorParams::RepairOperatorParams(uint32_t maxRepairAttempts)
     assert(maxRepairAttempts > 0 && "Max repair attempts must be greater than 0");
 }
 
-Genome repair(const Genome& genome, Population::DynamicGenomeData& genomeData, const RepairOperatorParams& params, Population::GlobalIndexRegistry& registry, uint32_t globalIndex) {
+Genome repair(const Genome& genome, DynamicGenomeData& genomeData, const RepairOperatorParams& params, GlobalIndexRegistry& registry, uint32_t globalIndex) {
     // Handle repair attempt tracking and elimination marking
     genomeData.repairAttempts++;
     if (genomeData.repairAttempts >= params._maxRepairAttempts) {

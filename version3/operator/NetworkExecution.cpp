@@ -15,7 +15,7 @@ NetworkExecutionParams::NetworkExecutionParams(bool debugOutput)
 }
 
 std::vector<double> networkExecution(
-    const Genome::Phenotype& phenotype,
+    const Phenotype& phenotype,
     const std::vector<double>& inputs,
     const NetworkExecutionParams& params
 ) {

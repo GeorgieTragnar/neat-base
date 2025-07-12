@@ -35,13 +35,13 @@
 #include "version3/operator/GenomeEquals.hpp"
 
 // Population management
-#include "version3/population/PopulationContainer.hpp"
-#include "version3/population/PopulationData.hpp"
+#include "version3/data/PopulationContainer.hpp"
+#include "version3/data/PopulationData.hpp"
 #include "version3/population/DynamicDataUpdate.hpp"
 #include "version3/population/SpeciesGrouping.hpp"
-#include "version3/population/PlotElites.hpp"
+#include "version3/operator/PlotElites.hpp"
 #include "version3/population/PlotCrossover.hpp"
-#include "version3/population/GlobalIndexRegistry.hpp"
+#include "version3/data/GlobalIndexRegistry.hpp"
 
 #include "../logger/Logger.hpp"
 
@@ -113,7 +113,7 @@ public:
         uint32_t targetPopulationSize,
         const Operator::InitParams& initParams,
         const Population::DynamicDataUpdateParams& updateParams,
-        const Population::PlotElitesParams& eliteParams,
+        const Operator::PlotElitesParams& eliteParams,
         const Population::PlotCrossoverParams& crossoverParams,
         const Operator::CompatibilityDistanceParams& compatibilityParams,
         const Operator::RepairOperatorParams& repairParams,
@@ -133,9 +133,9 @@ private:
 
     // Core data containers - triple-buffer architecture
     std::shared_ptr<HistoryTracker> _historyTracker;
-    Population::GlobalIndexRegistry _globalIndexRegistry;
-    Population::PopulationContainer<FitnessResultType> _populationContainer;
-    std::unordered_map<uint32_t, Population::DynamicSpeciesData> _speciesData;
+    GlobalIndexRegistry _globalIndexRegistry;
+    PopulationContainer<FitnessResultType> _populationContainer;
+    std::unordered_map<uint32_t, DynamicSpeciesData> _speciesData;
 
     uint32_t _generation;
 
@@ -144,7 +144,7 @@ private:
     uint32_t _targetPopulationSize;
     Operator::InitParams _initParams;
     Population::DynamicDataUpdateParams _updateParams;
-    Population::PlotElitesParams _eliteParams;
+    Operator::PlotElitesParams _eliteParams;
     Population::PlotCrossoverParams _crossoverParams;
     Operator::CompatibilityDistanceParams _compatibilityParams;
     Operator::RepairOperatorParams _repairParams;
@@ -169,7 +169,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     uint32_t targetPopulationSize,
     const Operator::InitParams& initParams,
     const Population::DynamicDataUpdateParams& updateParams,
-    const Population::PlotElitesParams& eliteParams,
+    const Operator::PlotElitesParams& eliteParams,
     const Population::PlotCrossoverParams& crossoverParams,
     const Operator::CompatibilityDistanceParams& compatibilityParams,
     const Operator::RepairOperatorParams& repairParams,
@@ -238,7 +238,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     );
     
     // Create genome metadata
-    Population::DynamicGenomeData genomeData;
+    DynamicGenomeData genomeData;
     genomeData.speciesId = speciesId;
     genomeData.pendingEliminationCounter = 0;
     genomeData.isUnderRepair = false;
@@ -255,7 +255,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     auto& currentFitnessResults = _populationContainer.getCurrentFitnessResults(0);
     
     const Genome& initialGenomeRef = currentGenomes[initialGenomeIndex];
-    const Population::DynamicGenomeData& initialDataRef = currentGenomeData[initialGenomeIndex];
+    const DynamicGenomeData& initialDataRef = currentGenomeData[initialGenomeIndex];
     
     // Evaluate fitness for initial genome
     FitnessResultType initialFitness = _fitnessStrategy->evaluate(initialGenomeRef.get_phenotype(), speciationControl);
@@ -275,7 +275,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
         );
         
         // Create genome metadata with correct species assignment
-        Population::DynamicGenomeData newGenomeData;
+        DynamicGenomeData newGenomeData;
         newGenomeData.speciesId = newSpeciesId;
         newGenomeData.pendingEliminationCounter = 0;
         newGenomeData.isUnderRepair = false;
@@ -306,7 +306,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     
     // Bootstrap elite selection: establish initial elites for each species
     auto initialSpeciesGrouping = Population::speciesGrouping(currentFitnessResults, currentGenomeData, _speciesData, _globalIndexRegistry);
-    Population::plotElites(initialSpeciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
+    Operator::plotElites(initialSpeciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
     
     _generation = 0;
 }
@@ -379,7 +379,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         if (generation > 0) {
             std::vector<uint32_t> retainedElites;
             for (size_t i = 0; i < populationSize; ++i) {
-                if (_globalIndexRegistry.getState(i) == Population::GenomeState::Elite) {
+                if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
                     retainedElites.push_back(i);
                     LOG_DEBUG("ELITE_TRACK: Generation {} START - Genome {} retained Elite status in species {}", 
                              generation, i, lastGenomeData[i].speciesId);
@@ -391,31 +391,31 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         for (size_t i = 0; i < populationSize; ++i) {
             const Genome& parentGenome = lastGenomes[i];
-            const Population::DynamicGenomeData& parentData = lastGenomeData[i];
+            const DynamicGenomeData& parentData = lastGenomeData[i];
             
-            if (_globalIndexRegistry.getState(i) != Population::GenomeState::Active) {
+            if (_globalIndexRegistry.getState(i) != GenomeState::Active) {
                 // Handle state transitions for eliminated genomes
                 auto currentState = _globalIndexRegistry.getState(i);
                 
                 switch (currentState) {
-                    case Population::GenomeState::HotElimination:
+                    case GenomeState::HotElimination:
                         // One generation in HotElimination -> transition to ColdElimination
                         _globalIndexRegistry.transitionToCold(i);
                         // LOG_TRACE("Genome {} transitioned: HotElimination -> ColdElimination", i);
                         break;
                         
-                    case Population::GenomeState::ColdElimination:
+                    case GenomeState::ColdElimination:
                         // One generation in ColdElimination -> ready for replacement
                         _globalIndexRegistry.markReadyForReplacement(i);
                         // LOG_TRACE("Genome {} transitioned: ColdElimination -> ReadyForReplacement", i);
                         break;
                         
-                    case Population::GenomeState::ReadyForReplacement:
+                    case GenomeState::ReadyForReplacement:
                         // Already ready for replacement, no further transition needed
                         // LOG_TRACE("Genome {} remains ReadyForReplacement", i);
                         break;
                         
-                    case Population::GenomeState::Active:
+                    case GenomeState::Active:
                         // Should not reach here due to outer if condition
                         assert(false && "Logic error: Active genome in non-Active branch");
                         break;
@@ -428,7 +428,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             }
             
             // Create corresponding genome data
-            Population::DynamicGenomeData offspringData = parentData;
+            DynamicGenomeData offspringData = parentData;
             offspringData.parentAIndex = i;  // Parent index from last generation
             offspringData.parentBIndex = UINT32_MAX;  // Single parent (not crossover)
             
@@ -438,7 +438,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             Genome offspring = parentGenome;
             
             // Check if parent is elite - if so, copy as-is without mutation
-            if (_globalIndexRegistry.getState(i) == Population::GenomeState::Elite) {
+            if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
                 // Elite protection: copy as-is without any mutation
                 offspring = parentGenome;
                 hasCycles = false; // Elites are assumed to be cycle-free
@@ -536,12 +536,12 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         for (size_t i = 0; i < currentGenomes.size(); ++i) {
             const Genome& genome = currentGenomes[i];
-            const Population::DynamicGenomeData& genomeData = currentGenomeData[i];
+            const DynamicGenomeData& genomeData = currentGenomeData[i];
             
-            if (_globalIndexRegistry.getState(i) == Population::GenomeState::ReadyForReplacement) {
+            if (_globalIndexRegistry.getState(i) == GenomeState::ReadyForReplacement) {
                 // Skip ReadyForReplacement genomes entirely - they are recycled slots
                 continue;
-            } else if (_globalIndexRegistry.getState(i) == Population::GenomeState::Elite) {
+            } else if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
                 // Elite genomes: preserve species assignment and copy fitness from previous generation
                 // No need to recalculate compatibility or fitness since elite genomes are unchanged
                 
@@ -595,7 +595,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         // ELITE_TRACK: Check if any species with Elite genomes are about to be eliminated
         std::unordered_set<uint32_t> speciesWithElites;
         for (size_t i = 0; i < lastGenomeDataForUpdate.size(); ++i) {
-            if (_globalIndexRegistry.getState(i) == Population::GenomeState::Elite) {
+            if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
                 speciesWithElites.insert(lastGenomeDataForUpdate[i].speciesId);
             }
         }
@@ -634,13 +634,13 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         }
         
         // Phase 3.5: Elite Selection - Mark elites in global registry for protection during 1:1 evolution
-        Population::plotElites(speciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
+        Operator::plotElites(speciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
         
         // ELITE_TRACK: Log all genomes marked as Elite after elite selection
         std::vector<uint32_t> currentElites;
         std::unordered_map<uint32_t, std::vector<uint32_t>> elitesBySpecies;
         for (size_t i = 0; i < currentGenomeData.size(); ++i) {
-            if (_globalIndexRegistry.getState(i) == Population::GenomeState::Elite) {
+            if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
                 currentElites.push_back(i);
                 uint32_t speciesId = currentGenomeData[i].speciesId;
                 elitesBySpecies[speciesId].push_back(i);
@@ -681,7 +681,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 for (const auto& [fitness, globalIndex] : lastFitnessResults) {
                     if (lastGenomeDataForUpdate[globalIndex].speciesId == speciesId) {
                         auto state = _globalIndexRegistry.getState(globalIndex);
-                        if ((state == Population::GenomeState::Active || state == Population::GenomeState::Elite) && 
+                        if ((state == GenomeState::Active || state == GenomeState::Elite) && 
                             !lastGenomeDataForUpdate[globalIndex].isUnderRepair) {
                             hasValidGenomes = true;
                             break;
@@ -716,7 +716,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 for (const auto& [fitness, globalIndex] : lastFitnessResults) {
                     if (lastGenomeDataForUpdate[globalIndex].speciesId == speciesId) {
                         auto state = _globalIndexRegistry.getState(globalIndex);
-                        if ((state == Population::GenomeState::Active || state == Population::GenomeState::Elite) && 
+                        if ((state == GenomeState::Active || state == GenomeState::Elite) && 
                             !lastGenomeDataForUpdate[globalIndex].isUnderRepair) {
                             if (!foundGenome || fitness.isBetterThan(currentBest)) {
                                 currentBest = fitness;
@@ -751,7 +751,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                     // Check that at least one genome in this species is Elite
                     bool hasElite = false;
                     for (size_t globalIndex : speciesGrouping.at(speciesId)) {
-                        if (_globalIndexRegistry.getState(globalIndex) == Population::GenomeState::Elite) {
+                        if (_globalIndexRegistry.getState(globalIndex) == GenomeState::Elite) {
                             hasElite = true;
                             break;
                         }
@@ -768,7 +768,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         for (size_t i = 0; i < currentGenomeData.size(); ++i) {
             const auto& genomeData = currentGenomeData[i];
-            if (_globalIndexRegistry.getState(i) != Population::GenomeState::Active) {
+            if (_globalIndexRegistry.getState(i) != GenomeState::Active) {
                 totalEliminated++;
                 eliminatedBySpecies[genomeData.speciesId]++;
                 if (genomeData.isUnderRepair) eliminatedUnderRepair++;
@@ -837,9 +837,9 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             // Validate crossover parents are not eliminated
             auto parentAState = _globalIndexRegistry.getState(parentAIndex);
             auto parentBState = _globalIndexRegistry.getState(parentBIndex);
-            assert((parentAState == Population::GenomeState::Active || parentAState == Population::GenomeState::Elite) && 
+            assert((parentAState == GenomeState::Active || parentAState == GenomeState::Elite) && 
                    "Crossover parent A should be in Active or Elite state");
-            assert((parentBState == Population::GenomeState::Active || parentBState == Population::GenomeState::Elite) && 
+            assert((parentBState == GenomeState::Active || parentBState == GenomeState::Elite) && 
                    "Crossover parent B should be in Active or Elite state");
             
             // Perform crossover
@@ -858,7 +858,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             }
             
             // Create genome data for crossover offspring
-            Population::DynamicGenomeData crossoverData;
+            DynamicGenomeData crossoverData;
             crossoverData.speciesId = currentGenomeData[parentAIndex].speciesId; // Inherit from first parent
             crossoverData.pendingEliminationCounter = 0; // Fresh start for crossover
             crossoverData.isUnderRepair = hasCycles;
@@ -868,7 +868,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             // LOG_TRACE("CROSSOVER OFFSPRING: Created for target {}, species={}, hasCycles={}", 
             //          targetIndex, crossoverData.speciesId, hasCycles);
             
-            if (targetIndex == Population::INVALID_INDEX) {
+            if (targetIndex == INVALID_INDEX) {
                 // No free indices available - add new genome to population
                 targetIndex = _populationContainer.push_back(_generation, std::move(offspring), std::move(crossoverData));
                 crossoverAdditions++;
@@ -898,12 +898,12 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             const auto& genomeData = currentGenomeData[i];
             auto state = _globalIndexRegistry.getState(i);
             
-            if (state == Population::GenomeState::Active) {
+            if (state == GenomeState::Active) {
                 // Validate Active genomes have consistent data
                 assert(genomeData.speciesId != UINT32_MAX && "Active genome should have valid species ID");
                 finalSpeciesDistribution[genomeData.speciesId]++;
                 activeGenomeCount++;
-            } else if (state == Population::GenomeState::Elite) {
+            } else if (state == GenomeState::Elite) {
                 // Validate Elite genomes have consistent data
                 assert(genomeData.speciesId != UINT32_MAX && "Elite genome should have valid species ID");
                 finalSpeciesDistribution[genomeData.speciesId]++;

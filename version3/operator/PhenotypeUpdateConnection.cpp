@@ -94,7 +94,7 @@ void phenotypeUpdateConnection(Genome& genome)
 				uint32_t connSourceID = nodeGenes[conn.get_sourceNodeIndex()].get_historyID();
 				uint32_t connTargetID = nodeGenes[conn.get_targetNodeIndex()].get_historyID();
 				
-				Genome::Phenotype::Connection phenConn;
+				Phenotype::Connection phenConn;
 				phenConn._sourceNodeIndex = historyIDToIndex[connSourceID];
 				phenConn._targetNodeIndex = historyIDToIndex[connTargetID];
 				phenConn._connectionGeneAttribute = conn.get_attributes();
@@ -113,7 +113,7 @@ void phenotypeUpdateConnection(Genome& genome)
 		}
 		
 		// Add the new connection to phenotype
-		Genome::Phenotype::Connection phenConn;
+		Phenotype::Connection phenConn;
 		phenConn._sourceNodeIndex = historyIDToIndex[sourceHistoryID];
 		phenConn._targetNodeIndex = historyIDToIndex[targetHistoryID];
 		phenConn._connectionGeneAttribute = newConnection->get_attributes();

@@ -130,7 +130,7 @@ const std::vector<ConnectionGene>& Genome::get_connectionGenes() const
 	return _connectionGenes;
 }
 
-const Genome::Phenotype& Genome::get_phenotype() const
+const Phenotype& Genome::get_phenotype() const
 {
 	return _phenotype;
 }
@@ -145,7 +145,7 @@ std::vector<ConnectionGene>& Genome::get_connectionGenes()
 	return _connectionGenes;
 }
 
-Genome::Phenotype& Genome::get_phenotype()
+Phenotype& Genome::get_phenotype()
 {
 	return _phenotype;
 }
