@@ -31,6 +31,8 @@
 #include "version3/operator/EmptyDeltas.hpp"
 #include "version3/operator/HasDisabledConnections.hpp"
 #include "version3/operator/HasActiveConnections.hpp"
+#include "version3/operator/HasPossibleConnections.hpp"
+#include "version3/operator/GenomeEquals.hpp"
 
 // Population management
 #include "version3/population/PopulationContainer.hpp"
@@ -155,6 +157,9 @@ private:
     Operator::ConnectionReactivationParams _connectionReactivationParams;
     std::mt19937 _rng;
 
+    // Fitness progression tracking
+    std::unordered_map<uint32_t, FitnessResultType> _previousBestFitnessBySpecies;
+
 };
 
 // Template implementation
@@ -241,14 +246,67 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     genomeData.parentAIndex = UINT32_MAX;  // Initial genome has no parents
     genomeData.parentBIndex = UINT32_MAX;
     
-    // Add to population using synchronized push_back (generation 0)
+    // Add initial genome to population
     uint32_t initialGenomeIndex = _populationContainer.push_back(0, std::move(initialGenome), std::move(genomeData));
 
-    const Genome& genome = _populationContainer.getCurrentGenomes(0)[initialGenomeIndex];
+    // Bootstrap population by replicating initial genome to target size
+    auto& currentGenomes = _populationContainer.getCurrentGenomes(0);
+    auto& currentGenomeData = _populationContainer.getCurrentGenomeData(0);
+    auto& currentFitnessResults = _populationContainer.getCurrentFitnessResults(0);
+    
+    const Genome& initialGenomeRef = currentGenomes[initialGenomeIndex];
+    const Population::DynamicGenomeData& initialDataRef = currentGenomeData[initialGenomeIndex];
     
     // Evaluate fitness for initial genome
-    FitnessResultType initialFitness = _fitnessStrategy->evaluate(genome.get_phenotype(), speciationControl);
-    _populationContainer.getCurrentFitnessResults(0).insert({initialFitness, initialGenomeIndex});
+    FitnessResultType initialFitness = _fitnessStrategy->evaluate(initialGenomeRef.get_phenotype(), speciationControl);
+    currentFitnessResults.insert({initialFitness, initialGenomeIndex});
+    
+    // Create remaining genomes with proper species assignment
+    for (uint32_t i = 1; i < _targetPopulationSize; ++i) {
+        // Create new genome with randomized weights
+        Genome newGenome = Operator::init(_historyTracker, _initParams);
+        Operator::phenotypeConstruct(newGenome);
+        
+        // Determine proper species assignment for this genome
+        uint32_t newSpeciesId = Operator::compatibilityDistance(
+            newGenome, 
+            _historyTracker, 
+            _compatibilityParams
+        );
+        
+        // Create genome metadata with correct species assignment
+        Population::DynamicGenomeData newGenomeData;
+        newGenomeData.speciesId = newSpeciesId;
+        newGenomeData.pendingEliminationCounter = 0;
+        newGenomeData.isUnderRepair = false;
+        newGenomeData.isMarkedForElimination = false;
+        newGenomeData.parentAIndex = UINT32_MAX;  // Initial genomes have no parents
+        newGenomeData.parentBIndex = UINT32_MAX;
+        
+        // Add genome to population
+        uint32_t newGenomeIndex = _populationContainer.push_back(0, std::move(newGenome), std::move(newGenomeData));
+        
+        const Genome& newGenomeC = currentGenomes[newGenomeIndex];
+        // Evaluate fitness for this genome
+        FitnessResultType genomeFitness = _fitnessStrategy->evaluate(newGenomeC.get_phenotype(), speciationControl);
+        currentFitnessResults.insert({genomeFitness, newGenomeIndex});
+    }
+    
+    // Bootstrap validation: verify species assignments are correct
+    for (size_t i = 0; i < currentGenomes.size(); ++i) {
+        uint32_t storedSpeciesId = currentGenomeData[i].speciesId;
+        uint32_t calculatedSpeciesId = Operator::compatibilityDistance(
+            currentGenomes[i], 
+            _historyTracker, 
+            _compatibilityParams
+        );
+        assert(storedSpeciesId == calculatedSpeciesId && 
+               "Bootstrap: stored species ID must match calculated species ID");
+    }
+    
+    // Bootstrap elite selection: establish initial elites for each species
+    auto initialSpeciesGrouping = Population::speciesGrouping(currentFitnessResults, currentGenomeData, _speciesData, _globalIndexRegistry);
+    Population::plotElites(initialSpeciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
     
     _generation = 0;
 }
@@ -310,12 +368,26 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         }
 
         LOG_DEBUG("Generation {}: Starting with {} genomes", generation, populationSize);
-
+        
         // Phase 1: 1:1 Evolution - Copy and mutate each genome from last generation
         auto& currentGenomes = _populationContainer.getCurrentGenomes(_generation);
         auto& currentGenomeData = _populationContainer.getCurrentGenomeData(_generation);
         const auto& lastGenomes = _populationContainer.getLastGenomes(_generation);
         const auto& lastGenomeData = _populationContainer.getLastGenomeData(_generation);
+        
+        // ELITE_TRACK: Verify which genomes retained Elite status from previous generation
+        if (generation > 0) {
+            std::vector<uint32_t> retainedElites;
+            for (size_t i = 0; i < populationSize; ++i) {
+                if (_globalIndexRegistry.getState(i) == Population::GenomeState::Elite) {
+                    retainedElites.push_back(i);
+                    LOG_DEBUG("ELITE_TRACK: Generation {} START - Genome {} retained Elite status in species {}", 
+                             generation, i, lastGenomeData[i].speciesId);
+                }
+            }
+            LOG_DEBUG("ELITE_TRACK: Generation {} START - {} genomes retained Elite status from previous generation", 
+                     generation, retainedElites.size());
+        }
         
         for (size_t i = 0; i < populationSize; ++i) {
             const Genome& parentGenome = lastGenomes[i];
@@ -365,8 +437,16 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             // Copy parent genome
             Genome offspring = parentGenome;
             
-            // Check if parent is under repair - if so, attempt repair instead of evolution
-            if (parentData.isUnderRepair) {
+            // Check if parent is elite - if so, copy as-is without mutation
+            if (_globalIndexRegistry.getState(i) == Population::GenomeState::Elite) {
+                // Elite protection: copy as-is without any mutation
+                offspring = parentGenome;
+                hasCycles = false; // Elites are assumed to be cycle-free
+                offspringData.isUnderRepair = false;
+                
+                // Assert that elite copy is identical
+                assert(Operator::genomeEquals(parentGenome, offspring) && "Elite genome copy should be identical to parent");
+            } else if (parentData.isUnderRepair) {
                 offspring = Operator::repair(offspring, offspringData, _repairParams, _globalIndexRegistry, i);
                 
                 // Check if repair was successful
@@ -403,11 +483,20 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                     }
                     // If no active connections, offspring remains unchanged
                 } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability + _mutationParams.connectionMutationProbability) {
-                    // Connection mutation
-                    offspring = Operator::connectionMutation(offspring, _historyTracker, _connectionMutationParams);
-                    hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
-                    if (!hasCycles) {
-                        Operator::phenotypeUpdateConnection(offspring);
+                    // Connection mutation - check if new connections are possible
+                    if (Operator::hasPossibleConnections(offspring)) {
+                        offspring = Operator::connectionMutation(offspring, _historyTracker, _connectionMutationParams);
+                        hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
+                        if (!hasCycles) {
+                            Operator::phenotypeUpdateConnection(offspring);
+                        }
+                    } else {
+                        // Fallback to weight mutation when no connections possible
+                        offspring = Operator::weightMutation(offspring, _weightMutationParams);
+                        hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
+                        if (!hasCycles) {
+                            Operator::phenotypeUpdateWeight(offspring);
+                        }
                     }
                 } else {
                     // Connection reactivation
@@ -452,8 +541,30 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             if (_globalIndexRegistry.getState(i) == Population::GenomeState::ReadyForReplacement) {
                 // Skip ReadyForReplacement genomes entirely - they are recycled slots
                 continue;
+            } else if (_globalIndexRegistry.getState(i) == Population::GenomeState::Elite) {
+                // Elite genomes: preserve species assignment and copy fitness from previous generation
+                // No need to recalculate compatibility or fitness since elite genomes are unchanged
+                
+                // Find fitness for this elite from previous generation
+                const auto& lastFitnessResults = _populationContainer.getLastFitnessResults(_generation);
+                FitnessResultType eliteFitness{};
+                bool fitnessFound = false;
+                for (const auto& [fitness, globalIndex] : lastFitnessResults) {
+                    if (globalIndex == i) {
+                        eliteFitness = fitness;
+                        fitnessFound = true;
+                        break;
+                    }
+                }
+                assert(fitnessFound && "Elite genome should have fitness from previous generation");
+                
+                // Keep existing species assignment (no compatibility distance recalculation)
+                // currentGenomeData[i].speciesId remains unchanged
+                
+                // Add to fitness results with previous generation's fitness
+                currentFitnessResults.insert({eliteFitness, i});
             } else if (!genomeData.isUnderRepair) {
-                // Evaluate fitness for non-repair genomes
+                // Evaluate fitness for non-repair, non-elite genomes
                 FitnessResultType fitness = _fitnessStrategy->evaluate(genome.get_phenotype(), speciationControl);
                 // Update species assignment
                 uint32_t newSpeciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
@@ -481,13 +592,175 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             }
         }
 
+        // ELITE_TRACK: Check if any species with Elite genomes are about to be eliminated
+        std::unordered_set<uint32_t> speciesWithElites;
+        for (size_t i = 0; i < lastGenomeDataForUpdate.size(); ++i) {
+            if (_globalIndexRegistry.getState(i) == Population::GenomeState::Elite) {
+                speciesWithElites.insert(lastGenomeDataForUpdate[i].speciesId);
+            }
+        }
+        
+        std::unordered_set<uint32_t> eliminatedSpeciesIds;
+        for (const auto& [speciesId, data] : _speciesData) {
+            if (data.isMarkedForElimination) {
+                eliminatedSpeciesIds.insert(speciesId);
+                if (speciesWithElites.find(speciesId) != speciesWithElites.end()) {
+                    LOG_DEBUG("ELITE_TRACK: WARNING - Species {} marked for elimination but contains Elite genomes!", speciesId);
+                }
+            }
+        }
+        
         Population::dynamicDataUpdate(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, speciesGrouping, _updateParams, _globalIndexRegistry);
         
-        // Phase 4: Elite/Crossover Replacement
-        // Plot elites and crossover pairs
-        auto eliteIndices = Population::plotElites(speciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
+        speciesGrouping = Population::speciesGrouping(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, _globalIndexRegistry);
+
+        // DEBUG: Verify all active species appear in the grouping
+        for (const auto& [speciesId, speciesData] : _speciesData) {
+            if (!speciesData.isMarkedForElimination && speciesData.currentPopulationSize > 0) {
+                assert(speciesGrouping.find(speciesId) != speciesGrouping.end() && 
+                       "Active species must appear in species grouping after creation");
+            }
+        }
+
+
+        // ELITE_TRACK: Verify species elimination didn't affect Elite species
+        for (const auto& [speciesId, data] : _speciesData) {
+            if (data.isMarkedForElimination && eliminatedSpeciesIds.find(speciesId) == eliminatedSpeciesIds.end()) {
+                // This species was newly marked for elimination
+                if (speciesWithElites.find(speciesId) != speciesWithElites.end()) {
+                    LOG_DEBUG("ELITE_TRACK: CRITICAL - Species {} with Elite genomes was eliminated by dynamicDataUpdate!", speciesId);
+                }
+            }
+        }
+        
+        // Phase 3.5: Elite Selection - Mark elites in global registry for protection during 1:1 evolution
+        Population::plotElites(speciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
+        
+        // ELITE_TRACK: Log all genomes marked as Elite after elite selection
+        std::vector<uint32_t> currentElites;
+        std::unordered_map<uint32_t, std::vector<uint32_t>> elitesBySpecies;
+        for (size_t i = 0; i < currentGenomeData.size(); ++i) {
+            if (_globalIndexRegistry.getState(i) == Population::GenomeState::Elite) {
+                currentElites.push_back(i);
+                uint32_t speciesId = currentGenomeData[i].speciesId;
+                elitesBySpecies[speciesId].push_back(i);
+                
+                // Find fitness for this elite
+                FitnessResultType eliteFitness{};
+                for (const auto& [fitness, globalIndex] : currentFitnessResults) {
+                    if (globalIndex == i) {
+                        eliteFitness = fitness;
+                        break;
+                    }
+                }
+                LOG_DEBUG("ELITE_TRACK: Generation {} - Elite genome {} in species {} with fitness {:.3f}", 
+                         generation, i, speciesId, eliteFitness.getValue());
+            }
+        }
+        LOG_DEBUG("ELITE_TRACK: Generation {} - Total {} elites across {} species", 
+                 generation, currentElites.size(), elitesBySpecies.size());
+        
+        // Phase 4: Crossover Planning
+        // Plot crossover pairs for later use
         auto crossoverPairs = Population::plotCrossover(speciesGrouping, _crossoverParams, _globalIndexRegistry, _speciesData);
         
+        // NEAT Algorithm Validation: Every active species must have at least one elite
+        // Count truly active species (exist in species data, not marked for elimination, and have non-zero population)
+        size_t activeSpeciesCount = 0;
+        for (const auto& [speciesId, speciesData] : _speciesData) {
+            if (!speciesData.isMarkedForElimination && speciesData.currentPopulationSize > 0) {
+                activeSpeciesCount++;
+            }
+        }
+        
+        // DEBUG: Verify each active species has at least one valid genome in fitness results
+        for (const auto& [speciesId, speciesData] : _speciesData) {
+            if (!speciesData.isMarkedForElimination && speciesData.currentPopulationSize > 0) {
+                // Check if this species has any valid genomes in fitness results
+                bool hasValidGenomes = false;
+                for (const auto& [fitness, globalIndex] : lastFitnessResults) {
+                    if (lastGenomeDataForUpdate[globalIndex].speciesId == speciesId) {
+                        auto state = _globalIndexRegistry.getState(globalIndex);
+                        if ((state == Population::GenomeState::Active || state == Population::GenomeState::Elite) && 
+                            !lastGenomeDataForUpdate[globalIndex].isUnderRepair) {
+                            hasValidGenomes = true;
+                            break;
+                        }
+                    }
+                }
+                assert(hasValidGenomes && "Active species must have at least one valid genome in fitness results");
+            }
+        }
+        
+        // DEBUG: Log active species vs grouping details
+        LOG_DEBUG("Active species count: {}", activeSpeciesCount);
+        LOG_DEBUG("Species grouping size: {}", speciesGrouping.size());
+        for (const auto& [speciesId, speciesData] : _speciesData) {
+            if (!speciesData.isMarkedForElimination && speciesData.currentPopulationSize > 0) {
+                LOG_DEBUG("Active species {}: in grouping = {}, population = {}", speciesId, 
+                         speciesGrouping.find(speciesId) != speciesGrouping.end(),
+                         speciesData.currentPopulationSize);
+            }
+        }
+        
+        // Assert species fitness progression: non-eliminated species should maintain or improve
+        for (const auto& [speciesId, speciesData] : _speciesData) {
+            // Skip eliminated species and newly discovered species
+            if (!speciesData.isMarkedForElimination && 
+                _previousBestFitnessBySpecies.find(speciesId) != _previousBestFitnessBySpecies.end()) {
+                
+                // Find best fitness for this species in current generation
+                FitnessResultType currentBest = std::numeric_limits<FitnessResultType>::lowest();
+                bool foundGenome = false;
+                
+                for (const auto& [fitness, globalIndex] : lastFitnessResults) {
+                    if (lastGenomeDataForUpdate[globalIndex].speciesId == speciesId) {
+                        auto state = _globalIndexRegistry.getState(globalIndex);
+                        if ((state == Population::GenomeState::Active || state == Population::GenomeState::Elite) && 
+                            !lastGenomeDataForUpdate[globalIndex].isUnderRepair) {
+                            if (!foundGenome || fitness.isBetterThan(currentBest)) {
+                                currentBest = fitness;
+                                foundGenome = true;
+                            }
+                        }
+                    }
+                }
+                
+                if (foundGenome) {
+                    FitnessResultType previousBest = _previousBestFitnessBySpecies[speciesId];
+                    assert((currentBest.isBetterThan(previousBest) || currentBest.isEqualTo(previousBest)) && 
+                           "Non-eliminated species must maintain or improve best fitness");
+                }
+            }
+        }
+        
+        // Only validate if we have species data from previous generations
+        if (activeSpeciesCount > 0) {
+            // Validate species grouping completeness against active species count
+            assert(speciesGrouping.size() == activeSpeciesCount && 
+                   "Every active species should have at least one valid genome for elite selection");
+            
+            // Per-species validation: every active species must appear in grouping with valid genomes AND elites
+            for (const auto& [speciesId, speciesData] : _speciesData) {
+                if (!speciesData.isMarkedForElimination && speciesData.currentPopulationSize > 0) {
+                    assert(speciesGrouping.find(speciesId) != speciesGrouping.end() && 
+                           "Active species must appear in species grouping");
+                    assert(!speciesGrouping.at(speciesId).empty() && 
+                           "Active species must have at least one valid genome");
+                           
+                    // Check that at least one genome in this species is Elite
+                    bool hasElite = false;
+                    for (size_t globalIndex : speciesGrouping.at(speciesId)) {
+                        if (_globalIndexRegistry.getState(globalIndex) == Population::GenomeState::Elite) {
+                            hasElite = true;
+                            break;
+                        }
+                    }
+                    assert(hasElite && "Every active species must have at least one elite genome");
+                }
+            }
+        }
+
         // Count eliminated genomes for statistics (no longer collecting indices)
         std::unordered_map<uint32_t, size_t> eliminatedBySpecies;
         size_t eliminatedUnderRepair = 0;
@@ -537,81 +810,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             //           eliminatedUnderRepair, elimBySpeciesStr);
         }
         
-        // Replace eliminated genomes with elites using dynamic index allocation
-        size_t elitesUsedForReplacement = 0;
-        size_t elitesAddedToPopulation = 0;
-        
-        // LOG_DEBUG("ELITE REPLACEMENT: Starting replacement of {} eliminated genomes with {} elites", 
-        //           totalEliminated, eliteIndices.size());
-        
-        // Log population state before elite operations
-        // logPopulationState("PRE-ELITE-OPS - last", generation, _generation - 1);
-        // logPopulationState("PRE-ELITE-OPS - current", generation, _generation);
-        
-        // Debug log: Elite indices and their fitness from last generation
-        // LOG_DEBUG("ELITE SELECTION DEBUG: {} elites selected from last generation", eliteIndices.size());
-        for (size_t eliteIndex : eliteIndices) {
-            FitnessResultType eliteFitness{};
-            bool found = false;
-            for (const auto& [fitness, globalIndex] : lastFitnessResults) {
-                if (globalIndex == eliteIndex) {
-                    eliteFitness = fitness;
-                    found = true;
-                    break;
-                }
-            }
-            // LOG_DEBUG("  Elite[{}]: species={}, fitness={:.3f}, found_in_last_gen={}", 
-            //          eliteIndex, lastGenomeDataForUpdate[eliteIndex].speciesId, 
-            //          eliteFitness.getValue(), found);
-        }
-        
-        for (size_t eliteIndex : eliteIndices) {
-            // Get a free index from registry
-            uint32_t targetIndex = _globalIndexRegistry.getFreeIndex();
-            
-            // Get fitness values for logging
-            FitnessResultType eliteFitness{};
-            for (const auto& [fitness, globalIndex] : lastFitnessResults) {
-                if (globalIndex == eliteIndex) {
-                    eliteFitness = fitness;
-                    break;
-                }
-            }
-            
-            // Validate replacement is valid
-            assert(_globalIndexRegistry.getState(eliteIndex) == Population::GenomeState::Active && 
-                   "Elite genome should be in Active state");
-            
-            if (targetIndex == Population::INVALID_INDEX) {
-                // No free indices available - add new genome to population
-                Population::DynamicGenomeData eliteData = lastGenomeDataForUpdate[eliteIndex];
-                eliteData.parentAIndex = eliteIndex;  // Elite from last generation
-                eliteData.parentBIndex = UINT32_MAX;  // Single parent
-                
-                targetIndex = _populationContainer.push_back(_generation, lastGenomes[eliteIndex], std::move(eliteData));
-                elitesAddedToPopulation++;
-            } else {
-                // Using existing eliminated slot (already atomically set to Active by getFreeIndex)
-                currentGenomes[targetIndex] = lastGenomes[eliteIndex];
-                currentGenomeData[targetIndex] = lastGenomeDataForUpdate[eliteIndex];
-                currentGenomeData[targetIndex].parentAIndex = eliteIndex;  // Elite from last generation
-                currentGenomeData[targetIndex].parentBIndex = UINT32_MAX;  // Single parent
-                
-                elitesUsedForReplacement++;
-            }
-            
-            // Add fitness result
-            currentFitnessResults.insert({eliteFitness, targetIndex});
-        }
-        
-        // LOG_DEBUG("ELITE REPLACEMENT COMPLETE: {} elites used for replacement, {} elites added to population", 
-        //           elitesUsedForReplacement, elitesAddedToPopulation);
-        
-        // Log population state after elite operations
-        // logPopulationState("POST-ELITE-OPS - last", generation, _generation - 1);
-        // logPopulationState("POST-ELITE-OPS - current", generation, _generation);
-        
-        // Replace remaining eliminated genomes with crossover offspring
+        // Phase 5: Crossover Replacement - Replace eliminated genomes with crossover offspring
         size_t crossoverReplacements = 0;
         size_t crossoverAdditions = 0;
         size_t crossoverWithCycles = 0;
@@ -636,10 +835,12 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             //          targetIndex);
             
             // Validate crossover parents are not eliminated
-            assert(_globalIndexRegistry.getState(parentAIndex) == Population::GenomeState::Active && 
-                   "Crossover parent A should be in Active state");
-            assert(_globalIndexRegistry.getState(parentBIndex) == Population::GenomeState::Active && 
-                   "Crossover parent B should be in Active state");
+            auto parentAState = _globalIndexRegistry.getState(parentAIndex);
+            auto parentBState = _globalIndexRegistry.getState(parentBIndex);
+            assert((parentAState == Population::GenomeState::Active || parentAState == Population::GenomeState::Elite) && 
+                   "Crossover parent A should be in Active or Elite state");
+            assert((parentBState == Population::GenomeState::Active || parentBState == Population::GenomeState::Elite) && 
+                   "Crossover parent B should be in Active or Elite state");
             
             // Perform crossover
             Genome offspring = Operator::crossover(
@@ -684,36 +885,65 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         // Log final population composition
         const size_t finalPopSize = currentGenomes.size();
-        const size_t totalAdditions = elitesAddedToPopulation + crossoverAdditions;
-        // LOG_DEBUG("GENERATION {} REPLACEMENT SUMMARY: Final pop size: {}, Eliminated: {}, Elite replacements: {}, Elite additions: {}, Crossover replacements: {}, Crossover additions: {}", 
-        //           generation, finalPopSize, totalEliminated, 
-        //           elitesUsedForReplacement, elitesAddedToPopulation, crossoverReplacements, crossoverAdditions);
+        // LOG_DEBUG("GENERATION {} REPLACEMENT SUMMARY: Final pop size: {}, Eliminated: {}, Crossover replacements: {}, Crossover additions: {}", 
+        //           generation, finalPopSize, totalEliminated, crossoverReplacements, crossoverAdditions);
         
-        // Validate final population state - only Active genomes need to be valid
+        // Validate final population state - Active and Elite genomes need to be valid
         size_t activeGenomeCount = 0;
+        size_t eliteGenomeCount = 0;
         size_t nonActiveGenomeCount = 0;
         std::unordered_map<uint32_t, size_t> finalSpeciesDistribution;
         
         for (size_t i = 0; i < currentGenomeData.size(); ++i) {
             const auto& genomeData = currentGenomeData[i];
+            auto state = _globalIndexRegistry.getState(i);
             
-            if (_globalIndexRegistry.getState(i) == Population::GenomeState::Active) {
+            if (state == Population::GenomeState::Active) {
                 // Validate Active genomes have consistent data
                 assert(genomeData.speciesId != UINT32_MAX && "Active genome should have valid species ID");
                 finalSpeciesDistribution[genomeData.speciesId]++;
                 activeGenomeCount++;
+            } else if (state == Population::GenomeState::Elite) {
+                // Validate Elite genomes have consistent data
+                assert(genomeData.speciesId != UINT32_MAX && "Elite genome should have valid species ID");
+                finalSpeciesDistribution[genomeData.speciesId]++;
+                eliteGenomeCount++;
             } else {
                 // Non-Active genomes (HotElimination, ColdElimination, ReadyForReplacement) are acceptable
                 nonActiveGenomeCount++;
             }
         }
         
-        LOG_DEBUG("GENERATION {} FINAL STATE: {} active genomes, {} non-active genomes, {} species active", 
-                  generation, activeGenomeCount, nonActiveGenomeCount, finalSpeciesDistribution.size());
+        LOG_DEBUG("GENERATION {} FINAL STATE: {} active genomes, {} elite genomes, {} non-active genomes, {} species active", 
+                  generation, activeGenomeCount, eliteGenomeCount, nonActiveGenomeCount, finalSpeciesDistribution.size());
         
         // Log final generation state after all replacements
         // logPopulationState("FINAL-STATE - last", generation, _generation - 1);
         // logPopulationState("FINAL-STATE - current", generation, _generation);
+        
+        // Update previous generation's best fitness for next iteration
+        _previousBestFitnessBySpecies.clear();
+        for (const auto& [speciesId, indices] : speciesGrouping) {
+            // Find best fitness for this species in current generation
+            FitnessResultType bestFitness = std::numeric_limits<FitnessResultType>::lowest();
+            bool foundGenome = false;
+            
+            for (size_t globalIndex : indices) {
+                for (const auto& [fitness, fitnessGlobalIndex] : lastFitnessResults) {
+                    if (fitnessGlobalIndex == globalIndex) {
+                        if (!foundGenome || fitness.isBetterThan(bestFitness)) {
+                            bestFitness = fitness;
+                            foundGenome = true;
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            if (foundGenome) {
+                _previousBestFitnessBySpecies[speciesId] = bestFitness;
+            }
+        }
         
         // end of generation loop
     }

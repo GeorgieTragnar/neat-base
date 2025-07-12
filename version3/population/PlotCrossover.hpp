@@ -81,7 +81,8 @@ inline std::vector<std::pair<size_t, size_t>> plotCrossover(
         // Filter out genomes marked for elimination through global index registry
         std::vector<size_t> activeGenomes;
         for (size_t globalIndex : genomeIndices) {
-            if (registry.getState(static_cast<uint32_t>(globalIndex)) == GenomeState::Active) {
+            auto state = registry.getState(static_cast<uint32_t>(globalIndex));
+            if (state == GenomeState::Active || state == GenomeState::Elite) {
                 activeGenomes.push_back(globalIndex);
             }
         }

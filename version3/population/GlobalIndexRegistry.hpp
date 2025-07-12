@@ -10,6 +10,7 @@ constexpr uint32_t INVALID_INDEX = std::numeric_limits<uint32_t>::max();
 
 enum class GenomeState {
     Active,               // Normal genome that can be used as parent
+    Elite,                // Protected from mutation, copied as-is
     HotElimination,       // Marked for elimination, offspring may still exist
     ColdElimination,      // All offspring processed, safe to clean
     ReadyForReplacement   // Cleaned, index can be reused
@@ -30,6 +31,10 @@ public:
     void markForElimination(uint32_t globalIndex);
     void transitionToCold(uint32_t globalIndex);
     void markReadyForReplacement(uint32_t globalIndex);
+    
+    // Elite state management
+    void markAsElite(uint32_t globalIndex);
+    void clearAllEliteStatus();
     
     // Index management
     uint32_t getFreeIndex();  // Returns INVALID_INDEX if none available

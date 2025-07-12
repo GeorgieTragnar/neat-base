@@ -99,4 +99,4 @@ add_executable(NeatBase "${MAIN_CPP}")
 target_link_libraries(NeatBase PRIVATE neat_lib)
 
 # Add test directory
-# add_subdirectory(tests)
+add_subdirectory(tests)

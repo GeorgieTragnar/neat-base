@@ -118,7 +118,7 @@ void dynamicDataUpdate(
     // LOG_DEBUG("ELIMINATION PHASE 1: Calculating average ranks for {} species", speciesCount.size());
     for (const auto& [speciesId, count] : speciesCount) {
         if (count > 0) {
-            speciesAverageRanks[speciesId] = speciesRankSum[speciesId] / count;
+            speciesAverageRanks[speciesId] = static_cast<double>(speciesRankSum[speciesId]) / count;
             // LOG_TRACE("Species {}: {} genomes, avg rank {:.2f}", speciesId, count, speciesAverageRanks[speciesId]);
         }
     }
@@ -161,8 +161,8 @@ void dynamicDataUpdate(
     
     const uint32_t excessSpeciesCount = (activeSpeciesCount > params._equilibriumSpeciesCount)
         ? activeSpeciesCount - params._equilibriumSpeciesCount : 0;
-    const uint32_t equilibrium = (activeSpeciesCount > params._targetPopulationSize)
-        ? 1 : params._targetPopulationSize / activeSpeciesCount;
+    const uint32_t equilibrium = (activeSpeciesCount == 0) ? 0 :
+        (activeSpeciesCount > params._targetPopulationSize) ? 1 : params._targetPopulationSize / activeSpeciesCount;
 
     assert(excessSpeciesCount < activeSpeciesCount && "there cannot be more excess than active species");
 
@@ -233,10 +233,21 @@ void dynamicDataUpdate(
             
             // Mark species for elimination if rating exceeds limit
             if (speciesInfo.pendingEliminationRating >= params._maxSpeciesPendingEliminationRating) {
+                // ELITE_TRACK: Check if species being eliminated contains Elite genomes
+                bool hasEliteGenomes = false;
+                for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
+                    if (genomeData[globalIndex].speciesId == speciesId && 
+                        registry.getState(globalIndex) == GenomeState::Elite) {
+                        hasEliteGenomes = true;
+                        LOG_DEBUG("ELITE_TRACK: DynamicDataUpdate - Species {} has Elite genome {} but being eliminated!", 
+                                 speciesId, globalIndex);
+                    }
+                }
+                
                 speciesInfo.isMarkedForElimination = true;
                 eliminatedSpeciesIds.insert(speciesId);
-                LOG_INFO("Species {} marked for elimination: pending rating {} >= limit {}", 
-                        speciesId, speciesInfo.pendingEliminationRating, params._maxSpeciesPendingEliminationRating);
+                LOG_INFO("Species {} marked for elimination: pending rating {} >= limit {} (hasElites: {})", 
+                        speciesId, speciesInfo.pendingEliminationRating, params._maxSpeciesPendingEliminationRating, hasEliteGenomes);
             }
         }
     }

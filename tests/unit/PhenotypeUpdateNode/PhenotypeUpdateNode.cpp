@@ -244,19 +244,30 @@ TEST_F(PhenotypeUpdateNodeTest, ExactlyThreeDeltas_Succeeds) {
     validateDeltasEmpty(genome);
 }
 
+TEST_F(PhenotypeUpdateNodeTest, EmptyDeltas_Succeeds) {
+    auto genome = createBasicGenome();
+    
+    // Test empty deltas - should succeed (valid state, no mutations occurred)
+    setNodeMutationDeltas(genome, 0, 0, 0);
+    genome.get_connectionGeneDeltas().clear();
+    
+    // Implementation handles empty deltas as valid state (no mutations occurred)
+    // Should return early without assertion failure
+    EXPECT_NO_THROW(Operator::phenotypeUpdateNode(genome));
+}
+
 TEST_F(PhenotypeUpdateNodeTest, WrongNumberOfDeltas_Fails) {
     auto genome = createBasicGenome();
     
-    // Test empty deltas
-    setNodeMutationDeltas(genome, 0, 0, 0);
-    genome.get_connectionGeneDeltas().clear();
-    EXPECT_DEATH(Operator::phenotypeUpdateNode(genome), "Connection deltas must contain exactly 3 IDs");
-    
-    // Test too few deltas
+    // Test too few deltas (should assert)
     genome.get_connectionGeneDeltas() = {11};
     EXPECT_DEATH(Operator::phenotypeUpdateNode(genome), "Connection deltas must contain exactly 3 IDs");
     
-    // Test too many deltas
+    // Test too few deltas (should assert)
+    genome.get_connectionGeneDeltas() = {11, 12};
+    EXPECT_DEATH(Operator::phenotypeUpdateNode(genome), "Connection deltas must contain exactly 3 IDs");
+    
+    // Test too many deltas (should assert)
     genome.get_connectionGeneDeltas() = {11, 13, 14, 15};
     EXPECT_DEATH(Operator::phenotypeUpdateNode(genome), "Connection deltas must contain exactly 3 IDs");
 }

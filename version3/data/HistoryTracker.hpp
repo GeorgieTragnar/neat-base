@@ -42,7 +42,7 @@ private:
 
 	uint32_t	_nextNodeID = 1;
 	uint32_t	_nextConnectionID = 1;
-	uint32_t	_nextSpeciesID = 1;
+	uint32_t	_nextSpeciesID = 0;
 
 	std::vector<uint32_t>	_inputIDs;
 	std::vector<uint32_t>	_outputIDs;
@@ -52,5 +52,5 @@ private:
 	std::unordered_map<uint32_t, uint32_t>									_splitNodeIDs;
 	std::unordered_map<uint32_t, std::vector<uint32_t>>						_splitNodeBranches;
 	
-	std::unordered_map<uint32_t, Genome>									_speciesRepresentatives;
+	std::vector<Genome>														_speciesRepresentatives;
 };

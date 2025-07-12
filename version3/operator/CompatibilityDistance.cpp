@@ -10,8 +10,9 @@ CompatibilityDistanceParams::CompatibilityDistanceParams(float c1, float c2, flo
 }
 
 uint32_t compatibilityDistance(const Genome& genome, std::shared_ptr<HistoryTracker> historyTracker, const CompatibilityDistanceParams& params) {
-    // Iterate through existing species representatives
-    for (const auto& [speciesId, representative] : historyTracker->_speciesRepresentatives) {
+    // Iterate through existing species representatives in order (oldest species first)
+    for (uint32_t speciesId = 0; speciesId < historyTracker->_speciesRepresentatives.size(); ++speciesId) {
+        const Genome& representative = historyTracker->_speciesRepresentatives[speciesId];
         const auto& connections1 = genome.get_connectionGenes();
         const auto& connections2 = representative.get_connectionGenes();
         
@@ -94,7 +95,7 @@ uint32_t compatibilityDistance(const Genome& genome, std::shared_ptr<HistoryTrac
     
     // No compatible species found - create new species
     uint32_t newSpeciesId = historyTracker->_nextSpeciesID++;
-    historyTracker->_speciesRepresentatives.emplace(newSpeciesId, genome);
+    historyTracker->_speciesRepresentatives.push_back(genome);
     
     return newSpeciesId;
 }

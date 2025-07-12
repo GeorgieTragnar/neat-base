@@ -37,6 +37,11 @@ public:
     }
     
     double getFitness() const { return _fitness; }
+    
+    // Comparison operator needed for std::multimap ordering
+    bool operator<(const TestFitnessResult& other) const {
+        return _fitness < other._fitness;
+    }
 
 private:
     double _fitness;

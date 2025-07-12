@@ -2,21 +2,23 @@
 
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <cstdint>
 #include <cmath>
 #include <algorithm>
 #include <cassert>
 #include "GlobalIndexRegistry.hpp"
 #include "PopulationData.hpp"
+#include "../logger/Logger.hpp"
 
 namespace Population {
 
 class PlotElitesParams;
 
-std::vector<size_t> plotElites(
+void plotElites(
     const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
     const PlotElitesParams& params,
-    const GlobalIndexRegistry& registry,
+    GlobalIndexRegistry& registry,
     const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
 );
 
@@ -36,10 +38,10 @@ public:
     }
 
 private:
-    friend std::vector<size_t> plotElites(
+    friend void plotElites(
         const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
         const PlotElitesParams& params,
-        const GlobalIndexRegistry& registry,
+        GlobalIndexRegistry& registry,
         const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
     );
     
@@ -48,15 +50,19 @@ private:
     const size_t _maximumElitesPerSpecies;
 };
 
-inline std::vector<size_t> plotElites(
+inline void plotElites(
     const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
     const PlotElitesParams& params,
-    const GlobalIndexRegistry& registry,
+    GlobalIndexRegistry& registry,
     const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData) {
     
     assert(!speciesGroupings.empty());
+
+    auto logger = LOGGER("population.PlotElites");
     
-    std::vector<size_t> eliteIndices;
+    // Clear all existing elite status
+    LOG_DEBUG("ELITE_TRACK: plotElites - Clearing all existing Elite status");
+    registry.clearAllEliteStatus();
     
     for (const auto& [speciesId, genomeIndices] : speciesGroupings) {
         assert(!genomeIndices.empty());
@@ -75,9 +81,17 @@ inline std::vector<size_t> plotElites(
             }
         }
         
-        // Remove duplicates from activeGenomes (in case speciesGrouping contains duplicates)
-        std::sort(activeGenomes.begin(), activeGenomes.end());
-        activeGenomes.erase(std::unique(activeGenomes.begin(), activeGenomes.end()), activeGenomes.end());
+        // Note: SpeciesGrouping should not produce duplicates (validated by assertion in SpeciesGrouping.hpp:65)
+        // However, we preserve duplicate removal using fitness-order-preserving approach
+        std::vector<size_t> uniqueActiveGenomes;
+        std::unordered_set<size_t> seenIndices;
+        for (size_t globalIndex : activeGenomes) {
+            if (seenIndices.find(globalIndex) == seenIndices.end()) {
+                uniqueActiveGenomes.push_back(globalIndex);
+                seenIndices.insert(globalIndex);
+            }
+        }
+        activeGenomes = std::move(uniqueActiveGenomes);
         
         // Skip species with no active genomes
         if (activeGenomes.empty()) {
@@ -93,21 +107,15 @@ inline std::vector<size_t> plotElites(
         eliteCount = std::min(eliteCount, params._maximumElitesPerSpecies);
         eliteCount = std::min(eliteCount, speciesSize); // Can't select more elites than active genomes in species
         
-        // Select top performers (active genomes are fitness-ordered from worst to best, so take from end)
+        // Mark top performers as elite (active genomes are fitness-ordered from worst to best, so take from end)
+        LOG_DEBUG("ELITE_TRACK: plotElites - Species {} selecting {} elites from {} active genomes", 
+                 speciesId, eliteCount, speciesSize);
         for (size_t i = 0; i < eliteCount; ++i) {
-            eliteIndices.push_back(activeGenomes[activeGenomes.size() - 1 - i]);
+            uint32_t eliteIndex = static_cast<uint32_t>(activeGenomes[activeGenomes.size() - 1 - i]);
+            registry.markAsElite(eliteIndex);
+            LOG_DEBUG("ELITE_TRACK: plotElites - Marked genome {} as Elite for species {}", eliteIndex, speciesId);
         }
     }
-    
-#ifndef NDEBUG
-    // Validate no duplicate indices
-    std::vector<size_t> sortedElites = eliteIndices;
-    std::sort(sortedElites.begin(), sortedElites.end());
-    auto uniqueEnd = std::unique(sortedElites.begin(), sortedElites.end());
-    assert(uniqueEnd == sortedElites.end() && "Duplicate elite indices detected");
-#endif
-    
-    return eliteIndices;
 }
 
 }

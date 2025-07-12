@@ -93,10 +93,8 @@ Genome Operator::connectionMutation(const Genome& genome,
     // Find all possible connection pairs
     auto possiblePairs = findPossibleConnectionPairs(nodes, connections);
     
-    // Early return if no connections possible (valid state - network may be fully connected)
-    if (possiblePairs.empty()) {
-        return mutatedGenome;
-    }
+    // Assert if no connections possible - caller should check hasPossibleConnections first
+    assert(!possiblePairs.empty() && "No connections possible - genome may be fully connected");
     
     // Setup random number generators
     static std::random_device rd;

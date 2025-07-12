@@ -42,25 +42,28 @@ static auto logger = LOGGER("evolution.EvolutionPrototype");
 // User-defined fitness result type for XOR problem
 class DoubleFitnessResult {
 public:
-    explicit DoubleFitnessResult(double value = 0.0) : _value(value) {}
+    explicit DoubleFitnessResult(double penalizedValue = 0.0, double rawValue = 0.0) 
+        : _penalizedValue(penalizedValue), _rawValue(rawValue) {}
     
     bool isBetterThan(const DoubleFitnessResult& other) const {
-        return _value > other._value; // Higher is better
+        return _penalizedValue > other._penalizedValue; // Higher is better, use penalized for comparison
     }
     
     bool isEqualTo(const DoubleFitnessResult& other) const {
-        return std::abs(_value - other._value) < std::numeric_limits<double>::epsilon();
+        return std::abs(_penalizedValue - other._penalizedValue) < std::numeric_limits<double>::epsilon();
     }
     
-    double getValue() const { return _value; }
+    double getValue() const { return _penalizedValue; } // Return penalized for sorting/selection
+    double getRawValue() const { return _rawValue; }   // Raw fitness without complexity penalty
     
-    // Comparison operators for multimap ordering
+    // Comparison operators for multimap ordering (use penalized value)
     bool operator<(const DoubleFitnessResult& other) const {
-        return _value < other._value;
+        return _penalizedValue < other._penalizedValue;
     }
 
 private:
-    double _value;
+    double _penalizedValue; // Fitness with complexity penalty (used for selection)
+    double _rawValue;       // Raw fitness without complexity penalty (for display)
 };
 
 // Logger configuration map
@@ -182,13 +185,15 @@ DoubleFitnessResult evaluateXORFitness(const Genome::Phenotype& phenotype) {
     }
     
     
-    // Apply new fitness calculation logic
+    // Calculate raw fitness (without complexity penalty)
+    double rawFitness;
     if (performanceFitness <= 3.0) {
-        // Disincentivize structures that don't show capability of solving the problem
-        fitness = performanceFitness * 0.5; // Halve the fitness
+        rawFitness = performanceFitness * 0.5; // Halve the fitness for poor performers
+        fitness = rawFitness; // No complexity penalty for poor performers
     } else {
-        // For structures showing signs of capability, quadruple and subtract complexity penalty
+        // For structures showing signs of capability, quadruple the fitness
         double quadrupledFitness = performanceFitness * 4.0; // Max becomes 16
+        rawFitness = quadrupledFitness; // Raw fitness without complexity penalty
         
         // Calculate complexity penalty with max of 12
         size_t nodeCount = phenotype._nodeGeneAttributes.size();
@@ -202,16 +207,17 @@ DoubleFitnessResult evaluateXORFitness(const Genome::Phenotype& phenotype) {
         }
         
         // Complexity penalty calculation (ideal: 4 nodes, 6 connections)
-        double complexityPenalty = (nodeCount > 4 ? (nodeCount - 4) * 0.1 : 0.0) + 
+        double complexityPenalty = (nodeCount > 4 ? (nodeCount - 4) * 0.15 : 0.0) + 
                                   (connectionCount > 6 ? (connectionCount - 6) * 0.05 : 0.0);
         
         // Clamp complexity penalty to maximum of 12
         complexityPenalty = std::min(complexityPenalty, 12.0);
         
+        // Apply complexity penalty for penalized fitness
         fitness = std::max(0.0, quadrupledFitness - complexityPenalty);
     }
     
-    return DoubleFitnessResult(fitness);
+    return DoubleFitnessResult(fitness, rawFitness);
 }
 
 // Use NetworkExecution operator for consistent network evaluation
@@ -246,7 +252,7 @@ int main(int argc, char* argv[])
     try {
         // Evolution parameters
         const uint32_t populationSize = 100;
-        const uint32_t maxGenerations = 100;
+        const uint32_t maxGenerations = 160;
         const uint32_t randomSeed = 12345;
         
         // Create input node attributes (2 inputs for XOR)
@@ -265,7 +271,7 @@ int main(int argc, char* argv[])
         std::uniform_real_distribution<double> biasWeightDist(-1.0, 1.0);
         
         std::unordered_map<size_t, ConnectionGeneAttributes> biasAttributes;
-        biasAttributes[0] = {float(biasWeightDist(rng)), true}; // Random bias weight [-1.0, 1.0]
+        // biasAttributes[0] = {float(biasWeightDist(rng)), true}; // Random bias weight [-1.0, 1.0]
         
         // Create initialization parameters
         Operator::InitParams initParams(
@@ -279,14 +285,14 @@ int main(int argc, char* argv[])
         Population::PlotElitesParams eliteParams(
             0.01,  // elitePercentage - 20% of each species
             1,    // minimumElitesPerSpecies
-            3     // maximumElitesPerSpecies
+            1     // maximumElitesPerSpecies
         );
         
         // Create plot crossover parameters
         Population::PlotCrossoverParams crossoverParams(
             0.5,  // topPerformerPercentage - top 50% can be parents
             2,    // baseCrossoversPerSpecies
-            0.3,  // crossoverScalingFactor
+            0.05, // crossoverScalingFactor - reduced from 0.3 to 0.05 (5%)
             2     // minimumSpeciesSize for crossover
         );
         
@@ -317,10 +323,10 @@ int main(int argc, char* argv[])
         // Create dynamic data update parameters
         Population::DynamicDataUpdateParams updateParams(
             2, // maxGenomePendingEliminationLimit
-            10, // maxSpeciesPendingEliminationRating
+            10, // maxSpeciesPendingEliminationRating - reduced from 10 to 3 (faster elimination)
             1, // speciesElitePlacementProtectionPercentage
-            0.8, // speciesPendingEliminationPercentage
-            0.3, // genomesPendingEliminationPercentage
+            0.9, // speciesPendingEliminationPercentage - increased from 0.8 to 0.95 (95%)
+            0.6, // genomesPendingEliminationPercentage - increased from 0.3 to 0.7 (70%)
             5, // equilibriumSpeciesCount
             populationSize // targetPopulationSize
         );
@@ -344,8 +350,8 @@ int main(int argc, char* argv[])
         // Create weight mutation parameters for better exploration
         Operator::WeightMutationParams weightMutationParams(
             0.8,  // perturbationRate - still high but allow more replacements
-            0.2,  // replacementRate - increased for more dramatic changes
-            1.0,  // perturbationStrength - stronger perturbations
+            0.25, // replacementRate - increased for more dramatic changes
+            1.5,  // perturbationStrength - stronger perturbations for better exploration
             4.0,  // weightRange - wider range matching connection mutations
             Operator::WeightMutationParams::MutationType::MIXED
         );
@@ -353,8 +359,8 @@ int main(int argc, char* argv[])
         // Create mutation probability parameters tuned for simpler solutions
         Evolution::MutationProbabilityParams mutationParams(
             0.80,  // Weight mutation probability (80% - increased for weight optimization)
-            0.05,  // Node mutation probability (5% - reduced to discourage complexity)
-            0.10,  // Connection mutation probability (10% - reduced to discourage complexity)
+            0.02,  // Node mutation probability (2% - further reduced to minimize structural bloat)
+            0.18,  // Connection mutation probability (18% - increased for better connectivity exploration)
             0.05   // Connection reactivation probability (5% - same)
         );
         
@@ -397,7 +403,8 @@ int main(int argc, char* argv[])
         auto bestGenome = results.getBestGenome();
         
         std::cout << "\n=== XOR Problem Solution ===\n";
-        std::cout << "Best fitness: " << results.getBestFitness().getValue() << "\n\n";
+        std::cout << "Best fitness (with complexity penalty): " << results.getBestFitness().getValue() << "\n";
+        std::cout << "Raw fitness (without complexity penalty): " << results.getBestFitness().getRawValue() << "\n\n";
         
         // Display genome structure
         std::stringstream genomeOutput;
