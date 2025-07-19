@@ -110,7 +110,7 @@ public:
         return _genomes[generation % 3].capacity();
     }
 
-protected:
+// protected:
     // Keep existing manual friend declaration
     friend class GlobalIndexRegistry;
     

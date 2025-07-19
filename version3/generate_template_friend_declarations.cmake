@@ -2,7 +2,7 @@
 # Creates friend declarations for template classes that avoid template parameter shadowing
 # This generates operator_template_friend_declarations.inc for use in template classes
 
-function(generate_template_friend_declarations OPERATOR_DIR DISCOVERED_TYPES_FILE OUTPUT_FILE)
+function(generate_template_friend_declarations BASE_DIR DISCOVERED_TYPES_FILE OUTPUT_FILE)
     message(STATUS "Generating template-specific friend declarations from existing friend declarations")
     message(STATUS "Using discovered types from: ${DISCOVERED_TYPES_FILE}")
     message(STATUS "Template friend declarations output: ${OUTPUT_FILE}")
@@ -36,8 +36,20 @@ function(generate_template_friend_declarations OPERATOR_DIR DISCOVERED_TYPES_FIL
             if(CLEAN_LINE MATCHES "friend.*Operator::")
                 # Check if it's a template friend declaration
                 if(CLEAN_LINE MATCHES "template<")
+                    # Extract the template parameter (assuming FitnessResultType for now)
+                    set(TEMPLATE_PARAM "FitnessResultType")
+                    
                     # Remove the template part: "template<...> friend" -> "friend"
                     string(REGEX REPLACE "^[ \\t]*template<[^>]*>[ \\t]*" "" TEMPLATE_FREE_LINE "${CLEAN_LINE}")
+                    
+                    # Find the function name and add template instantiation
+                    # Pattern: "friend ReturnType Operator::functionName("
+                    if(TEMPLATE_FREE_LINE MATCHES "friend .* Operator::([a-zA-Z0-9_]+)\\(")
+                        set(FUNCTION_NAME "${CMAKE_MATCH_1}")
+                        # Replace functionName( with functionName<FitnessResultType>(
+                        string(REGEX REPLACE "Operator::${FUNCTION_NAME}\\(" "Operator::${FUNCTION_NAME}<${TEMPLATE_PARAM}>(" TEMPLATE_FREE_LINE "${TEMPLATE_FREE_LINE}")
+                    endif()
+                    
                     # Ensure line ends with semicolon
                     if(NOT TEMPLATE_FREE_LINE MATCHES ";[ \\t]*$")
                         string(APPEND TEMPLATE_FREE_LINE ";")

@@ -11,7 +11,7 @@
 #include "../data/GlobalIndexRegistry.hpp"
 #include "../data/PopulationData.hpp"
 
-namespace Population {
+namespace Operator {
 
 class PlotCrossoverParams;
 

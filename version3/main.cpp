@@ -17,25 +17,26 @@
 #include "data/Genome.hpp"
 #include "data/NodeGene.hpp"
 #include "data/ConnectionGene.hpp"
-#include "operator/Init.hpp"
-#include "operator/WeightMutation.hpp"
-#include "operator/DisplayGenome.hpp"
-#include "operator/DisplayPhenotype.hpp"
+#include "population/Init.hpp"
+#include "evolution/WeightMutation.hpp"
+#include "display/DisplayGenome.hpp"
+#include "display/DisplayPhenotype.hpp"
 #include "population/DynamicDataUpdate.hpp"
-#include "operator/PlotElites.hpp"
-#include "population/PlotCrossover.hpp"
-#include "operator/CompatibilityDistance.hpp"
-#include "operator/Crossover.hpp"
-#include "operator/CycleDetection.hpp"
-#include "operator/NodeMutation.hpp"
-#include "operator/ConnectionMutation.hpp"
-#include "operator/ConnectionReactivation.hpp"
-#include "operator/RepairOperator.hpp"
+#include "population/PlotElites.hpp"
+#include "evolution/PlotCrossover.hpp"
+#include "analysis/CompatibilityDistance.hpp"
+#include "evolution/Crossover.hpp"
+#include "evolution/CrossoverManagement.hpp"
+#include "validation/CycleDetection.hpp"
+#include "evolution/NodeMutation.hpp"
+#include "evolution/ConnectionMutation.hpp"
+#include "evolution/ConnectionReactivation.hpp"
+#include "evolution/RepairOperator.hpp"
 #include "analysis/strategies/SingleSimpleFitnessStrategy.hpp"
-#include "operator/NetworkExecution.hpp"
+#include "phenotype/NetworkExecution.hpp"
 
 // Evolution prototype
-#include "evolution/EvolutionPrototype.hpp"
+#include "EvolutionPrototype.hpp"
 
 static auto logger = LOGGER("evolution.EvolutionPrototype");
 
@@ -289,7 +290,7 @@ int main(int argc, char* argv[])
         );
         
         // Create plot crossover parameters
-        Population::PlotCrossoverParams crossoverParams(
+        Operator::PlotCrossoverParams crossoverParams(
             0.5,  // topPerformerPercentage - top 50% can be parents
             2,    // baseCrossoversPerSpecies
             0.05, // crossoverScalingFactor - reduced from 0.3 to 0.05 (5%)
@@ -321,7 +322,7 @@ int main(int argc, char* argv[])
         );
         
         // Create dynamic data update parameters
-        Population::DynamicDataUpdateParams updateParams(
+        Operator::DynamicDataUpdateParams updateParams(
             2, // maxGenomePendingEliminationLimit
             10, // maxSpeciesPendingEliminationRating - reduced from 10 to 3 (faster elimination)
             1, // speciesElitePlacementProtectionPercentage
@@ -365,6 +366,12 @@ int main(int argc, char* argv[])
         );
         
         // Create evolution prototype
+        // Create CrossoverManagementParams
+        Operator::CrossoverManagementParams crossoverManagementParams(
+            crossoverOperatorParams,
+            cycleDetectionParams
+        );
+        
         Evolution::EvolutionPrototype<DoubleFitnessResult> evolution(
             std::move(fitnessStrategy),
             populationSize,
@@ -381,6 +388,7 @@ int main(int argc, char* argv[])
             nodeMutationParams,
             connectionMutationParams,
             connectionReactivationParams,
+            crossoverManagementParams,
             randomSeed
         );
         

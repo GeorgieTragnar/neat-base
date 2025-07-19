@@ -19,31 +19,32 @@
 #include "version3/analysis/SpeciationControlUnit.hpp"
 
 // Operators
-#include "version3/operator/Init.hpp"
-#include "version3/operator/Crossover.hpp"
-#include "version3/operator/WeightMutation.hpp"
-#include "version3/operator/ConnectionMutation.hpp"
-#include "version3/operator/NodeMutation.hpp"
-#include "version3/operator/ConnectionReactivation.hpp"
-#include "version3/operator/CycleDetection.hpp"
-#include "version3/operator/CompatibilityDistance.hpp"
-#include "version3/operator/RepairOperator.hpp"
-#include "version3/operator/EmptyDeltas.hpp"
-#include "version3/operator/HasDisabledConnections.hpp"
-#include "version3/operator/HasActiveConnections.hpp"
-#include "version3/operator/HasPossibleConnections.hpp"
-#include "version3/operator/GenomeEquals.hpp"
+#include "version3/population/Init.hpp"
+#include "version3/evolution/Crossover.hpp"
+#include "version3/evolution/CrossoverManagement.hpp"
+#include "version3/evolution/WeightMutation.hpp"
+#include "version3/evolution/ConnectionMutation.hpp"
+#include "version3/evolution/NodeMutation.hpp"
+#include "version3/evolution/ConnectionReactivation.hpp"
+#include "version3/validation/CycleDetection.hpp"
+#include "version3/analysis/CompatibilityDistance.hpp"
+#include "version3/evolution/RepairOperator.hpp"
+#include "version3/validation/EmptyDeltas.hpp"
+#include "version3/validation/HasDisabledConnections.hpp"
+#include "version3/validation/HasActiveConnections.hpp"
+#include "version3/validation/HasPossibleConnections.hpp"
+#include "version3/validation/GenomeEquals.hpp"
 
 // Population management
 #include "version3/data/PopulationContainer.hpp"
 #include "version3/data/PopulationData.hpp"
 #include "version3/population/DynamicDataUpdate.hpp"
-#include "version3/population/SpeciesGrouping.hpp"
-#include "version3/operator/PlotElites.hpp"
-#include "version3/population/PlotCrossover.hpp"
+#include "version3/analysis/SpeciesGrouping.hpp"
+#include "version3/population/PlotElites.hpp"
+#include "version3/evolution/PlotCrossover.hpp"
 #include "version3/data/GlobalIndexRegistry.hpp"
 
-#include "../logger/Logger.hpp"
+#include "logger/Logger.hpp"
 
 namespace Evolution {
 
@@ -112,9 +113,9 @@ public:
         std::unique_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
         uint32_t targetPopulationSize,
         const Operator::InitParams& initParams,
-        const Population::DynamicDataUpdateParams& updateParams,
+        const Operator::DynamicDataUpdateParams& updateParams,
         const Operator::PlotElitesParams& eliteParams,
-        const Population::PlotCrossoverParams& crossoverParams,
+        const Operator::PlotCrossoverParams& crossoverParams,
         const Operator::CompatibilityDistanceParams& compatibilityParams,
         const Operator::RepairOperatorParams& repairParams,
         const MutationProbabilityParams& mutationParams,
@@ -124,6 +125,7 @@ public:
         const Operator::NodeMutationParams& nodeMutationParams,
         const Operator::ConnectionMutationParams& connectionMutationParams,
         const Operator::ConnectionReactivationParams& connectionReactivationParams,
+        const Operator::CrossoverManagementParams& crossoverManagementParams,
         uint32_t randomSeed = std::random_device{}()
     );
 
@@ -143,9 +145,9 @@ private:
     std::unique_ptr<Analysis::FitnessStrategy<FitnessResultType>> _fitnessStrategy;
     uint32_t _targetPopulationSize;
     Operator::InitParams _initParams;
-    Population::DynamicDataUpdateParams _updateParams;
+    Operator::DynamicDataUpdateParams _updateParams;
     Operator::PlotElitesParams _eliteParams;
-    Population::PlotCrossoverParams _crossoverParams;
+    Operator::PlotCrossoverParams _crossoverParams;
     Operator::CompatibilityDistanceParams _compatibilityParams;
     Operator::RepairOperatorParams _repairParams;
     MutationProbabilityParams _mutationParams;
@@ -155,6 +157,7 @@ private:
     Operator::NodeMutationParams _nodeMutationParams;
     Operator::ConnectionMutationParams _connectionMutationParams;
     Operator::ConnectionReactivationParams _connectionReactivationParams;
+    Operator::CrossoverManagementParams _crossoverManagementParams;
     std::mt19937 _rng;
 
     // Fitness progression tracking
@@ -168,9 +171,9 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     std::unique_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
     uint32_t targetPopulationSize,
     const Operator::InitParams& initParams,
-    const Population::DynamicDataUpdateParams& updateParams,
+    const Operator::DynamicDataUpdateParams& updateParams,
     const Operator::PlotElitesParams& eliteParams,
-    const Population::PlotCrossoverParams& crossoverParams,
+    const Operator::PlotCrossoverParams& crossoverParams,
     const Operator::CompatibilityDistanceParams& compatibilityParams,
     const Operator::RepairOperatorParams& repairParams,
     const MutationProbabilityParams& mutationParams,
@@ -180,6 +183,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     const Operator::NodeMutationParams& nodeMutationParams,
     const Operator::ConnectionMutationParams& connectionMutationParams,
     const Operator::ConnectionReactivationParams& connectionReactivationParams,
+    const Operator::CrossoverManagementParams& crossoverManagementParams,
     uint32_t randomSeed
 ) : _fitnessStrategy(std::move(fitnessStrategy)),
     _targetPopulationSize(targetPopulationSize),
@@ -196,6 +200,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     _nodeMutationParams(nodeMutationParams),
     _connectionMutationParams(connectionMutationParams),
     _connectionReactivationParams(connectionReactivationParams),
+    _crossoverManagementParams(crossoverManagementParams),
     _rng(randomSeed),
     _historyTracker(std::make_shared<HistoryTracker>()),
     _globalIndexRegistry(0),  // Start with size 0, will grow as needed
@@ -305,7 +310,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     }
     
     // Bootstrap elite selection: establish initial elites for each species
-    auto initialSpeciesGrouping = Population::speciesGrouping(currentFitnessResults, currentGenomeData, _speciesData, _globalIndexRegistry);
+    auto initialSpeciesGrouping = Operator::speciesGrouping(currentFitnessResults, currentGenomeData, _speciesData, _globalIndexRegistry);
     Operator::plotElites(initialSpeciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
     
     _generation = 0;
@@ -582,7 +587,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         const auto& lastFitnessResults = _populationContainer.getLastFitnessResults(_generation);
         auto& lastGenomeDataForUpdate = _populationContainer.getLastGenomeData(_generation);
         
-        auto speciesGrouping = Population::speciesGrouping(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, _globalIndexRegistry);
+        auto speciesGrouping = Operator::speciesGrouping(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, _globalIndexRegistry);
 
         // Assert that all genomes in species grouping have empty deltas
         for (const auto& [speciesId, indices] : speciesGrouping) {
@@ -610,9 +615,9 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             }
         }
         
-        Population::dynamicDataUpdate(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, speciesGrouping, _updateParams, _globalIndexRegistry);
+        Operator::dynamicDataUpdate(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, speciesGrouping, _updateParams, _globalIndexRegistry);
         
-        speciesGrouping = Population::speciesGrouping(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, _globalIndexRegistry);
+        speciesGrouping = Operator::speciesGrouping(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, _globalIndexRegistry);
 
         // DEBUG: Verify all active species appear in the grouping
         for (const auto& [speciesId, speciesData] : _speciesData) {
@@ -662,7 +667,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         // Phase 4: Crossover Planning
         // Plot crossover pairs for later use
-        auto crossoverPairs = Population::plotCrossover(speciesGrouping, _crossoverParams, _globalIndexRegistry, _speciesData);
+        auto crossoverPairs = Operator::plotCrossover(speciesGrouping, _crossoverParams, _globalIndexRegistry, _speciesData);
         
         // NEAT Algorithm Validation: Every active species must have at least one elite
         // Count truly active species (exist in species data, not marked for elimination, and have non-zero population)
@@ -811,82 +816,19 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         }
         
         // Phase 5: Crossover Replacement - Replace eliminated genomes with crossover offspring
-        size_t crossoverReplacements = 0;
-        size_t crossoverAdditions = 0;
-        size_t crossoverWithCycles = 0;
-        
-        // LOG_DEBUG("CROSSOVER REPLACEMENT: Starting crossover replacement with {} crossover pairs", 
-        //           crossoverPairs.size());
-        
         for (const auto& [parentAIndex, parentBIndex] : crossoverPairs) {
-            // Get a free index from registry
-            uint32_t targetIndex = _globalIndexRegistry.getFreeIndex();
-            
-            // Get fitness values for crossover
-            FitnessResultType fitnessA{}, fitnessB{};
-            for (const auto& [fitness, globalIndex] : currentFitnessResults) {
-                if (globalIndex == parentAIndex) fitnessA = fitness;
-                if (globalIndex == parentBIndex) fitnessB = fitness;
-            }
-            
-            // LOG_TRACE("CROSSOVER REPLACEMENT: Parents {} (species={}, fitness={:.3f}) x {} (species={}, fitness={:.3f}) -> target {}", 
-            //          parentAIndex, currentGenomeData[parentAIndex].speciesId, fitnessA.getValue(),
-            //          parentBIndex, currentGenomeData[parentBIndex].speciesId, fitnessB.getValue(),
-            //          targetIndex);
-            
-            // Validate crossover parents are not eliminated
-            auto parentAState = _globalIndexRegistry.getState(parentAIndex);
-            auto parentBState = _globalIndexRegistry.getState(parentBIndex);
-            assert((parentAState == GenomeState::Active || parentAState == GenomeState::Elite) && 
-                   "Crossover parent A should be in Active or Elite state");
-            assert((parentBState == GenomeState::Active || parentBState == GenomeState::Elite) && 
-                   "Crossover parent B should be in Active or Elite state");
-            
-            // Perform crossover
-            Genome offspring = Operator::crossover(
-                currentGenomes[parentAIndex], fitnessA,
-                currentGenomes[parentBIndex], fitnessB,
-                _crossoverOperatorParams
+            Operator::crossoverManagement(
+                _populationContainer,
+                _globalIndexRegistry,
+                parentAIndex,
+                parentBIndex,
+                _generation,
+                _crossoverManagementParams
             );
-            
-            // Check for cycles
-            bool hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
-            if (hasCycles) crossoverWithCycles++;
-            
-            if (!hasCycles) {
-                Operator::phenotypeConstruct(offspring);
-            }
-            
-            // Create genome data for crossover offspring
-            DynamicGenomeData crossoverData;
-            crossoverData.speciesId = currentGenomeData[parentAIndex].speciesId; // Inherit from first parent
-            crossoverData.pendingEliminationCounter = 0; // Fresh start for crossover
-            crossoverData.isUnderRepair = hasCycles;
-            crossoverData.parentAIndex = parentAIndex;  // First parent from current generation
-            crossoverData.parentBIndex = parentBIndex;  // Second parent from current generation
-            
-            // LOG_TRACE("CROSSOVER OFFSPRING: Created for target {}, species={}, hasCycles={}", 
-            //          targetIndex, crossoverData.speciesId, hasCycles);
-            
-            if (targetIndex == INVALID_INDEX) {
-                // No free indices available - add new genome to population
-                targetIndex = _populationContainer.push_back(_generation, std::move(offspring), std::move(crossoverData));
-                crossoverAdditions++;
-            } else {
-                // Using existing eliminated slot (already atomically set to Active by getFreeIndex)
-                currentGenomes[targetIndex] = std::move(offspring);
-                currentGenomeData[targetIndex] = crossoverData;
-                crossoverReplacements++;
-            }
         }
-        
-        // LOG_DEBUG("CROSSOVER REPLACEMENT COMPLETE: {} crossover replacements, {} crossover additions, {} with cycles", 
-        //           crossoverReplacements, crossoverAdditions, crossoverWithCycles);
         
         // Log final population composition
         const size_t finalPopSize = currentGenomes.size();
-        // LOG_DEBUG("GENERATION {} REPLACEMENT SUMMARY: Final pop size: {}, Eliminated: {}, Crossover replacements: {}, Crossover additions: {}", 
-        //           generation, finalPopSize, totalEliminated, crossoverReplacements, crossoverAdditions);
         
         // Validate final population state - Active and Elite genomes need to be valid
         size_t activeGenomeCount = 0;

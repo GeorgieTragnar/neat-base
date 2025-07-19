@@ -2,8 +2,8 @@
 # Detects ALL functions in Operator namespace regardless of signature
 # Generates both forward declarations and friend declarations
 
-function(generate_universal_operator_declarations OPERATOR_DIR DISCOVERED_TYPES_FILE FORWARDS_OUTPUT_FILE FRIENDS_OUTPUT_FILE)
-    message(STATUS "Generating universal operator declarations from: ${OPERATOR_DIR}")
+function(generate_universal_operator_declarations BASE_DIR DISCOVERED_TYPES_FILE FORWARDS_OUTPUT_FILE FRIENDS_OUTPUT_FILE)
+    message(STATUS "Generating universal operator declarations from: ${BASE_DIR}")
     message(STATUS "Using discovered types from: ${DISCOVERED_TYPES_FILE}")
     message(STATUS "Forward declarations output: ${FORWARDS_OUTPUT_FILE}")
     message(STATUS "Friend declarations output: ${FRIENDS_OUTPUT_FILE}")
@@ -11,8 +11,8 @@ function(generate_universal_operator_declarations OPERATOR_DIR DISCOVERED_TYPES_
     # Load discovered types
     include(${DISCOVERED_TYPES_FILE})
     
-    # Find all operator header files
-    file(GLOB OPERATOR_HEADERS "${OPERATOR_DIR}/*.hpp")
+    # Find all operator header files recursively
+    file(GLOB_RECURSE OPERATOR_HEADERS "${BASE_DIR}/*.hpp")
     
     # Initialize collections
     set(DISCOVERED_FUNCTIONS "")
@@ -86,7 +86,7 @@ function(generate_universal_operator_declarations OPERATOR_DIR DISCOVERED_TYPES_
                                 message(STATUS "  Found template operator function: ${FUNCTION_NAME}")
                             else()
                                 # Try regular function
-                                string(REGEX MATCH "([A-Za-z_][A-Za-z0-9_:<>&*]+)[ \t\n]+([A-Za-z_][A-Za-z0-9_]*)[ \t\n]*\\(([^)]*)\\)[ \t\n]*;" 
+                                string(REGEX MATCH "([A-Za-z_][A-Za-z0-9_:<>&*, \t]+)[ \t\n]+([A-Za-z_][A-Za-z0-9_]*)[ \t\n]*\\(([^)]*)\\)[ \t\n]*;" 
                                        REGULAR_FUNCTION_MATCH "${AFTER_CLASS_CONTENT}")
                                 
                                 if(REGULAR_FUNCTION_MATCH)
@@ -103,7 +103,7 @@ function(generate_universal_operator_declarations OPERATOR_DIR DISCOVERED_TYPES_
                         # Pattern 2: Functions without Params class (fallback)
                         if(NOT FUNCTION_FOUND)
                             # Try template function first
-                            string(REGEX MATCH "(template[ \t]*<[^>]*>)[ \t\n]*([A-Za-z_][A-Za-z0-9_:<>&*]+)[ \t\n]+([A-Za-z_][A-Za-z0-9_]*)[ \t\n]*\\(([^)]*)\\)[ \t\n]*;" 
+                            string(REGEX MATCH "(template[ \t]*<[^>]*>)[ \t\n]*([A-Za-z_][A-Za-z0-9_:<>&*, \t]+)[ \t\n]+([A-Za-z_][A-Za-z0-9_]*)[ \t\n]*\\(([^)]*)\\)[ \t\n]*;" 
                                    TEMPLATE_FUNCTION_MATCH "${FINAL_OPERATOR_CONTENT}")
                             
                             if(TEMPLATE_FUNCTION_MATCH)
@@ -115,7 +115,7 @@ function(generate_universal_operator_declarations OPERATOR_DIR DISCOVERED_TYPES_
                                 message(STATUS "  Found template operator function (no params class): ${FUNCTION_NAME}")
                             else()
                                 # Try regular function
-                                string(REGEX MATCH "([A-Za-z_][A-Za-z0-9_:<>&*]+)[ \t\n]+([A-Za-z_][A-Za-z0-9_]*)[ \t\n]*\\(([^)]*)\\)[ \t\n]*;" 
+                                string(REGEX MATCH "([A-Za-z_][A-Za-z0-9_:<>&*, \t]+)[ \t\n]+([A-Za-z_][A-Za-z0-9_]*)[ \t\n]*\\(([^)]*)\\)[ \t\n]*;" 
                                        REGULAR_FUNCTION_MATCH "${FINAL_OPERATOR_CONTENT}")
                                 
                                 if(REGULAR_FUNCTION_MATCH)
@@ -198,7 +198,14 @@ function(generate_universal_operator_declarations OPERATOR_DIR DISCOVERED_TYPES_
             list(GET FUNC_PARTS 3 FUNCTION_PARAMS)
             
             if(TEMPLATE_DIRECTIVE)
-                string(APPEND FRIENDS_CONTENT "    ${TEMPLATE_DIRECTIVE} friend ${RETURN_TYPE} Operator::${FUNCTION_NAME}(${FUNCTION_PARAMS});\n")
+                # For template functions, check if they contain FitnessResultType
+                string(FIND "${FUNCTION_PARAMS}" "FitnessResultType" CONTAINS_FITNESS_TYPE)
+                if(CONTAINS_FITNESS_TYPE GREATER -1)
+                    # Generate proper template friend declaration using the same parameter name
+                    string(APPEND FRIENDS_CONTENT "    template<typename FitnessResultType> friend ${RETURN_TYPE} Operator::${FUNCTION_NAME}(${FUNCTION_PARAMS});\n")
+                else()
+                    string(APPEND FRIENDS_CONTENT "    ${TEMPLATE_DIRECTIVE} friend ${RETURN_TYPE} Operator::${FUNCTION_NAME}(${FUNCTION_PARAMS});\n")
+                endif()
             else()
                 string(APPEND FRIENDS_CONTENT "    friend ${RETURN_TYPE} Operator::${FUNCTION_NAME}(${FUNCTION_PARAMS});\n")
             endif()

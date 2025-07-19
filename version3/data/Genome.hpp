@@ -2,6 +2,7 @@
 #pragma once
 #include <vector>
 #include <memory>
+#include <map>
 
 #include "NodeGene.hpp"
 #include "ConnectionGene.hpp"

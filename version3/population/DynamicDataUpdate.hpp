@@ -11,7 +11,25 @@
 #include "../data/GlobalIndexRegistry.hpp"
 #include "../logger/Logger.hpp"
 
-namespace Population {
+namespace Operator {
+
+class DynamicDataUpdateParams;
+
+template<typename FitnessResultType>
+void dynamicDataUpdate(
+    const std::multimap<FitnessResultType, size_t>& fitnessResults,
+    std::vector<DynamicGenomeData>& genomeData,
+    std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
+    const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGrouping,
+    const DynamicDataUpdateParams& params,
+    GlobalIndexRegistry& registry
+);
+
+// Helper function declarations
+void updateSpeciesRanking(
+    std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
+    const std::unordered_map<uint32_t, double>& speciesAverageRanks
+);
 
 class DynamicDataUpdateParams {
 public:
@@ -28,14 +46,7 @@ public:
 
 protected:
     template<typename FitnessResultType>
-    friend void dynamicDataUpdate(
-        const std::multimap<FitnessResultType, size_t>& fitnessResults,
-        std::vector<DynamicGenomeData>& genomeData,
-        std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
-        const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGrouping,
-        const DynamicDataUpdateParams& params,
-        GlobalIndexRegistry& registry
-    );
+    friend void dynamicDataUpdate(const std::multimap<FitnessResultType, size_t>& fitnessResults, std::vector<DynamicGenomeData>& genomeData, std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData, const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGrouping, const DynamicDataUpdateParams& params, GlobalIndexRegistry& registry);
 
     const uint32_t _maxGenomePendingEliminationLimit;           // Max pending elimination counter before actual elimination
     const uint32_t _maxSpeciesPendingEliminationRating;  // Max species pending elimination rating before elimination
@@ -46,13 +57,7 @@ protected:
     const uint32_t _targetPopulationSize;                // Target population size for equilibrium calculation
 };
 
-// Helper function declarations
-void updateSpeciesRanking(
-    std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
-    const std::unordered_map<uint32_t, double>& speciesAverageRanks
-);
-
-// Main operator function - templated on fitness result type
+// Template function implementation
 template<typename FitnessResultType>
 void dynamicDataUpdate(
     const std::multimap<FitnessResultType, size_t>& fitnessResults,  // Best to worst fitness with global indices
@@ -398,4 +403,4 @@ void dynamicDataUpdate(
 #endif
 }
 
-} // namespace Population
+} // namespace Operator

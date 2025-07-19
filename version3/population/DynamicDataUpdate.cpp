@@ -1,7 +1,7 @@
 #include "DynamicDataUpdate.hpp"
 #include "../logger/Logger.hpp"
 
-namespace Population {
+namespace Operator {
 
 // DynamicDataUpdateParams constructor implementation
 DynamicDataUpdateParams::DynamicDataUpdateParams(

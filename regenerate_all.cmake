@@ -35,7 +35,7 @@ generate_forward_declarations_from_types(
 
 # Phase 3: Generate universal operator declarations
 generate_universal_operator_declarations(
-    ${CMAKE_SOURCE_DIR}/version3/operator
+    ${CMAKE_SOURCE_DIR}/version3
     ${DISCOVERED_TYPES_FILE}
     ${GENERATED_OPERATOR_FORWARDS_FILE}
     ${GENERATED_OPERATOR_FRIENDS_FILE}
@@ -43,7 +43,7 @@ generate_universal_operator_declarations(
 
 # Phase 4: Generate template-specific friend declarations
 generate_template_friend_declarations(
-    ${CMAKE_SOURCE_DIR}/version3/operator
+    ${CMAKE_SOURCE_DIR}/version3
     ${DISCOVERED_TYPES_FILE}
     ${GENERATED_TEMPLATE_FRIENDS_FILE}
 )

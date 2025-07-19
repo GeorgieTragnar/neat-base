@@ -28,9 +28,9 @@ private:
 };
 
 namespace {
-    thread_local std::random_device rd;
-    thread_local std::mt19937 gen(rd());
-    thread_local std::uniform_real_distribution<double> uniform_dist(0.0, 1.0);
+    thread_local std::random_device rd_crossover;
+    thread_local std::mt19937 gen_crossover(rd_crossover());
+    thread_local std::uniform_real_distribution<double> uniform_dist_crossover(0.0, 1.0);
 }
 
 template<typename FitnessResultType>
@@ -56,7 +56,7 @@ Genome crossover(
     
     if (equalFitness) {
         // For equal fitness, randomly choose which parent contributes disjoint/excess genes
-        parentAIsFitter = uniform_dist(gen) < 0.5;
+        parentAIsFitter = uniform_dist_crossover(gen_crossover) < 0.5;
     }
     
     Genome offspring = parentAIsFitter ? parentA : parentB;
@@ -74,18 +74,18 @@ Genome crossover(
     }
 
     for (auto& nodeGene : offspring.get_nodeGenes()) {
-        if (otherNodeMap.count(nodeGene.get_historyID()) > 0 && uniform_dist(gen) < 0.5) {
+        if (otherNodeMap.count(nodeGene.get_historyID()) > 0 && uniform_dist_crossover(gen_crossover) < 0.5) {
             nodeGene.get_attributes() = otherNodeMap[nodeGene.get_historyID()]->get_attributes();
         }
     }
 
     for (auto& connGene : offspring.get_connectionGenes()) {
-        if (otherConnMap.count(connGene.get_historyID()) > 0 && uniform_dist(gen) < 0.5) {
+        if (otherConnMap.count(connGene.get_historyID()) > 0 && uniform_dist_crossover(gen_crossover) < 0.5) {
             connGene.get_attributes() = otherConnMap[connGene.get_historyID()]->get_attributes();
         }
         
         // Apply disabled gene reactivation probability
-        if (!connGene.get_attributes().enabled && uniform_dist(gen) < params._disabledGeneReactivationProbability) {
+        if (!connGene.get_attributes().enabled && uniform_dist_crossover(gen_crossover) < params._disabledGeneReactivationProbability) {
             connGene.get_attributes().enabled = true;
         }
     }

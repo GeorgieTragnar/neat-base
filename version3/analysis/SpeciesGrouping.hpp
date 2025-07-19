@@ -8,7 +8,10 @@
 #include "../data/PopulationData.hpp"
 #include "../data/GlobalIndexRegistry.hpp"
 
-namespace Population {
+namespace Operator {
+
+template<typename FitnessResultType>
+std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(const std::multimap<FitnessResultType, size_t>& fitnessResults, const std::vector<DynamicGenomeData>& genomeData, std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData, const GlobalIndexRegistry& registry);
 
 // Main operator function - templated on fitness result type
 template<typename FitnessResultType>

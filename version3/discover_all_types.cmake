@@ -6,10 +6,9 @@ function(discover_all_types SOURCE_DIR OUTPUT_FILE)
     message(STATUS "Discovering all types in: ${SOURCE_DIR}")
     message(STATUS "Output file: ${OUTPUT_FILE}")
     
-    # Find all header files in data/ and operator/ directories
+    # Find all header files in all directories under version3
     file(GLOB_RECURSE ALL_HEADERS 
-         "${SOURCE_DIR}/data/*.hpp"
-         "${SOURCE_DIR}/operator/*.hpp")
+         "${SOURCE_DIR}/*.hpp")
     
     # Initialize discovery containers
     set(ALL_DISCOVERED_TYPES "")
@@ -115,16 +114,15 @@ function(discover_all_types SOURCE_DIR OUTPUT_FILE)
     endif()
     
     # Get explicit file lists for categorization
-    file(GLOB DATA_HEADERS "${SOURCE_DIR}/data/*.hpp")
-    file(GLOB OPERATOR_HEADERS "${SOURCE_DIR}/operator/*.hpp")
+    file(GLOB_RECURSE ALL_VERSION3_HEADERS "${SOURCE_DIR}/*.hpp")
     
     # Categorize types by proper C++ scope parsing
     foreach(TYPE_NAME ${ALL_DISCOVERED_TYPES})
         set(TYPE_FOUND FALSE)
         
-        # Check if type is defined in data/ folder
-        foreach(DATA_FILE ${DATA_HEADERS})
-            file(READ "${DATA_FILE}" FILE_CONTENT)
+        # Check if type is defined in any version3 file
+        foreach(HEADER_FILE ${ALL_VERSION3_HEADERS})
+            file(READ "${HEADER_FILE}" FILE_CONTENT)
             
             # Look for the actual definition (not just any occurrence)
             string(REGEX MATCH "(^|[\n])[ \t]*(class|struct|enum[ \t]+class)[ \t]+${TYPE_NAME}[ \t]*[{;]" DEF_MATCH "${FILE_CONTENT}")
@@ -175,49 +173,6 @@ function(discover_all_types SOURCE_DIR OUTPUT_FILE)
                 break()
             endif()
         endforeach()
-        
-        # If not found in data/, check operator files
-        if(NOT TYPE_FOUND)
-            foreach(OP_FILE ${OPERATOR_HEADERS})
-                file(READ "${OP_FILE}" FILE_CONTENT)
-                
-                # Look for definition in operator files
-                string(REGEX MATCH "(^|[\n])[ \t]*(class|struct|enum[ \t]+class)[ \t]+${TYPE_NAME}[ \t]*[{;]" DEF_MATCH "${FILE_CONTENT}")
-                
-                if(DEF_MATCH)
-                    # Extract the type keyword
-                    string(REGEX MATCH "(class|struct|enum[ \t]+class)" TYPE_KEYWORD "${DEF_MATCH}")
-                    
-                    # Check if this is a nested class
-                    string(FIND "${FILE_CONTENT}" "${DEF_MATCH}" DEF_POS)
-                    string(SUBSTRING "${FILE_CONTENT}" 0 ${DEF_POS} CONTENT_BEFORE)
-                    
-                    # Count unmatched opening braces from class definitions
-                    string(REGEX MATCHALL "(^|[\n])[ \t]*(class|struct)[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*\\{" CLASS_OPENS "${CONTENT_BEFORE}")
-                    string(REGEX MATCHALL "\\}" BRACE_CLOSES "${CONTENT_BEFORE}")
-                    
-                    list(LENGTH CLASS_OPENS OPEN_COUNT)
-                    list(LENGTH BRACE_CLOSES CLOSE_COUNT)
-                    
-                    # If more class opens than total closes, we're nested
-                    if(OPEN_COUNT GREATER CLOSE_COUNT)
-                        message(STATUS "  Skipping nested class ${TYPE_NAME} in operator files (cannot be forward declared)")
-                        # Don't add nested types to any category
-                    else()
-                        # Check if it's an enum class
-                        if(TYPE_KEYWORD MATCHES "enum[ \t]+class")
-                            list(APPEND OPERATOR_TYPES "${TYPE_NAME}:ENUM")
-                            message(STATUS "  Found enum class ${TYPE_NAME} in Operator namespace")
-                        else()
-                            list(APPEND OPERATOR_TYPES "${TYPE_NAME}")
-                            message(STATUS "  Found ${TYPE_KEYWORD} ${TYPE_NAME} in Operator namespace")
-                        endif()
-                    endif()
-                    set(TYPE_FOUND TRUE)
-                    break()
-                endif()
-            endforeach()
-        endif()
         
         if(NOT TYPE_FOUND)
             message(STATUS "  Warning: Could not determine namespace for type ${TYPE_NAME}")
