@@ -6,6 +6,7 @@
 #include <memory>
 #include <unordered_map>
 #include <map>
+#include <functional>
 
 #include "data_forward_declarations.inc"
 #include "operator_forward_declarations.inc"

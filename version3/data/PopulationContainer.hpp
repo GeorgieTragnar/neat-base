@@ -5,7 +5,9 @@
 #include <map>
 #include <cstdint>
 #include <cassert>
+#include <functional>
 
+#include "PopulationData.hpp"
 #include "GlobalIndexRegistry.hpp"
 
 #include "data_forward_declarations.inc"
@@ -13,9 +15,6 @@
 
 // Forward declarations
 class Genome;
-
-// Forward declarations
-struct DynamicGenomeData;
 
 template<typename FitnessResultType>
 class PopulationContainer {

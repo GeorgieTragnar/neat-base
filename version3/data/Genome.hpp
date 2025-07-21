@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <map>
+#include <functional>
 
 #include "NodeGene.hpp"
 #include "ConnectionGene.hpp"

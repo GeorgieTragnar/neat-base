@@ -26,7 +26,6 @@
 #include "evolution/PlotCrossover.hpp"
 #include "analysis/CompatibilityDistance.hpp"
 #include "evolution/Crossover.hpp"
-#include "evolution/CrossoverManagement.hpp"
 #include "validation/CycleDetection.hpp"
 #include "evolution/NodeMutation.hpp"
 #include "evolution/ConnectionMutation.hpp"
@@ -366,11 +365,6 @@ int main(int argc, char* argv[])
         );
         
         // Create evolution prototype
-        // Create CrossoverManagementParams
-        Operator::CrossoverManagementParams crossoverManagementParams(
-            crossoverOperatorParams,
-            cycleDetectionParams
-        );
         
         Evolution::EvolutionPrototype<DoubleFitnessResult> evolution(
             std::move(fitnessStrategy),
@@ -388,7 +382,6 @@ int main(int argc, char* argv[])
             nodeMutationParams,
             connectionMutationParams,
             connectionReactivationParams,
-            crossoverManagementParams,
             randomSeed
         );
         

@@ -6,7 +6,6 @@ namespace Operator {
 
 class CycleDetectionParams;
 
-// Cycle detection function - detects cycles in enabled connection graph
 bool hasCycles(const Genome& genome, const CycleDetectionParams& params);
 
 class CycleDetectionParams {

@@ -21,7 +21,9 @@
 // Operators
 #include "version3/population/Init.hpp"
 #include "version3/evolution/Crossover.hpp"
-#include "version3/evolution/CrossoverManagement.hpp"
+#include "version3/population/FitnessExtraction.hpp"
+#include "version3/population/CreateCrossoverDynamicData.hpp"
+#include "version3/population/GenomePlacement.hpp"
 #include "version3/evolution/WeightMutation.hpp"
 #include "version3/evolution/ConnectionMutation.hpp"
 #include "version3/evolution/NodeMutation.hpp"
@@ -125,7 +127,6 @@ public:
         const Operator::NodeMutationParams& nodeMutationParams,
         const Operator::ConnectionMutationParams& connectionMutationParams,
         const Operator::ConnectionReactivationParams& connectionReactivationParams,
-        const Operator::CrossoverManagementParams& crossoverManagementParams,
         uint32_t randomSeed = std::random_device{}()
     );
 
@@ -157,7 +158,6 @@ private:
     Operator::NodeMutationParams _nodeMutationParams;
     Operator::ConnectionMutationParams _connectionMutationParams;
     Operator::ConnectionReactivationParams _connectionReactivationParams;
-    Operator::CrossoverManagementParams _crossoverManagementParams;
     std::mt19937 _rng;
 
     // Fitness progression tracking
@@ -183,7 +183,6 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     const Operator::NodeMutationParams& nodeMutationParams,
     const Operator::ConnectionMutationParams& connectionMutationParams,
     const Operator::ConnectionReactivationParams& connectionReactivationParams,
-    const Operator::CrossoverManagementParams& crossoverManagementParams,
     uint32_t randomSeed
 ) : _fitnessStrategy(std::move(fitnessStrategy)),
     _targetPopulationSize(targetPopulationSize),
@@ -200,7 +199,6 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     _nodeMutationParams(nodeMutationParams),
     _connectionMutationParams(connectionMutationParams),
     _connectionReactivationParams(connectionReactivationParams),
-    _crossoverManagementParams(crossoverManagementParams),
     _rng(randomSeed),
     _historyTracker(std::make_shared<HistoryTracker>()),
     _globalIndexRegistry(0),  // Start with size 0, will grow as needed
@@ -817,13 +815,40 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         // Phase 5: Crossover Replacement - Replace eliminated genomes with crossover offspring
         for (const auto& [parentAIndex, parentBIndex] : crossoverPairs) {
-            Operator::crossoverManagement(
+            // Get parent genomes and data
+            const auto& parentGenomes = _populationContainer.getGenomes(_generation);
+            const auto& parentGenomeData = _populationContainer.getGenomeData(_generation);
+            const Genome& parentA = parentGenomes[parentAIndex];
+            const Genome& parentB = parentGenomes[parentBIndex];
+            const DynamicGenomeData& parentAData = parentGenomeData[parentAIndex];
+            const DynamicGenomeData& parentBData = parentGenomeData[parentBIndex];
+            
+            // Extract fitness values
+            auto [fitnessA, fitnessB] = Operator::fitnessExtraction(
+                _populationContainer, parentAIndex, parentBIndex, _generation);
+            
+            // Place crossover result with metadata creation and post-placement logic
+            Operator::genomePlacement(
                 _populationContainer,
                 _globalIndexRegistry,
-                parentAIndex,
-                parentBIndex,
-                _generation,
-                _crossoverManagementParams
+                Operator::crossover(parentA, fitnessA, parentB, fitnessB, _crossoverOperatorParams),
+                [&](const Genome& offspring, size_t placementIndex) {
+                    // Create metadata
+                    uint32_t speciesId = Operator::compatibilityDistance(
+                        offspring, _historyTracker, _compatibilityParams);
+                    bool hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
+                    DynamicGenomeData metadata = Operator::createCrossoverDynamicData(
+                        parentAData, parentBData, parentAIndex, parentBIndex, 
+                        speciesId, hasCycles);
+                    
+                    // Post-placement logic (will execute after genome is placed)
+                    if (!hasCycles) {
+                        Operator::phenotypeConstruct(_populationContainer, placementIndex, _generation);
+                    }
+                    
+                    return metadata;
+                },
+                _generation
             );
         }
         
