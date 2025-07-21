@@ -6,21 +6,26 @@
 #include <map>
 #include <cassert>
 #include "../data/PopulationData.hpp"
+#include "../data/PopulationContainer.hpp"
 #include "../data/GlobalIndexRegistry.hpp"
 
 namespace Operator {
 
 template<typename FitnessResultType>
-std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(const std::multimap<FitnessResultType, size_t>& fitnessResults, const std::vector<DynamicGenomeData>& genomeData, std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData, const GlobalIndexRegistry& registry);
+std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(const PopulationContainer<FitnessResultType>& container, uint32_t generation, std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData, const GlobalIndexRegistry& registry);
 
 // Main operator function - templated on fitness result type
 template<typename FitnessResultType>
 std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
-    const std::multimap<FitnessResultType, size_t>& fitnessResults,
-    const std::vector<DynamicGenomeData>& genomeData,
+    const PopulationContainer<FitnessResultType>& container,
+    uint32_t generation,
     std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
     const GlobalIndexRegistry& registry
 ) {
+    // Get data from container
+    const auto& fitnessResults = container.getFitnessResults(generation);
+    const auto& genomeData = container.getGenomeData(generation);
+    
     assert(!fitnessResults.empty());
     
     std::unordered_map<uint32_t, std::vector<size_t>> speciesIndices;

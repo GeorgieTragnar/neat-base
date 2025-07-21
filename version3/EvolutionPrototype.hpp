@@ -245,7 +245,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
             _populationContainer,
             _globalIndexRegistry,
             std::move(newGenome),
-            [this, &speciationControl](const Genome& genome, size_t placedIndex) -> DynamicGenomeData {
+            [this](const Genome& genome, size_t placedIndex) -> DynamicGenomeData {
                 // Construct phenotype for the placed genome
                 Operator::phenotypeConstruct(_populationContainer, placedIndex, 0);
                 
@@ -291,7 +291,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     }
     
     // Bootstrap elite selection: establish initial elites for each species
-    auto initialSpeciesGrouping = Operator::speciesGrouping(currentFitnessResults, currentGenomeData, _speciesData, _globalIndexRegistry);
+    auto initialSpeciesGrouping = Operator::speciesGrouping(_populationContainer, _generation, _speciesData, _globalIndexRegistry);
     Operator::plotElites(initialSpeciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
     
     _generation = 0;
@@ -629,7 +629,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         const auto& lastFitnessResults = _populationContainer.getLastFitnessResults(_generation);
         auto& lastGenomeDataForUpdate = _populationContainer.getLastGenomeData(_generation);
         
-        auto speciesGrouping = Operator::speciesGrouping(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, _globalIndexRegistry);
+        auto speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation - 1, _speciesData, _globalIndexRegistry);
 
         // Assert that all genomes in species grouping have empty deltas
         for (const auto& [speciesId, indices] : speciesGrouping) {
@@ -659,7 +659,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         Operator::dynamicDataUpdate(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, speciesGrouping, _updateParams, _globalIndexRegistry);
         
-        speciesGrouping = Operator::speciesGrouping(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, _globalIndexRegistry);
+        speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation - 1, _speciesData, _globalIndexRegistry);
 
         // DEBUG: Verify all active species appear in the grouping
         for (const auto& [speciesId, speciesData] : _speciesData) {
@@ -682,30 +682,6 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         // Phase 3.5: Elite Selection - Mark elites in global registry for protection during 1:1 evolution
         Operator::plotElites(speciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
-        
-        // // ELITE_TRACK: Log all genomes marked as Elite after elite selection
-        // std::vector<uint32_t> currentElites;
-        // std::unordered_map<uint32_t, std::vector<uint32_t>> elitesBySpecies;
-        // for (size_t i = 0; i < currentGenomeData.size(); ++i) {
-        //     if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
-        //         currentElites.push_back(i);
-        //         uint32_t speciesId = currentGenomeData[i].speciesId;
-        //         elitesBySpecies[speciesId].push_back(i);
-                
-        //         // Find fitness for this elite
-        //         FitnessResultType eliteFitness{};
-        //         for (const auto& [fitness, globalIndex] : currentFitnessResults) {
-        //             if (globalIndex == i) {
-        //                 eliteFitness = fitness;
-        //                 break;
-        //             }
-        //         }
-        //         LOG_DEBUG("ELITE_TRACK: Generation {} - Elite genome {} in species {} with fitness {:.3f}", 
-        //                  generation, i, speciesId, eliteFitness.getValue());
-        //     }
-        // }
-        // LOG_DEBUG("ELITE_TRACK: Generation {} - Total {} elites across {} species", 
-        //          generation, currentElites.size(), elitesBySpecies.size());
         
         // Phase 4: Crossover Planning
         // Plot crossover pairs for later use
@@ -807,55 +783,6 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 }
             }
         }
-
-        // // Count eliminated genomes for statistics (no longer collecting indices)
-        // std::unordered_map<uint32_t, size_t> eliminatedBySpecies;
-        // size_t eliminatedUnderRepair = 0;
-        // size_t totalEliminated = 0;
-        
-        // for (size_t i = 0; i < currentGenomeData.size(); ++i) {
-        //     const auto& genomeData = currentGenomeData[i];
-        //     if (_globalIndexRegistry.getState(i) != GenomeState::Active) {
-        //         totalEliminated++;
-        //         eliminatedBySpecies[genomeData.speciesId]++;
-        //         if (genomeData.isUnderRepair) eliminatedUnderRepair++;
-                
-        //         // Get fitness for detailed logging
-        //         FitnessResultType eliminatedFitness{};
-        //         for (const auto& [fitness, globalIndex] : currentFitnessResults) {
-        //             if (globalIndex == i) {
-        //                 eliminatedFitness = fitness;
-        //                 break;
-        //             }
-        //         }
-                
-        //         // LOG_TRACE("ELIMINATED GENOME {}: species={}, pendingEliminationCounter={}, fitness={:.3f}, underRepair={}", 
-        //         //          i, genomeData.speciesId, genomeData.pendingEliminationCounter, eliminatedFitness.getValue(), genomeData.isUnderRepair);
-        //     }
-        // }
-        
-        // LOG_DEBUG("Generation {}: Found {} elites, {} crossover pairs, {} eliminated genomes ({}% population)", 
-        //     generation, eliteIndices.size(), crossoverPairs.size(), totalEliminated, 
-        //     (totalEliminated * 100.0) / currentGenomeData.size());
-        
-        // Log current generation state after mutation but before elite/crossover
-        // logPopulationState("POST-MUTATION - last", generation, _generation - 1);
-        // logPopulationState("POST-MUTATION - current", generation, _generation);
-        
-        // // Log elimination distribution by species
-        // if (!eliminatedBySpecies.empty()) {
-        //     std::vector<std::pair<uint32_t, size_t>> elimBySpecies(eliminatedBySpecies.begin(), eliminatedBySpecies.end());
-        //     std::sort(elimBySpecies.begin(), elimBySpecies.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
-            
-        //     std::string elimBySpeciesStr = "[";
-        //     for (size_t i = 0; i < elimBySpecies.size(); ++i) {
-        //         if (i > 0) elimBySpeciesStr += ", ";
-        //         elimBySpeciesStr += fmt::format("{}:{}", elimBySpecies[i].first, elimBySpecies[i].second);
-        //     }
-        //     elimBySpeciesStr += "]";
-        //     // LOG_DEBUG("ELIMINATION DISTRIBUTION: {} under repair, by species: {}", 
-        //     //           eliminatedUnderRepair, elimBySpeciesStr);
-        // }
         
         // Phase 5: Crossover Replacement - Replace eliminated genomes with crossover offspring
         for (const auto& [parentAIndex, parentBIndex] : crossoverPairs) {
@@ -892,7 +819,9 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                     
                     return metadata;
                 },
-                _generation
+                _generation,
+                _fitnessStrategy,
+                speciationControl
             );
         }
         

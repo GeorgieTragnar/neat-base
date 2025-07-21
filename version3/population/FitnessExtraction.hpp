@@ -23,7 +23,9 @@ std::pair<FitnessResultType, FitnessResultType> fitnessExtraction(
     const size_t& parentBIndex,
     const uint32_t& generation
 ) {
-    const auto& fitnessResults = container.getFitnessResults(generation);
+    // Get parent fitness from previous generation (where it was calculated)
+    const auto& fitnessResults = container.getLastFitnessResults(generation);
+    // But validate indices against current generation (where parents exist)
     const auto& genomes = container.getGenomes(generation);
     
     // Validate parent indices
