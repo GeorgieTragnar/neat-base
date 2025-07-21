@@ -24,6 +24,7 @@
 #include "version3/population/FitnessExtraction.hpp"
 #include "version3/population/CreateCrossoverDynamicData.hpp"
 #include "version3/population/GenomePlacement.hpp"
+#include "version3/evolution/MutationPlacement.hpp"
 #include "version3/evolution/WeightMutation.hpp"
 #include "version3/evolution/ConnectionMutation.hpp"
 #include "version3/evolution/NodeMutation.hpp"
@@ -45,6 +46,10 @@
 #include "version3/population/PlotElites.hpp"
 #include "version3/evolution/PlotCrossover.hpp"
 #include "version3/data/GlobalIndexRegistry.hpp"
+#include "version3/phenotype/PhenotypeConstruct.hpp"
+#include "version3/phenotype/PhenotypeUpdateWeight.hpp"
+#include "version3/phenotype/PhenotypeUpdateNode.hpp"
+#include "version3/phenotype/PhenotypeUpdateConnection.hpp"
 
 #include "logger/Logger.hpp"
 
@@ -229,71 +234,52 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     // Reserve capacity for initial population
     _populationContainer.reserveCapacity(_targetPopulationSize);
     
-    // Create initial genome
-    Genome initialGenome = Operator::init(_historyTracker, _initParams);
-    Operator::phenotypeConstruct(initialGenome);
-    
-    // Determine species assignment
-    uint32_t speciesId = Operator::compatibilityDistance(
-        initialGenome, 
-        _historyTracker, 
-        _compatibilityParams
-    );
-    
-    // Create genome metadata
-    DynamicGenomeData genomeData;
-    genomeData.speciesId = speciesId;
-    genomeData.pendingEliminationCounter = 0;
-    genomeData.isUnderRepair = false;
-    genomeData.isMarkedForElimination = false;
-    genomeData.parentAIndex = UINT32_MAX;  // Initial genome has no parents
-    genomeData.parentBIndex = UINT32_MAX;
-    
-    // Add initial genome to population
-    uint32_t initialGenomeIndex = _populationContainer.push_back(0, std::move(initialGenome), std::move(genomeData));
-
-    // Bootstrap population by replicating initial genome to target size
-    auto& currentGenomes = _populationContainer.getCurrentGenomes(0);
-    auto& currentGenomeData = _populationContainer.getCurrentGenomeData(0);
+    // Get fitness results container for evaluation
     auto& currentFitnessResults = _populationContainer.getCurrentFitnessResults(0);
     
-    const Genome& initialGenomeRef = currentGenomes[initialGenomeIndex];
-    const DynamicGenomeData& initialDataRef = currentGenomeData[initialGenomeIndex];
-    
-    // Evaluate fitness for initial genome
-    FitnessResultType initialFitness = _fitnessStrategy->evaluate(initialGenomeRef.get_phenotype(), speciationControl);
-    currentFitnessResults.insert({initialFitness, initialGenomeIndex});
-    
-    // Create remaining genomes with proper species assignment
-    for (uint32_t i = 1; i < _targetPopulationSize; ++i) {
-        // Create new genome with randomized weights
+    // Bootstrap population using genomePlacement operator
+    for (uint32_t i = 0; i < _targetPopulationSize; ++i) {
+        // Create new genome for bootstrap
         Genome newGenome = Operator::init(_historyTracker, _initParams);
-        Operator::phenotypeConstruct(newGenome);
         
-        // Determine proper species assignment for this genome
-        uint32_t newSpeciesId = Operator::compatibilityDistance(
-            newGenome, 
-            _historyTracker, 
-            _compatibilityParams
+        // Use genomePlacement with lambda for complete setup
+        Operator::genomePlacement<FitnessResultType>(
+            _populationContainer,
+            _globalIndexRegistry,
+            std::move(newGenome),
+            [this, &speciationControl, &currentFitnessResults](const Genome& genome, size_t placedIndex) -> DynamicGenomeData {
+                // Construct phenotype for the placed genome
+                Operator::phenotypeConstruct(_populationContainer, placedIndex, 0);
+                
+                // Calculate species assignment
+                uint32_t speciesId = Operator::compatibilityDistance(
+                    genome, 
+                    _historyTracker, 
+                    _compatibilityParams
+                );
+                
+                // Evaluate fitness and add to results
+                FitnessResultType fitness = _fitnessStrategy->evaluate(genome.get_phenotype(), speciationControl);
+                currentFitnessResults.insert({fitness, placedIndex});
+                
+                // Create and return complete metadata
+                DynamicGenomeData metadata;
+                metadata.speciesId = speciesId;
+                metadata.pendingEliminationCounter = 0;
+                metadata.isUnderRepair = false;
+                metadata.isMarkedForElimination = false;
+                metadata.parentAIndex = UINT32_MAX;  // Bootstrap genomes have no parents
+                metadata.parentBIndex = UINT32_MAX;
+                
+                return metadata;
+            },
+            0  // generation 0
         );
-        
-        // Create genome metadata with correct species assignment
-        DynamicGenomeData newGenomeData;
-        newGenomeData.speciesId = newSpeciesId;
-        newGenomeData.pendingEliminationCounter = 0;
-        newGenomeData.isUnderRepair = false;
-        newGenomeData.isMarkedForElimination = false;
-        newGenomeData.parentAIndex = UINT32_MAX;  // Initial genomes have no parents
-        newGenomeData.parentBIndex = UINT32_MAX;
-        
-        // Add genome to population
-        uint32_t newGenomeIndex = _populationContainer.push_back(0, std::move(newGenome), std::move(newGenomeData));
-        
-        const Genome& newGenomeC = currentGenomes[newGenomeIndex];
-        // Evaluate fitness for this genome
-        FitnessResultType genomeFitness = _fitnessStrategy->evaluate(newGenomeC.get_phenotype(), speciationControl);
-        currentFitnessResults.insert({genomeFitness, newGenomeIndex});
     }
+    
+    // Get references for validation and elite selection
+    const auto& currentGenomes = _populationContainer.getCurrentGenomes(0);
+    const auto& currentGenomeData = _populationContainer.getCurrentGenomeData(0);
     
     // Bootstrap validation: verify species assignments are correct
     for (size_t i = 0; i < currentGenomes.size(); ++i) {
@@ -430,108 +416,171 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 continue;
             }
             
-            // Create corresponding genome data
-            DynamicGenomeData offspringData = parentData;
-            offspringData.parentAIndex = i;  // Parent index from last generation
-            offspringData.parentBIndex = UINT32_MAX;  // Single parent (not crossover)
-            
-            bool hasCycles = false;
-            
-            // Copy parent genome
-            Genome offspring = parentGenome;
-            
-            // Check if parent is elite - if so, copy as-is without mutation
+            // CASE 1: Elite Genomes
             if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
-                // Elite protection: copy as-is without any mutation
-                offspring = parentGenome;
-                hasCycles = false; // Elites are assumed to be cycle-free
-                offspringData.isUnderRepair = false;
-                
-                // Assert that elite copy is identical
-                assert(Operator::genomeEquals(parentGenome, offspring) && "Elite genome copy should be identical to parent");
-            } else if (parentData.isUnderRepair) {
-                offspring = Operator::repair(offspring, offspringData, _repairParams, _globalIndexRegistry, i);
-                
-                // Check if repair was successful
-                hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
-                
-                if (!hasCycles) {
-                    // Repair successful - no longer under repair
-                    offspringData.isUnderRepair = false;
-                } else {
-                    // Repair failed - still under repair
-                    offspringData.isUnderRepair = true;
-                }
-            } else {
-                // Normal evolution path - apply mutations based on probability
-                std::uniform_real_distribution<double> dist(0.0, 1.0);
-                double random = dist(_rng);
-                
-                if (random < _mutationParams.weightMutationProbability) {
-                    // Weight mutation
-                    offspring = Operator::weightMutation(offspring, _weightMutationParams);
-                    hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
-                    if (!hasCycles) {
-                        Operator::phenotypeUpdateWeight(offspring);
+                Operator::mutationPlacement(_populationContainer, i, _generation,
+                    Genome(parentGenome), // Copy without mutation
+                    parentData,
+                    [&](Genome& genome, DynamicGenomeData& data) {
+                        // Elite lambda: minimal updates
+                        // Species ID preserved from parent
+                        data.isUnderRepair = false;
+                        // No phenotype update needed - elite genomes unchanged
+                        assert(Operator::genomeEquals(parentGenome, genome) && "Elite genome copy should be identical to parent");
                     }
-                } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability) {
-                    // Node mutation
-                    // Check if genome has any active connections using analytical operator
-                    if (Operator::hasActiveConnections(offspring)) {
-                        offspring = Operator::nodeMutation(offspring, _historyTracker, _nodeMutationParams);
-                        hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
-                        if (!hasCycles) {
-                            Operator::phenotypeUpdateNode(offspring);
+                );
+                continue;
+            }
+            
+            // CASE 2: Repair Genomes
+            if (parentData.isUnderRepair) {
+                DynamicGenomeData repairData = parentData; // For repair operator
+                Genome repaired = Operator::repair(parentGenome, repairData, _repairParams, _globalIndexRegistry, i);
+                
+                Operator::mutationPlacement(_populationContainer, i, _generation,
+                    std::move(repaired),
+                    parentData,
+                    [&](Genome& genome, DynamicGenomeData& data) {
+                        // Repair lambda: check if repair successful
+                        bool stillHasCycles = Operator::hasCycles(genome, _cycleDetectionParams);
+                        data.isUnderRepair = stillHasCycles;
+                        
+                        if (!stillHasCycles) {
+                            // Repair successful - recalculate species and rebuild phenotype
+                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                            Operator::phenotypeConstruct(_populationContainer, i, _generation);
+                        }
+                        // If still has cycles, keep existing species ID and no phenotype update
+                    }
+                );
+                continue;
+            }
+            
+            // CASE 3: Normal Mutations
+            std::uniform_real_distribution<double> dist(0.0, 1.0);
+            double random = dist(_rng);
+            
+            if (random < _mutationParams.weightMutationProbability) {
+                // Weight Mutation
+                Genome mutated = Operator::weightMutation(parentGenome, _weightMutationParams);
+                
+                Operator::mutationPlacement(_populationContainer, i, _generation,
+                    std::move(mutated),
+                    parentData,
+                    [&](Genome& genome, DynamicGenomeData& data) {
+                        // Weight mutation lambda
+                        data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                        data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+                        
+                        if (!data.isUnderRepair) {
+                            Operator::phenotypeUpdateWeight(_populationContainer, i, _generation);
                         }
                     }
-                    // If no active connections, offspring remains unchanged
-                } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability + _mutationParams.connectionMutationProbability) {
-                    // Connection mutation - check if new connections are possible
-                    if (Operator::hasPossibleConnections(offspring)) {
-                        offspring = Operator::connectionMutation(offspring, _historyTracker, _connectionMutationParams);
-                        hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
-                        if (!hasCycles) {
-                            Operator::phenotypeUpdateConnection(offspring);
-                        }
-                    } else {
-                        // Fallback to weight mutation when no connections possible
-                        offspring = Operator::weightMutation(offspring, _weightMutationParams);
-                        hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
-                        if (!hasCycles) {
-                            Operator::phenotypeUpdateWeight(offspring);
-                        }
-                    }
-                } else {
-                    // Connection reactivation
-                    // Check if genome has any disabled connections using analytical operator
+                );
+                
+            } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability) {
+                // Node Mutation
+                if (Operator::hasActiveConnections(parentGenome)) {
+                    Genome mutated = Operator::nodeMutation(parentGenome, _historyTracker, _nodeMutationParams);
                     
-                    if (Operator::hasDisabledConnections(offspring)) {
-                        offspring = Operator::connectionReactivation(offspring, _connectionReactivationParams);
-                        hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
-                        if (!hasCycles) {
-                            Operator::phenotypeUpdateConnection(offspring);
+                    Operator::mutationPlacement(_populationContainer, i, _generation,
+                        std::move(mutated),
+                        parentData,
+                        [&](Genome& genome, DynamicGenomeData& data) {
+                            // Node mutation lambda
+                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                            data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+                            
+                            if (!data.isUnderRepair) {
+                                Operator::phenotypeUpdateNode(_populationContainer, i, _generation);
+                            }
                         }
-                    } else {
-                        // Fallback to weight mutation
-                        offspring = Operator::weightMutation(offspring, _weightMutationParams);
-                        hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
-                        if (!hasCycles) {
-                            Operator::phenotypeUpdateWeight(offspring);
+                    );
+                } else {
+                    // No active connections - copy parent as-is
+                    Operator::mutationPlacement(_populationContainer, i, _generation,
+                        Genome(parentGenome),
+                        parentData,
+                        [&](Genome& genome, DynamicGenomeData& data) {
+                            // No mutation possible lambda - species and repair status unchanged
                         }
-                    }
+                    );
+                }
+                
+            } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability + _mutationParams.connectionMutationProbability) {
+                // Connection Mutation
+                if (Operator::hasPossibleConnections(parentGenome)) {
+                    Genome mutated = Operator::connectionMutation(parentGenome, _historyTracker, _connectionMutationParams);
+                    
+                    Operator::mutationPlacement(_populationContainer, i, _generation,
+                        std::move(mutated),
+                        parentData,
+                        [&](Genome& genome, DynamicGenomeData& data) {
+                            // Connection mutation lambda
+                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                            data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+                            
+                            if (!data.isUnderRepair) {
+                                Operator::phenotypeUpdateConnection(_populationContainer, i, _generation);
+                            }
+                        }
+                    );
+                } else {
+                    // Fallback to weight mutation when no connections possible
+                    Genome mutated = Operator::weightMutation(parentGenome, _weightMutationParams);
+                    
+                    Operator::mutationPlacement(_populationContainer, i, _generation,
+                        std::move(mutated),
+                        parentData,
+                        [&](Genome& genome, DynamicGenomeData& data) {
+                            // Fallback weight mutation lambda
+                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                            data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+                            
+                            if (!data.isUnderRepair) {
+                                Operator::phenotypeUpdateWeight(_populationContainer, i, _generation);
+                            }
+                        }
+                    );
+                }
+                
+            } else {
+                // Connection Reactivation
+                if (Operator::hasDisabledConnections(parentGenome)) {
+                    Genome mutated = Operator::connectionReactivation(parentGenome, _connectionReactivationParams);
+                    
+                    Operator::mutationPlacement(_populationContainer, i, _generation,
+                        std::move(mutated),
+                        parentData,
+                        [&](Genome& genome, DynamicGenomeData& data) {
+                            // Reactivation lambda
+                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                            data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+                            
+                            if (!data.isUnderRepair) {
+                                Operator::phenotypeUpdateConnection(_populationContainer, i, _generation);
+                            }
+                        }
+                    );
+                } else {
+                    // Fallback to weight mutation
+                    Genome mutated = Operator::weightMutation(parentGenome, _weightMutationParams);
+                    
+                    Operator::mutationPlacement(_populationContainer, i, _generation,
+                        std::move(mutated),
+                        parentData,
+                        [&](Genome& genome, DynamicGenomeData& data) {
+                            // Final fallback weight mutation lambda
+                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                            data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+                            
+                            if (!data.isUnderRepair) {
+                                Operator::phenotypeUpdateWeight(_populationContainer, i, _generation);
+                            }
+                        }
+                    );
                 }
             }
-            
-            // Mark as under repair if cycles detected
-            if (hasCycles) {
-                offspringData.isUnderRepair = true;
-            } else {
-                offspringData.isUnderRepair = false;
-            }
-            
-            // Add to current generation
-            currentGenomes[i] = std::move(offspring);
-            currentGenomeData[i] = offspringData;
         }
 
         // Phase 2: Fitness Evaluation - Build fitness results multimap

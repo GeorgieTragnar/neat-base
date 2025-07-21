@@ -14,9 +14,9 @@ void mutationPlacement(
     PopulationContainer<FitnessResultType>& container,
     const size_t& targetIndex,
     const uint32_t& currentGeneration,
-    const std::function<Genome(const Genome&)>& mutationFunction,
-    const Genome& parentGenome,
-    const DynamicGenomeData& parentData
+    Genome offspring,
+    const DynamicGenomeData& parentData,
+    std::function<void(Genome&, DynamicGenomeData&)> postPlacementOperator
 );
 
 template<typename FitnessResultType>
@@ -24,9 +24,9 @@ void mutationPlacement(
     PopulationContainer<FitnessResultType>& container,
     const size_t& targetIndex,
     const uint32_t& currentGeneration,
-    const std::function<Genome(const Genome&)>& mutationFunction,
-    const Genome& parentGenome,
-    const DynamicGenomeData& parentData
+    Genome offspring,
+    const DynamicGenomeData& parentData,
+    std::function<void(Genome&, DynamicGenomeData&)> postPlacementOperator
 ) {
     // Validate generation bounds
     assert(currentGeneration > 0 && 
@@ -42,18 +42,19 @@ void mutationPlacement(
     assert(currentGenomes.size() == currentGenomeData.size() && 
            "mutationPlacement: Genome and data vectors must have equal size");
     
-    // Execute the mutation function on parent genome
-    Genome offspring = mutationFunction(parentGenome);
-    
-    // Create offspring metadata based on parent data
-    DynamicGenomeData offspringData = parentData;
-    offspringData.parentAIndex = static_cast<uint32_t>(targetIndex);  // Same index in last generation
-    offspringData.parentBIndex = UINT32_MAX;                          // Single parent (not crossover)
-    // Note: isUnderRepair and other flags will be updated by other operators
-    
-    // Place offspring and metadata directly into container at target index
+    // Copy parent data and place genome with move semantics
+    currentGenomeData[targetIndex] = parentData;
     currentGenomes[targetIndex] = std::move(offspring);
-    currentGenomeData[targetIndex] = offspringData;
+    
+    // MutationPlacement operator handles parent index setup
+    currentGenomeData[targetIndex].parentAIndex = static_cast<uint32_t>(targetIndex);  // Same index in last generation
+    currentGenomeData[targetIndex].parentBIndex = UINT32_MAX;                          // Single parent (not crossover)
+    
+    // Execute post-placement operations (species assignment, cycle detection, phenotype updates, etc.)
+    postPlacementOperator(
+        currentGenomes[targetIndex],
+        currentGenomeData[targetIndex]
+    );
 }
 
 } // namespace Operator

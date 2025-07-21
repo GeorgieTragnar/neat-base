@@ -38,11 +38,17 @@ inline void genomePlacement(
         actualIndex = container.getGenomes(currentGeneration).size();
         LOG_DEBUG("genomePlacement: Adding new genome to population at index {}", actualIndex);
         
-        // Create metadata with knowledge of placement index
-        DynamicGenomeData metadata = metadataCreator(genome, actualIndex);
+        // Add genome to container first with placeholder metadata
+        DynamicGenomeData placeholderMetadata{};
+        container.push_back(currentGeneration, std::move(genome), std::move(placeholderMetadata));
         
-        // Add to container
-        container.push_back(currentGeneration, std::move(genome), std::move(metadata));
+        // Get reference to placed genome and create actual metadata
+        auto& genomes = container.getGenomes(currentGeneration);
+        auto& genomeData = container.getGenomeData(currentGeneration);
+        DynamicGenomeData metadata = metadataCreator(genomes[actualIndex], actualIndex);
+        
+        // Update with actual metadata
+        genomeData[actualIndex] = std::move(metadata);
         
     } else {
         // Using existing ReadyForReplacement slot
@@ -54,13 +60,16 @@ inline void genomePlacement(
         assert(state == GenomeState::ReadyForReplacement && 
                "genomePlacement: Attempted to replace genome that is not marked ReadyForReplacement");
         
-        // Create metadata with knowledge of placement index
-        DynamicGenomeData metadata = metadataCreator(genome, actualIndex);
-        
-        // Replace in container
+        // Replace genome in container first with placeholder metadata
         auto& genomes = container.getGenomes(currentGeneration);
         auto& genomeData = container.getGenomeData(currentGeneration);
         genomes[targetIndex] = std::move(genome);
+        genomeData[targetIndex] = DynamicGenomeData{};  // Placeholder
+        
+        // Create actual metadata with placed genome
+        DynamicGenomeData metadata = metadataCreator(genomes[targetIndex], actualIndex);
+        
+        // Update with actual metadata
         genomeData[targetIndex] = std::move(metadata);
     }
     
