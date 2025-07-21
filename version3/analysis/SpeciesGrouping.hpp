@@ -34,9 +34,10 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
     for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
         const uint32_t speciesId = genomeData[globalIndex].speciesId;
         
-        // Only include valid genomes (active or elite in registry and not under repair)
+        // Only include valid genomes (active or elite in registry)
+        // Note: isUnderRepair filtering no longer needed since fitness multimap only contains valid genomes
         auto state = registry.getState(globalIndex);
-        if ((state == GenomeState::Active || state == GenomeState::Elite) && !genomeData[globalIndex].isUnderRepair) {
+        if (state == GenomeState::Active || state == GenomeState::Elite) {
             // Skip species that exist in species data and are marked for elimination
             if (speciesData.find(speciesId) == speciesData.end()) {
                 // Extract species ID from genome data and group indices

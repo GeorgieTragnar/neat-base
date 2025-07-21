@@ -8,6 +8,12 @@
 #include <map>
 #include <functional>
 
+// Analysis namespace forward declarations for operator declarations
+namespace Analysis {
+    template<typename FitnessResultType> class FitnessStrategy;
+    class SpeciationControlUnit;
+}
+
 #include "data_forward_declarations.inc"
 #include "operator_forward_declarations.inc"
 

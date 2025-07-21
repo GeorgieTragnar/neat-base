@@ -3,9 +3,13 @@
 #include <functional>
 #include <cstdint>
 #include <cassert>
+#include <memory>
 #include "version3/data/Genome.hpp"
 #include "version3/data/PopulationContainer.hpp"
 #include "version3/data/PopulationData.hpp"
+#include "version3/data/GlobalIndexRegistry.hpp"
+#include "version3/analysis/FitnessStrategy.hpp"
+#include "version3/analysis/SpeciationControlUnit.hpp"
 
 namespace Operator {
 
@@ -16,7 +20,10 @@ void mutationPlacement(
     const uint32_t& currentGeneration,
     Genome offspring,
     const DynamicGenomeData& parentData,
-    std::function<void(Genome&, DynamicGenomeData&)> postPlacementOperator
+    std::function<void(Genome&, DynamicGenomeData&)> postPlacementOperator,
+    std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
+    Analysis::SpeciationControlUnit& speciationControl,
+    GlobalIndexRegistry& registry
 );
 
 template<typename FitnessResultType>
@@ -26,7 +33,10 @@ void mutationPlacement(
     const uint32_t& currentGeneration,
     Genome offspring,
     const DynamicGenomeData& parentData,
-    std::function<void(Genome&, DynamicGenomeData&)> postPlacementOperator
+    std::function<void(Genome&, DynamicGenomeData&)> postPlacementOperator,
+    std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
+    Analysis::SpeciationControlUnit& speciationControl,
+    GlobalIndexRegistry& registry
 ) {
     // Validate generation bounds
     assert(currentGeneration > 0 && 
@@ -55,6 +65,39 @@ void mutationPlacement(
         currentGenomes[targetIndex],
         currentGenomeData[targetIndex]
     );
+    
+    // Perform fitness evaluation if genome is evaluable
+    if (!currentGenomeData[targetIndex].isUnderRepair) {
+        GenomeState state = registry.getState(targetIndex);
+        
+        if (state == GenomeState::Elite) {
+            // Elite genomes: use previous generation's fitness
+            const auto& lastFitnessResults = container.getLastFitnessResults(currentGeneration);
+            FitnessResultType eliteFitness{};
+            bool fitnessFound = false;
+            
+            for (const auto& [fitness, globalIndex] : lastFitnessResults) {
+                if (globalIndex == targetIndex) {
+                    eliteFitness = fitness;
+                    fitnessFound = true;
+                    break;
+                }
+            }
+            assert(fitnessFound && "Elite genome must have fitness from previous generation");
+            
+            auto& fitnessResults = container.getCurrentFitnessResults(currentGeneration);
+            fitnessResults.insert({eliteFitness, targetIndex});
+        } else {
+            // Non-elite genomes: evaluate fitness
+            FitnessResultType fitness = fitnessStrategy->evaluate(
+                currentGenomes[targetIndex].get_phenotype(), 
+                speciationControl
+            );
+            
+            auto& fitnessResults = container.getCurrentFitnessResults(currentGeneration);
+            fitnessResults.insert({fitness, targetIndex});
+        }
+    }
 }
 
 } // namespace Operator

@@ -9,6 +9,12 @@
 #include "ConnectionGene.hpp"
 #include "Phenotype.hpp"
 
+// Analysis namespace forward declarations for operator declarations
+namespace Analysis {
+    template<typename FitnessResultType> class FitnessStrategy;
+    class SpeciationControlUnit;
+}
+
 // Auto-generated operator forward declarations
 #include "data_forward_declarations.inc"
 #include "operator_forward_declarations.inc"

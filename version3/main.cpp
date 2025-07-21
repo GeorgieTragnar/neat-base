@@ -342,7 +342,7 @@ int main(int argc, char* argv[])
         // Create fitness strategy
         Analysis::SingleSimpleFitnessParams<DoubleFitnessResult> fitnessParams;
         fitnessParams.evaluationFunction = evaluateXORFitness;
-        auto fitnessStrategy = std::make_unique<Analysis::SingleSimpleFitnessStrategy<DoubleFitnessResult>>(fitnessParams);
+        auto fitnessStrategy = std::make_shared<Analysis::SingleSimpleFitnessStrategy<DoubleFitnessResult>>(fitnessParams);
         
         // Create repair operator parameters (using defaults)
         Operator::RepairOperatorParams repairParams(2);

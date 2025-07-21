@@ -6,6 +6,8 @@
 #include "version3/data/Genome.hpp"
 #include "version3/data/PopulationContainer.hpp"
 #include "version3/data/GlobalIndexRegistry.hpp"
+#include "version3/analysis/FitnessStrategy.hpp"
+#include "version3/analysis/SpeciationControlUnit.hpp"
 #include "../logger/Logger.hpp"
 
 namespace Operator {
@@ -16,7 +18,9 @@ void genomePlacement(
     GlobalIndexRegistry& registry,
     Genome genome,
     std::function<DynamicGenomeData(const Genome&, size_t)> metadataCreator,
-    uint32_t currentGeneration
+    uint32_t currentGeneration,
+    std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
+    Analysis::SpeciationControlUnit& speciationControl
 );
 
 template<typename FitnessResultType>
@@ -25,7 +29,9 @@ inline void genomePlacement(
     GlobalIndexRegistry& registry,
     Genome genome,
     std::function<DynamicGenomeData(const Genome&, size_t)> metadataCreator,
-    uint32_t currentGeneration
+    uint32_t currentGeneration,
+    std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
+    Analysis::SpeciationControlUnit& speciationControl
 ) {
     auto logger = LOGGER("operator.GenomePlacement");
     
@@ -50,6 +56,18 @@ inline void genomePlacement(
         // Update with actual metadata
         genomeData[actualIndex] = std::move(metadata);
         
+        // Perform fitness evaluation if genome is evaluable
+        if (!genomeData[actualIndex].isUnderRepair) {
+            FitnessResultType fitness = fitnessStrategy->evaluate(
+                genomes[actualIndex].get_phenotype(), 
+                speciationControl
+            );
+            
+            // Insert fitness result into multimap
+            auto& fitnessResults = container.getFitnessResults(currentGeneration);
+            fitnessResults.insert({fitness, actualIndex});
+        }
+        
     } else {
         // Using existing ReadyForReplacement slot
         actualIndex = targetIndex;
@@ -71,6 +89,18 @@ inline void genomePlacement(
         
         // Update with actual metadata
         genomeData[targetIndex] = std::move(metadata);
+        
+        // Perform fitness evaluation if genome is evaluable
+        if (!genomeData[targetIndex].isUnderRepair) {
+            FitnessResultType fitness = fitnessStrategy->evaluate(
+                genomes[targetIndex].get_phenotype(), 
+                speciationControl
+            );
+            
+            // Insert fitness result into multimap
+            auto& fitnessResults = container.getFitnessResults(currentGeneration);
+            fitnessResults.insert({fitness, targetIndex});
+        }
     }
     
     LOG_DEBUG("genomePlacement: Successfully placed genome at index {}", actualIndex);

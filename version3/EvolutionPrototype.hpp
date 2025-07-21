@@ -46,6 +46,7 @@
 #include "version3/population/PlotElites.hpp"
 #include "version3/evolution/PlotCrossover.hpp"
 #include "version3/data/GlobalIndexRegistry.hpp"
+#include "version3/population/GenerationTransition.hpp"
 #include "version3/phenotype/PhenotypeConstruct.hpp"
 #include "version3/phenotype/PhenotypeUpdateWeight.hpp"
 #include "version3/phenotype/PhenotypeUpdateNode.hpp"
@@ -117,7 +118,7 @@ template<typename FitnessResultType>
 class EvolutionPrototype {
 public:
     EvolutionPrototype(
-        std::unique_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
+        std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
         uint32_t targetPopulationSize,
         const Operator::InitParams& initParams,
         const Operator::DynamicDataUpdateParams& updateParams,
@@ -148,7 +149,7 @@ private:
     uint32_t _generation;
 
     // Strategy and parameters
-    std::unique_ptr<Analysis::FitnessStrategy<FitnessResultType>> _fitnessStrategy;
+    std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> _fitnessStrategy;
     uint32_t _targetPopulationSize;
     Operator::InitParams _initParams;
     Operator::DynamicDataUpdateParams _updateParams;
@@ -173,7 +174,7 @@ private:
 // Template implementation
 template<typename FitnessResultType>
 EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
-    std::unique_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
+    std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
     uint32_t targetPopulationSize,
     const Operator::InitParams& initParams,
     const Operator::DynamicDataUpdateParams& updateParams,
@@ -211,13 +212,13 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     // Create a simple concrete implementation of SpeciationControlUnit
     class SimpleSpeciationControl : public Analysis::SpeciationControlUnit {
     public:
-        std::vector<std::shared_ptr<const Analysis::Phenotype>> getChampions() const override {
+        std::vector<std::shared_ptr<const Phenotype>> getChampions() const override {
             return {};
         }
-        std::shared_ptr<const Analysis::Phenotype> getBestChampion() const override {
+        std::shared_ptr<const Phenotype> getBestChampion() const override {
             return nullptr;
         }
-        std::shared_ptr<const Analysis::Phenotype> getRandomChampion() const override {
+        std::shared_ptr<const Phenotype> getRandomChampion() const override {
             return nullptr;
         }
         size_t getChampionCount() const override {
@@ -234,9 +235,6 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     // Reserve capacity for initial population
     _populationContainer.reserveCapacity(_targetPopulationSize);
     
-    // Get fitness results container for evaluation
-    auto& currentFitnessResults = _populationContainer.getCurrentFitnessResults(0);
-    
     // Bootstrap population using genomePlacement operator
     for (uint32_t i = 0; i < _targetPopulationSize; ++i) {
         // Create new genome for bootstrap
@@ -247,33 +245,32 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
             _populationContainer,
             _globalIndexRegistry,
             std::move(newGenome),
-            [this, &speciationControl, &currentFitnessResults](const Genome& genome, size_t placedIndex) -> DynamicGenomeData {
+            [this, &speciationControl](const Genome& genome, size_t placedIndex) -> DynamicGenomeData {
                 // Construct phenotype for the placed genome
                 Operator::phenotypeConstruct(_populationContainer, placedIndex, 0);
                 
-                // Calculate species assignment
+                // Calculate species assignment and cycle detection
                 uint32_t speciesId = Operator::compatibilityDistance(
                     genome, 
                     _historyTracker, 
                     _compatibilityParams
                 );
-                
-                // Evaluate fitness and add to results
-                FitnessResultType fitness = _fitnessStrategy->evaluate(genome.get_phenotype(), speciationControl);
-                currentFitnessResults.insert({fitness, placedIndex});
+                bool isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
                 
                 // Create and return complete metadata
                 DynamicGenomeData metadata;
                 metadata.speciesId = speciesId;
                 metadata.pendingEliminationCounter = 0;
-                metadata.isUnderRepair = false;
+                metadata.isUnderRepair = isUnderRepair;
                 metadata.isMarkedForElimination = false;
                 metadata.parentAIndex = UINT32_MAX;  // Bootstrap genomes have no parents
                 metadata.parentBIndex = UINT32_MAX;
                 
                 return metadata;
             },
-            0  // generation 0
+            0,  // generation 0
+            _fitnessStrategy,
+            speciationControl
         );
     }
     
@@ -305,13 +302,13 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
     // Create a simple concrete implementation of SpeciationControlUnit
     class SimpleSpeciationControl : public Analysis::SpeciationControlUnit {
     public:
-        std::vector<std::shared_ptr<const Analysis::Phenotype>> getChampions() const override {
+        std::vector<std::shared_ptr<const Phenotype>> getChampions() const override {
             return {};
         }
-        std::shared_ptr<const Analysis::Phenotype> getBestChampion() const override {
+        std::shared_ptr<const Phenotype> getBestChampion() const override {
             return nullptr;
         }
-        std::shared_ptr<const Analysis::Phenotype> getRandomChampion() const override {
+        std::shared_ptr<const Phenotype> getRandomChampion() const override {
             return nullptr;
         }
         size_t getChampionCount() const override {
@@ -389,13 +386,13 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 switch (currentState) {
                     case GenomeState::HotElimination:
                         // One generation in HotElimination -> transition to ColdElimination
-                        _globalIndexRegistry.transitionToCold(i);
+                        Operator::generationTransition(_globalIndexRegistry, i, Operator::GenerationTransitionParams{});
                         // LOG_TRACE("Genome {} transitioned: HotElimination -> ColdElimination", i);
                         break;
                         
                     case GenomeState::ColdElimination:
                         // One generation in ColdElimination -> ready for replacement
-                        _globalIndexRegistry.markReadyForReplacement(i);
+                        Operator::generationTransition(_globalIndexRegistry, i, Operator::GenerationTransitionParams{});
                         // LOG_TRACE("Genome {} transitioned: ColdElimination -> ReadyForReplacement", i);
                         break;
                         
@@ -426,8 +423,14 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                         // Species ID preserved from parent
                         data.isUnderRepair = false;
                         // No phenotype update needed - elite genomes unchanged
+                        
+                        // Note: Elite fitness handling now managed by mutationPlacement operator
+                        
                         assert(Operator::genomeEquals(parentGenome, genome) && "Elite genome copy should be identical to parent");
-                    }
+                    },
+                    _fitnessStrategy,
+                    speciationControl,
+                    _globalIndexRegistry
                 );
                 continue;
             }
@@ -449,9 +452,14 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                             // Repair successful - recalculate species and rebuild phenotype
                             data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
                             Operator::phenotypeConstruct(_populationContainer, i, _generation);
+                            
+                            // Note: Fitness evaluation for repaired genomes now handled by mutationPlacement operator
                         }
-                        // If still has cycles, keep existing species ID and no phenotype update
-                    }
+                        // If still has cycles, keep existing species ID, no phenotype update, no fitness evaluation
+                    },
+                    _fitnessStrategy,
+                    speciationControl,
+                    _globalIndexRegistry
                 );
                 continue;
             }
@@ -474,8 +482,13 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                         
                         if (!data.isUnderRepair) {
                             Operator::phenotypeUpdateWeight(_populationContainer, i, _generation);
+                            
+                            // Note: Fitness evaluation now handled by mutationPlacement operator
                         }
-                    }
+                    },
+                    _fitnessStrategy,
+                    speciationControl,
+                    _globalIndexRegistry
                 );
                 
             } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability) {
@@ -493,8 +506,13 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                             
                             if (!data.isUnderRepair) {
                                 Operator::phenotypeUpdateNode(_populationContainer, i, _generation);
+                                
+                                // Note: Fitness evaluation now handled by mutationPlacement operator
                             }
-                        }
+                        },
+                        _fitnessStrategy,
+                        speciationControl,
+                        _globalIndexRegistry
                     );
                 } else {
                     // No active connections - copy parent as-is
@@ -503,7 +521,10 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                         parentData,
                         [&](Genome& genome, DynamicGenomeData& data) {
                             // No mutation possible lambda - species and repair status unchanged
-                        }
+                        },
+                        _fitnessStrategy,
+                        speciationControl,
+                        _globalIndexRegistry
                     );
                 }
                 
@@ -522,8 +543,13 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                             
                             if (!data.isUnderRepair) {
                                 Operator::phenotypeUpdateConnection(_populationContainer, i, _generation);
+                                
+                                // Note: Fitness evaluation now handled by mutationPlacement operator
                             }
-                        }
+                        },
+                        _fitnessStrategy,
+                        speciationControl,
+                        _globalIndexRegistry
                     );
                 } else {
                     // Fallback to weight mutation when no connections possible
@@ -539,8 +565,13 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                             
                             if (!data.isUnderRepair) {
                                 Operator::phenotypeUpdateWeight(_populationContainer, i, _generation);
+                                
+                                // Note: Fitness evaluation now handled by mutationPlacement operator
                             }
-                        }
+                        },
+                        _fitnessStrategy,
+                        speciationControl,
+                        _globalIndexRegistry
                     );
                 }
                 
@@ -559,8 +590,13 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                             
                             if (!data.isUnderRepair) {
                                 Operator::phenotypeUpdateConnection(_populationContainer, i, _generation);
+                                
+                                // Note: Fitness evaluation now handled by mutationPlacement operator
                             }
-                        }
+                        },
+                        _fitnessStrategy,
+                        speciationControl,
+                        _globalIndexRegistry
                     );
                 } else {
                     // Fallback to weight mutation
@@ -576,61 +612,20 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                             
                             if (!data.isUnderRepair) {
                                 Operator::phenotypeUpdateWeight(_populationContainer, i, _generation);
+                                
+                                // Note: Fitness evaluation now handled by mutationPlacement operator
                             }
-                        }
+                        },
+                        _fitnessStrategy,
+                        speciationControl,
+                        _globalIndexRegistry
                     );
                 }
             }
         }
 
-        // Phase 2: Fitness Evaluation - Build fitness results multimap
-        auto& currentFitnessResults = _populationContainer.getCurrentFitnessResults(_generation);
-        
-        for (size_t i = 0; i < currentGenomes.size(); ++i) {
-            const Genome& genome = currentGenomes[i];
-            const DynamicGenomeData& genomeData = currentGenomeData[i];
-            
-            if (_globalIndexRegistry.getState(i) == GenomeState::ReadyForReplacement) {
-                // Skip ReadyForReplacement genomes entirely - they are recycled slots
-                continue;
-            } else if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
-                // Elite genomes: preserve species assignment and copy fitness from previous generation
-                // No need to recalculate compatibility or fitness since elite genomes are unchanged
-                
-                // Find fitness for this elite from previous generation
-                const auto& lastFitnessResults = _populationContainer.getLastFitnessResults(_generation);
-                FitnessResultType eliteFitness{};
-                bool fitnessFound = false;
-                for (const auto& [fitness, globalIndex] : lastFitnessResults) {
-                    if (globalIndex == i) {
-                        eliteFitness = fitness;
-                        fitnessFound = true;
-                        break;
-                    }
-                }
-                assert(fitnessFound && "Elite genome should have fitness from previous generation");
-                
-                // Keep existing species assignment (no compatibility distance recalculation)
-                // currentGenomeData[i].speciesId remains unchanged
-                
-                // Add to fitness results with previous generation's fitness
-                currentFitnessResults.insert({eliteFitness, i});
-            } else if (!genomeData.isUnderRepair) {
-                // Evaluate fitness for non-repair, non-elite genomes
-                FitnessResultType fitness = _fitnessStrategy->evaluate(genome.get_phenotype(), speciationControl);
-                // Update species assignment
-                uint32_t newSpeciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
-                currentGenomeData[i].speciesId = newSpeciesId;
-                
-                // Add to fitness results with global index
-                currentFitnessResults.insert({fitness, i});
-            } else {
-                // For repair genomes, use default fitness and keep existing species
-                currentFitnessResults.insert({FitnessResultType{}, i});
-            }
-        }
-
-        // Phase 3: Population Analysis - Species grouping and dynamic data update
+        // Phase 2: Population Analysis - Species grouping and dynamic data update
+        // Note: Fitness evaluation now happens within each mutationPlacement lambda
         const auto& lastFitnessResults = _populationContainer.getLastFitnessResults(_generation);
         auto& lastGenomeDataForUpdate = _populationContainer.getLastGenomeData(_generation);
         
@@ -688,29 +683,29 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         // Phase 3.5: Elite Selection - Mark elites in global registry for protection during 1:1 evolution
         Operator::plotElites(speciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
         
-        // ELITE_TRACK: Log all genomes marked as Elite after elite selection
-        std::vector<uint32_t> currentElites;
-        std::unordered_map<uint32_t, std::vector<uint32_t>> elitesBySpecies;
-        for (size_t i = 0; i < currentGenomeData.size(); ++i) {
-            if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
-                currentElites.push_back(i);
-                uint32_t speciesId = currentGenomeData[i].speciesId;
-                elitesBySpecies[speciesId].push_back(i);
+        // // ELITE_TRACK: Log all genomes marked as Elite after elite selection
+        // std::vector<uint32_t> currentElites;
+        // std::unordered_map<uint32_t, std::vector<uint32_t>> elitesBySpecies;
+        // for (size_t i = 0; i < currentGenomeData.size(); ++i) {
+        //     if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
+        //         currentElites.push_back(i);
+        //         uint32_t speciesId = currentGenomeData[i].speciesId;
+        //         elitesBySpecies[speciesId].push_back(i);
                 
-                // Find fitness for this elite
-                FitnessResultType eliteFitness{};
-                for (const auto& [fitness, globalIndex] : currentFitnessResults) {
-                    if (globalIndex == i) {
-                        eliteFitness = fitness;
-                        break;
-                    }
-                }
-                LOG_DEBUG("ELITE_TRACK: Generation {} - Elite genome {} in species {} with fitness {:.3f}", 
-                         generation, i, speciesId, eliteFitness.getValue());
-            }
-        }
-        LOG_DEBUG("ELITE_TRACK: Generation {} - Total {} elites across {} species", 
-                 generation, currentElites.size(), elitesBySpecies.size());
+        //         // Find fitness for this elite
+        //         FitnessResultType eliteFitness{};
+        //         for (const auto& [fitness, globalIndex] : currentFitnessResults) {
+        //             if (globalIndex == i) {
+        //                 eliteFitness = fitness;
+        //                 break;
+        //             }
+        //         }
+        //         LOG_DEBUG("ELITE_TRACK: Generation {} - Elite genome {} in species {} with fitness {:.3f}", 
+        //                  generation, i, speciesId, eliteFitness.getValue());
+        //     }
+        // }
+        // LOG_DEBUG("ELITE_TRACK: Generation {} - Total {} elites across {} species", 
+        //          generation, currentElites.size(), elitesBySpecies.size());
         
         // Phase 4: Crossover Planning
         // Plot crossover pairs for later use
@@ -813,31 +808,31 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             }
         }
 
-        // Count eliminated genomes for statistics (no longer collecting indices)
-        std::unordered_map<uint32_t, size_t> eliminatedBySpecies;
-        size_t eliminatedUnderRepair = 0;
-        size_t totalEliminated = 0;
+        // // Count eliminated genomes for statistics (no longer collecting indices)
+        // std::unordered_map<uint32_t, size_t> eliminatedBySpecies;
+        // size_t eliminatedUnderRepair = 0;
+        // size_t totalEliminated = 0;
         
-        for (size_t i = 0; i < currentGenomeData.size(); ++i) {
-            const auto& genomeData = currentGenomeData[i];
-            if (_globalIndexRegistry.getState(i) != GenomeState::Active) {
-                totalEliminated++;
-                eliminatedBySpecies[genomeData.speciesId]++;
-                if (genomeData.isUnderRepair) eliminatedUnderRepair++;
+        // for (size_t i = 0; i < currentGenomeData.size(); ++i) {
+        //     const auto& genomeData = currentGenomeData[i];
+        //     if (_globalIndexRegistry.getState(i) != GenomeState::Active) {
+        //         totalEliminated++;
+        //         eliminatedBySpecies[genomeData.speciesId]++;
+        //         if (genomeData.isUnderRepair) eliminatedUnderRepair++;
                 
-                // Get fitness for detailed logging
-                FitnessResultType eliminatedFitness{};
-                for (const auto& [fitness, globalIndex] : currentFitnessResults) {
-                    if (globalIndex == i) {
-                        eliminatedFitness = fitness;
-                        break;
-                    }
-                }
+        //         // Get fitness for detailed logging
+        //         FitnessResultType eliminatedFitness{};
+        //         for (const auto& [fitness, globalIndex] : currentFitnessResults) {
+        //             if (globalIndex == i) {
+        //                 eliminatedFitness = fitness;
+        //                 break;
+        //             }
+        //         }
                 
-                // LOG_TRACE("ELIMINATED GENOME {}: species={}, pendingEliminationCounter={}, fitness={:.3f}, underRepair={}", 
-                //          i, genomeData.speciesId, genomeData.pendingEliminationCounter, eliminatedFitness.getValue(), genomeData.isUnderRepair);
-            }
-        }
+        //         // LOG_TRACE("ELIMINATED GENOME {}: species={}, pendingEliminationCounter={}, fitness={:.3f}, underRepair={}", 
+        //         //          i, genomeData.speciesId, genomeData.pendingEliminationCounter, eliminatedFitness.getValue(), genomeData.isUnderRepair);
+        //     }
+        // }
         
         // LOG_DEBUG("Generation {}: Found {} elites, {} crossover pairs, {} eliminated genomes ({}% population)", 
         //     generation, eliteIndices.size(), crossoverPairs.size(), totalEliminated, 
@@ -847,20 +842,20 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         // logPopulationState("POST-MUTATION - last", generation, _generation - 1);
         // logPopulationState("POST-MUTATION - current", generation, _generation);
         
-        // Log elimination distribution by species
-        if (!eliminatedBySpecies.empty()) {
-            std::vector<std::pair<uint32_t, size_t>> elimBySpecies(eliminatedBySpecies.begin(), eliminatedBySpecies.end());
-            std::sort(elimBySpecies.begin(), elimBySpecies.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+        // // Log elimination distribution by species
+        // if (!eliminatedBySpecies.empty()) {
+        //     std::vector<std::pair<uint32_t, size_t>> elimBySpecies(eliminatedBySpecies.begin(), eliminatedBySpecies.end());
+        //     std::sort(elimBySpecies.begin(), elimBySpecies.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
             
-            std::string elimBySpeciesStr = "[";
-            for (size_t i = 0; i < elimBySpecies.size(); ++i) {
-                if (i > 0) elimBySpeciesStr += ", ";
-                elimBySpeciesStr += fmt::format("{}:{}", elimBySpecies[i].first, elimBySpecies[i].second);
-            }
-            elimBySpeciesStr += "]";
-            // LOG_DEBUG("ELIMINATION DISTRIBUTION: {} under repair, by species: {}", 
-            //           eliminatedUnderRepair, elimBySpeciesStr);
-        }
+        //     std::string elimBySpeciesStr = "[";
+        //     for (size_t i = 0; i < elimBySpecies.size(); ++i) {
+        //         if (i > 0) elimBySpeciesStr += ", ";
+        //         elimBySpeciesStr += fmt::format("{}:{}", elimBySpecies[i].first, elimBySpecies[i].second);
+        //     }
+        //     elimBySpeciesStr += "]";
+        //     // LOG_DEBUG("ELIMINATION DISTRIBUTION: {} under repair, by species: {}", 
+        //     //           eliminatedUnderRepair, elimBySpeciesStr);
+        // }
         
         // Phase 5: Crossover Replacement - Replace eliminated genomes with crossover offspring
         for (const auto& [parentAIndex, parentBIndex] : crossoverPairs) {

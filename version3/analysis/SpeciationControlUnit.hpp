@@ -1,11 +1,9 @@
 #pragma once
 #include <memory>
 #include <vector>
-#include "../data/Genome.hpp"
+#include "../data/Phenotype.hpp"
 
 namespace Analysis {
-
-using Phenotype = Phenotype;
 
 class SpeciationControlUnit {
 public:

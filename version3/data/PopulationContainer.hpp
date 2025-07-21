@@ -6,6 +6,13 @@
 #include <cstdint>
 #include <cassert>
 #include <functional>
+#include <memory>
+
+// Analysis namespace forward declarations for operator declarations
+namespace Analysis {
+    template<typename FitnessResultType> class FitnessStrategy;
+    class SpeciationControlUnit;
+}
 
 #include "PopulationData.hpp"
 #include "GlobalIndexRegistry.hpp"
