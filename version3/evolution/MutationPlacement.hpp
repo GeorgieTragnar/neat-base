@@ -68,9 +68,7 @@ void mutationPlacement(
     
     // Perform fitness evaluation if genome is evaluable
     if (!currentGenomeData[targetIndex].isUnderRepair) {
-        GenomeState state = registry.getState(targetIndex);
-        
-        if (state == GenomeState::Elite) {
+        if (currentGenomeData[targetIndex].isElite) {
             // Elite genomes: use previous generation's fitness
             const auto& lastFitnessResults = container.getLastFitnessResults(currentGeneration);
             FitnessResultType eliteFitness{};

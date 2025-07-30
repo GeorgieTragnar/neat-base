@@ -324,7 +324,7 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     
     // Bootstrap elite selection: establish initial elites for each species
     auto initialSpeciesGrouping = Operator::speciesGrouping(_populationContainer, _generation, _speciesData, _globalIndexRegistry);
-    Operator::plotElites(initialSpeciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
+    Operator::plotElites(initialSpeciesGrouping, _eliteParams, _populationContainer, _generation, _globalIndexRegistry, _speciesData);
     
     _generation = 0;
 }
@@ -358,19 +358,19 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                     break;
             }
         }
-        fix the rest of the generation loop because 1to1 is fixed now
+        
         auto speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation - 1, _speciesData, _globalIndexRegistry);
         
         Operator::dynamicDataUpdate(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, speciesGrouping, _updateParams, _globalIndexRegistry);
         
         speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation - 1, _speciesData, _globalIndexRegistry);
         
-        // Phase 3.5: Elite Selection - Mark elites in global registry for protection during 1:1 evolution
-        Operator::plotElites(speciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
+        // Phase 3.5: Elite Selection - Mark elites in genome data for protection during 1:1 evolution
+        Operator::plotElites(speciesGrouping, _eliteParams, _populationContainer, _generation, _globalIndexRegistry, _speciesData);
         
         // Phase 4: Crossover Planning
         // Plot crossover pairs for later use
-        auto crossoverPairs = Operator::plotCrossover(speciesGrouping, _crossoverParams, _globalIndexRegistry, _speciesData);
+        auto crossoverPairs = Operator::plotCrossover(speciesGrouping, _crossoverParams, _globalIndexRegistry, _populationContainer.getCurrentGenomeData(_generation - 1), _speciesData);
         
         
         for (const auto& [parentAIndex, parentBIndex] : crossoverPairs) {

@@ -21,6 +21,7 @@ struct DynamicGenomeData {
     uint32_t repairAttempts = 0;
     bool isUnderRepair = false;
     bool isMarkedForElimination = false;
+    bool isElite = false;                    // Generation-scoped elite status
     uint32_t genomeIndex = UINT32_MAX;
     uint32_t parentAIndex = UINT32_MAX;      // First parent global index (always set for offspring)
     uint32_t parentBIndex = UINT32_MAX;      // Second parent global index (UINT32_MAX for non-crossover)

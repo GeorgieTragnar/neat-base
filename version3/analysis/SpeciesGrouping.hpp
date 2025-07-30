@@ -39,10 +39,10 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
     for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
         const uint32_t speciesId = genomeData[globalIndex].speciesId;
         
-        // Only include valid genomes (active or elite in registry)
+        // Only include valid genomes (active genomes and elites, not under repair)
         // Note: isUnderRepair filtering no longer needed since fitness multimap only contains valid genomes
         auto state = registry.getState(globalIndex);
-        if (state == GenomeState::Active || state == GenomeState::Elite) {
+        if (state == GenomeState::Active) {
             // Skip species that exist in species data and are marked for elimination
             if (speciesData.find(speciesId) == speciesData.end()) {
                 // Extract species ID from genome data and group indices
@@ -83,11 +83,11 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
         // not ascending index order, so no ordering constraint is needed here
     }
     
-    // Count valid genomes (active or elite in registry and not under repair, and not from eliminated species)
+    // Count valid genomes (active in registry and not under repair, and not from eliminated species)
     for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
         const uint32_t speciesId = genomeData[globalIndex].speciesId;
         auto state = registry.getState(globalIndex);
-        if ((state == GenomeState::Active || state == GenomeState::Elite) && !genomeData[globalIndex].isUnderRepair) {
+        if (state == GenomeState::Active && !genomeData[globalIndex].isUnderRepair) {
             // Skip species that exist in species data and are marked for elimination
             if (speciesData.find(speciesId) == speciesData.end()) {
                 validGenomeCount++;

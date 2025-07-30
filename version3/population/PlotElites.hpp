@@ -15,10 +15,13 @@ namespace Operator {
 
 class PlotElitesParams;
 
+template<typename FitnessResultType>
 void plotElites(
     const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
     const PlotElitesParams& params,
-    GlobalIndexRegistry& registry,
+    PopulationContainer<FitnessResultType>& populationContainer,
+    uint32_t generation,
+    const GlobalIndexRegistry& registry,
     const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
 );
 
@@ -38,10 +41,13 @@ public:
     }
 
 private:
+    template<typename FitnessResultType>
     friend void plotElites(
         const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
         const PlotElitesParams& params,
-        GlobalIndexRegistry& registry,
+        PopulationContainer<FitnessResultType>& populationContainer,
+        uint32_t generation,
+        const GlobalIndexRegistry& registry,
         const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
     );
     
@@ -50,19 +56,27 @@ private:
     const size_t _maximumElitesPerSpecies;
 };
 
+template<typename FitnessResultType>
 void plotElites(
     const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
     const PlotElitesParams& params,
-    GlobalIndexRegistry& registry,
+    PopulationContainer<FitnessResultType>& populationContainer,
+    uint32_t generation,
+    const GlobalIndexRegistry& registry,
     const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData) {
     
     assert(!speciesGroupings.empty());
 
     auto logger = LOGGER("population.PlotElites");
     
-    // Clear all existing elite status
+    // Access genome data for the specified generation
+    auto& genomeData = populationContainer.getCurrentGenomeData(generation);
+    
+    // Clear all existing elite status in generation
     LOG_DEBUG("ELITE_TRACK: plotElites - Clearing all existing Elite status");
-    registry.clearAllEliteStatus();
+    for (auto& data : genomeData) {
+        data.isElite = false;
+    }
     
     for (const auto& [speciesId, genomeIndices] : speciesGroupings) {
         assert(!genomeIndices.empty());
@@ -73,10 +87,13 @@ void plotElites(
             continue; // Skip this entire species
         }
         
-        // Filter out genomes marked for elimination through global index registry
+        // Filter out genomes marked for elimination or under repair
         std::vector<size_t> activeGenomes;
         for (size_t globalIndex : genomeIndices) {
-            if (registry.getState(static_cast<uint32_t>(globalIndex)) == GenomeState::Active) {
+            if (globalIndex < genomeData.size() && 
+                registry.getState(globalIndex) == GenomeState::Active &&
+                !genomeData[globalIndex].isMarkedForElimination && 
+                !genomeData[globalIndex].isUnderRepair) {
                 activeGenomes.push_back(globalIndex);
             }
         }
@@ -111,8 +128,8 @@ void plotElites(
         LOG_DEBUG("ELITE_TRACK: plotElites - Species {} selecting {} elites from {} active genomes", 
                  speciesId, eliteCount, speciesSize);
         for (size_t i = 0; i < eliteCount; ++i) {
-            uint32_t eliteIndex = static_cast<uint32_t>(activeGenomes[activeGenomes.size() - 1 - i]);
-            registry.markAsElite(eliteIndex);
+            size_t eliteIndex = activeGenomes[activeGenomes.size() - 1 - i];
+            genomeData[eliteIndex].isElite = true;
             LOG_DEBUG("ELITE_TRACK: plotElites - Marked genome {} as Elite for species {}", eliteIndex, speciesId);
         }
     }

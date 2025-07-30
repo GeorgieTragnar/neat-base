@@ -242,7 +242,7 @@ void dynamicDataUpdate(
                 bool hasEliteGenomes = false;
                 for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
                     if (genomeData[globalIndex].speciesId == speciesId && 
-                        registry.getState(globalIndex) == GenomeState::Elite) {
+                        genomeData[globalIndex].isElite) {
                         hasEliteGenomes = true;
                         LOG_DEBUG("ELITE_TRACK: DynamicDataUpdate - Species {} has Elite genome {} but being eliminated!", 
                                  speciesId, globalIndex);

@@ -19,6 +19,7 @@ std::vector<std::pair<size_t, size_t>> plotCrossover(
     const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
     const PlotCrossoverParams& params,
     const GlobalIndexRegistry& registry,
+    const std::vector<DynamicGenomeData>& genomeData,
     const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
 );
 
@@ -45,6 +46,7 @@ private:
         const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
         const PlotCrossoverParams& params,
         const GlobalIndexRegistry& registry,
+        const std::vector<DynamicGenomeData>& genomeData,
         const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
     );
     
@@ -63,6 +65,7 @@ inline std::vector<std::pair<size_t, size_t>> plotCrossover(
     const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
     const PlotCrossoverParams& params,
     const GlobalIndexRegistry& registry,
+    const std::vector<DynamicGenomeData>& genomeData,
     const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData) {
     
     assert(!speciesGroupings.empty());
@@ -78,11 +81,14 @@ inline std::vector<std::pair<size_t, size_t>> plotCrossover(
             continue; // Skip this entire species
         }
         
-        // Filter out genomes marked for elimination through global index registry
+        // Filter out genomes marked for elimination or under repair
         std::vector<size_t> activeGenomes;
         for (size_t globalIndex : genomeIndices) {
             auto state = registry.getState(static_cast<uint32_t>(globalIndex));
-            if (state == GenomeState::Active || state == GenomeState::Elite) {
+            if (state == GenomeState::Active && 
+                globalIndex < genomeData.size() && 
+                !genomeData[globalIndex].isMarkedForElimination && 
+                !genomeData[globalIndex].isUnderRepair) {
                 activeGenomes.push_back(globalIndex);
             }
         }
