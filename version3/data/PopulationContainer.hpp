@@ -26,7 +26,11 @@ class Genome;
 template<typename FitnessResultType>
 class PopulationContainer {
 public:
-    explicit PopulationContainer(GlobalIndexRegistry& registry) : _registry(registry) {}
+    explicit PopulationContainer(GlobalIndexRegistry& registry) : _registry(registry) {
+        // Initialize population size tracking arrays to zero
+        _basePopulationSizes.fill(0);
+        _extraPopulationSizes.fill(0);
+    }
     ~PopulationContainer() = default;
 
     // Public const accessors only
@@ -115,8 +119,40 @@ public:
     size_t getGenerationCapacity(uint32_t generation) const {
         return _genomes[generation % 3].capacity();
     }
+    
+    // Population size tracking - public access
+    size_t getPopulationSize(uint32_t generation) const {
+        size_t genIdx = generation % 3;
+        return _basePopulationSizes[genIdx] + _extraPopulationSizes[genIdx];
+    }
+    
+    // Individual genome access - public const access for evolution operators
+    const Genome& getGenome(uint32_t generation, size_t index) const {
+        const auto& genomes = _genomes[generation % 3];
+        assert(index < genomes.size() && "getGenome: Index out of bounds");
+        return genomes[index];
+    }
+    
+    const DynamicGenomeData& getGenomeData(uint32_t generation, size_t index) const {
+        const auto& genomeData = _genomeData[generation % 3];
+        assert(index < genomeData.size() && "getGenomeData: Index out of bounds");
+        return genomeData[index];
+    }
+    
+    // Generation lifecycle management
+    void announceNewGeneration(uint32_t newGeneration) {
+        assert(newGeneration >= 2 && "Bootstrap should handle gen 0→1 transition, announceNewGeneration is for gen 2+");
+        
+        size_t newGenIdx = newGeneration % 3;
+        size_t prevGenIdx = (newGeneration - 1) % 3;
+        
+        // New generation inherits previous generation's final size as base
+        _basePopulationSizes[newGenIdx] = _basePopulationSizes[prevGenIdx] + 
+                                         _extraPopulationSizes[prevGenIdx];
+        _extraPopulationSizes[newGenIdx] = 0; // Start with no additional genomes
+    }
 
-// protected:
+protected:
     // Keep existing manual friend declaration
     friend class GlobalIndexRegistry;
     
@@ -200,6 +236,9 @@ public:
             }
         }
         
+        // Increment extra count for target generation
+        _extraPopulationSizes[targetGeneration]++;
+        
         return globalIndex;
     }
     
@@ -245,6 +284,10 @@ private:
     std::array<std::vector<Genome>, 3> _genomes;
     std::array<std::vector<DynamicGenomeData>, 3> _genomeData;
     std::array<std::multimap<FitnessResultType, size_t>, 3> _fitnessResults;
+    
+    // Population size tracking - base + extra model
+    std::array<size_t, 3> _basePopulationSizes;  // Inherited stable size from previous generation
+    std::array<size_t, 3> _extraPopulationSizes; // Additional genomes added during this generation
     
     // Reference to GlobalIndexRegistry for synchronization
     GlobalIndexRegistry& _registry;

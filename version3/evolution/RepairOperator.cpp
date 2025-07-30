@@ -10,14 +10,8 @@ RepairOperatorParams::RepairOperatorParams(uint32_t maxRepairAttempts)
     assert(maxRepairAttempts > 0 && "Max repair attempts must be greater than 0");
 }
 
-Genome repair(const Genome& genome, DynamicGenomeData& genomeData, const RepairOperatorParams& params, GlobalIndexRegistry& registry, uint32_t globalIndex) {
-    // Handle repair attempt tracking and elimination marking
-    genomeData.repairAttempts++;
-    if (genomeData.repairAttempts >= params._maxRepairAttempts) {
-        registry.markForElimination(globalIndex);
-    }
-    
-    // For now, simply return a copy of the parent genome
+Genome repair(const Genome& genome, const RepairOperatorParams& params) {
+    // Simplified repair operation - pure function with no population management
     // This is a placeholder implementation - future versions could implement
     // actual cycle repair logic (e.g., removing problematic connections)
     

@@ -58,6 +58,15 @@ namespace Evolution {
 
 auto logger = LOGGER("evolution.EvolutionPrototype");
 
+enum class EvolutionOperation {
+    ELITE_COPY,
+    REPAIR,
+    WEIGHT_MUTATION,
+    NODE_MUTATION,
+    CONNECTION_MUTATION,
+    CONNECTION_REACTIVATION
+};
+
 // Mutation probability parameters
 struct MutationProbabilityParams {
     double weightMutationProbability;        // High probability for weight mutations
@@ -139,6 +148,29 @@ public:
     EvolutionResults<FitnessResultType> run(uint32_t maxGenerations);
 
 private:
+
+    EvolutionOperation chooseEvolutionOperation(const Genome& parentGenome, const DynamicGenomeData& parentData);
+    void performEvolutionOperation(size_t& i);
+
+
+    // Create a simple concrete implementation of SpeciationControlUnit
+    class SimpleSpeciationControl : public Analysis::SpeciationControlUnit {
+    public:
+        std::vector<std::shared_ptr<const Phenotype>> getChampions() const override {
+            return {};
+        }
+        std::shared_ptr<const Phenotype> getBestChampion() const override {
+            return nullptr;
+        }
+        std::shared_ptr<const Phenotype> getRandomChampion() const override {
+            return nullptr;
+        }
+        size_t getChampionCount() const override {
+            return 0;
+        }
+    };
+    
+    SimpleSpeciationControl speciationControl;
 
     // Core data containers - triple-buffer architecture
     std::shared_ptr<HistoryTracker> _historyTracker;
@@ -299,386 +331,39 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
 
 template<typename FitnessResultType>
 EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(uint32_t maxGenerations) {
-    // Create a simple concrete implementation of SpeciationControlUnit
-    class SimpleSpeciationControl : public Analysis::SpeciationControlUnit {
-    public:
-        std::vector<std::shared_ptr<const Phenotype>> getChampions() const override {
-            return {};
-        }
-        std::shared_ptr<const Phenotype> getBestChampion() const override {
-            return nullptr;
-        }
-        std::shared_ptr<const Phenotype> getRandomChampion() const override {
-            return nullptr;
-        }
-        size_t getChampionCount() const override {
-            return 0;
-        }
-    };
-    
-    SimpleSpeciationControl speciationControl;
 
-    // Helper function to log complete population state
-    auto logPopulationState = [&](const std::string& phase, uint32_t generation, uint32_t genNumber) {
-        const auto& genomes = _populationContainer.getGenomes(genNumber);
-        const auto& genomeData = _populationContainer.getGenomeData(genNumber);
-        const auto& fitnessResults = _populationContainer.getFitnessResults(genNumber);
-        
-        LOG_DEBUG("{} - Generation {} Population State ({} genomes):", phase, generation, genomes.size());
-        for (size_t i = 0; i < genomes.size(); ++i) {
-            FitnessResultType fitness{};
-            // Find fitness for this genome
-            for (const auto& [fit, globalIndex] : fitnessResults) {
-                if (globalIndex == i) {
-                    fitness = fit;
-                    break;
-                }
-            }
-            LOG_DEBUG("  Genome[{}]: species={}, fitness={:.3f}, state={}", 
-                     i, genomeData[i].speciesId, fitness.getValue(), 
-                     static_cast<int>(_globalIndexRegistry.getState(i)));
-        }
-    };
-
-    for (uint32_t generation = 0; generation < maxGenerations; ++generation) {
+    for (; _generation < maxGenerations; ++_generation) {
         _generation++;
 
-        // Clear current generation fitness results only
+        // TODO: these two should be atomically a single operation
         _populationContainer.clearGenerationFitnessResults(_generation);
+        _populationContainer.announceNewGeneration(_generation);
 
-        const size_t populationSize = _populationContainer.getLastGenomes(_generation).size();
+        const size_t populationSize = _populationContainer.getPopulationSize(_generation - 1);
         
-        // Reserve capacity for growth
-        if (_populationContainer.getGenerationCapacity(_generation) < populationSize * 2) {
-            _populationContainer.reserveCapacity(populationSize * 2);
-        }
+        LOG_DEBUG("Generation {}: Starting with {} genomes", _generation, populationSize);
 
-        LOG_DEBUG("Generation {}: Starting with {} genomes", generation, populationSize);
-        
-        // Phase 1: 1:1 Evolution - Copy and mutate each genome from last generation
-        auto& currentGenomes = _populationContainer.getCurrentGenomes(_generation);
-        auto& currentGenomeData = _populationContainer.getCurrentGenomeData(_generation);
-        const auto& lastGenomes = _populationContainer.getLastGenomes(_generation);
-        const auto& lastGenomeData = _populationContainer.getLastGenomeData(_generation);
-        
-        // ELITE_TRACK: Verify which genomes retained Elite status from previous generation
-        if (generation > 0) {
-            std::vector<uint32_t> retainedElites;
-            for (size_t i = 0; i < populationSize; ++i) {
-                if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
-                    retainedElites.push_back(i);
-                    LOG_DEBUG("ELITE_TRACK: Generation {} START - Genome {} retained Elite status in species {}", 
-                             generation, i, lastGenomeData[i].speciesId);
-                }
-            }
-            LOG_DEBUG("ELITE_TRACK: Generation {} START - {} genomes retained Elite status from previous generation", 
-                     generation, retainedElites.size());
-        }
-        
         for (size_t i = 0; i < populationSize; ++i) {
-            const Genome& parentGenome = lastGenomes[i];
-            const DynamicGenomeData& parentData = lastGenomeData[i];
-            
-            if (_globalIndexRegistry.getState(i) != GenomeState::Active) {
-                // Handle state transitions for eliminated genomes
-                auto currentState = _globalIndexRegistry.getState(i);
-                
-                switch (currentState) {
-                    case GenomeState::HotElimination:
-                        // One generation in HotElimination -> transition to ColdElimination
-                        Operator::generationTransition(_globalIndexRegistry, i, Operator::GenerationTransitionParams{});
-                        // LOG_TRACE("Genome {} transitioned: HotElimination -> ColdElimination", i);
-                        break;
-                        
-                    case GenomeState::ColdElimination:
-                        // One generation in ColdElimination -> ready for replacement
-                        Operator::generationTransition(_globalIndexRegistry, i, Operator::GenerationTransitionParams{});
-                        // LOG_TRACE("Genome {} transitioned: ColdElimination -> ReadyForReplacement", i);
-                        break;
-                        
-                    case GenomeState::ReadyForReplacement:
-                        // Already ready for replacement, no further transition needed
-                        // LOG_TRACE("Genome {} remains ReadyForReplacement", i);
-                        break;
-                        
-                    case GenomeState::Active:
-                        // Should not reach here due to outer if condition
-                        assert(false && "Logic error: Active genome in non-Active branch");
-                        break;
-                }
-                
-                // Copy parent genome/data as placeholder for non-active slots
-                currentGenomes[i] = parentGenome;
-                currentGenomeData[i] = parentData;
-                continue;
-            }
-            
-            // CASE 1: Elite Genomes
-            if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
-                Operator::mutationPlacement(_populationContainer, i, _generation,
-                    Genome(parentGenome), // Copy without mutation
-                    parentData,
-                    [&](Genome& genome, DynamicGenomeData& data) {
-                        // Elite lambda: minimal updates
-                        // Species ID preserved from parent
-                        data.isUnderRepair = false;
-                        // No phenotype update needed - elite genomes unchanged
-                        
-                        // Note: Elite fitness handling now managed by mutationPlacement operator
-                        
-                        assert(Operator::genomeEquals(parentGenome, genome) && "Elite genome copy should be identical to parent");
-                    },
-                    _fitnessStrategy,
-                    speciationControl,
-                    _globalIndexRegistry
-                );
-                continue;
-            }
-            
-            // CASE 2: Repair Genomes
-            if (parentData.isUnderRepair) {
-                DynamicGenomeData repairData = parentData; // For repair operator
-                Genome repaired = Operator::repair(parentGenome, repairData, _repairParams, _globalIndexRegistry, i);
-                
-                Operator::mutationPlacement(_populationContainer, i, _generation,
-                    std::move(repaired),
-                    parentData,
-                    [&](Genome& genome, DynamicGenomeData& data) {
-                        // Repair lambda: check if repair successful
-                        bool stillHasCycles = Operator::hasCycles(genome, _cycleDetectionParams);
-                        data.isUnderRepair = stillHasCycles;
-                        
-                        if (!stillHasCycles) {
-                            // Repair successful - recalculate species and rebuild phenotype
-                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
-                            Operator::phenotypeConstruct(_populationContainer, i, _generation);
-                            
-                            // Note: Fitness evaluation for repaired genomes now handled by mutationPlacement operator
-                        }
-                        // If still has cycles, keep existing species ID, no phenotype update, no fitness evaluation
-                    },
-                    _fitnessStrategy,
-                    speciationControl,
-                    _globalIndexRegistry
-                );
-                continue;
-            }
-            
-            // CASE 3: Normal Mutations
-            std::uniform_real_distribution<double> dist(0.0, 1.0);
-            double random = dist(_rng);
-            
-            if (random < _mutationParams.weightMutationProbability) {
-                // Weight Mutation
-                Genome mutated = Operator::weightMutation(parentGenome, _weightMutationParams);
-                
-                Operator::mutationPlacement(_populationContainer, i, _generation,
-                    std::move(mutated),
-                    parentData,
-                    [&](Genome& genome, DynamicGenomeData& data) {
-                        // Weight mutation lambda
-                        data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
-                        data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
-                        
-                        if (!data.isUnderRepair) {
-                            Operator::phenotypeUpdateWeight(_populationContainer, i, _generation);
-                            
-                            // Note: Fitness evaluation now handled by mutationPlacement operator
-                        }
-                    },
-                    _fitnessStrategy,
-                    speciationControl,
-                    _globalIndexRegistry
-                );
-                
-            } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability) {
-                // Node Mutation
-                if (Operator::hasActiveConnections(parentGenome)) {
-                    Genome mutated = Operator::nodeMutation(parentGenome, _historyTracker, _nodeMutationParams);
-                    
-                    Operator::mutationPlacement(_populationContainer, i, _generation,
-                        std::move(mutated),
-                        parentData,
-                        [&](Genome& genome, DynamicGenomeData& data) {
-                            // Node mutation lambda
-                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
-                            data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
-                            
-                            if (!data.isUnderRepair) {
-                                Operator::phenotypeUpdateNode(_populationContainer, i, _generation);
-                                
-                                // Note: Fitness evaluation now handled by mutationPlacement operator
-                            }
-                        },
-                        _fitnessStrategy,
-                        speciationControl,
-                        _globalIndexRegistry
-                    );
-                } else {
-                    // No active connections - copy parent as-is
-                    Operator::mutationPlacement(_populationContainer, i, _generation,
-                        Genome(parentGenome),
-                        parentData,
-                        [&](Genome& genome, DynamicGenomeData& data) {
-                            // No mutation possible lambda - species and repair status unchanged
-                        },
-                        _fitnessStrategy,
-                        speciationControl,
-                        _globalIndexRegistry
-                    );
-                }
-                
-            } else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability + _mutationParams.connectionMutationProbability) {
-                // Connection Mutation
-                if (Operator::hasPossibleConnections(parentGenome)) {
-                    Genome mutated = Operator::connectionMutation(parentGenome, _historyTracker, _connectionMutationParams);
-                    
-                    Operator::mutationPlacement(_populationContainer, i, _generation,
-                        std::move(mutated),
-                        parentData,
-                        [&](Genome& genome, DynamicGenomeData& data) {
-                            // Connection mutation lambda
-                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
-                            data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
-                            
-                            if (!data.isUnderRepair) {
-                                Operator::phenotypeUpdateConnection(_populationContainer, i, _generation);
-                                
-                                // Note: Fitness evaluation now handled by mutationPlacement operator
-                            }
-                        },
-                        _fitnessStrategy,
-                        speciationControl,
-                        _globalIndexRegistry
-                    );
-                } else {
-                    // Fallback to weight mutation when no connections possible
-                    Genome mutated = Operator::weightMutation(parentGenome, _weightMutationParams);
-                    
-                    Operator::mutationPlacement(_populationContainer, i, _generation,
-                        std::move(mutated),
-                        parentData,
-                        [&](Genome& genome, DynamicGenomeData& data) {
-                            // Fallback weight mutation lambda
-                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
-                            data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
-                            
-                            if (!data.isUnderRepair) {
-                                Operator::phenotypeUpdateWeight(_populationContainer, i, _generation);
-                                
-                                // Note: Fitness evaluation now handled by mutationPlacement operator
-                            }
-                        },
-                        _fitnessStrategy,
-                        speciationControl,
-                        _globalIndexRegistry
-                    );
-                }
-                
-            } else {
-                // Connection Reactivation
-                if (Operator::hasDisabledConnections(parentGenome)) {
-                    Genome mutated = Operator::connectionReactivation(parentGenome, _connectionReactivationParams);
-                    
-                    Operator::mutationPlacement(_populationContainer, i, _generation,
-                        std::move(mutated),
-                        parentData,
-                        [&](Genome& genome, DynamicGenomeData& data) {
-                            // Reactivation lambda
-                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
-                            data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
-                            
-                            if (!data.isUnderRepair) {
-                                Operator::phenotypeUpdateConnection(_populationContainer, i, _generation);
-                                
-                                // Note: Fitness evaluation now handled by mutationPlacement operator
-                            }
-                        },
-                        _fitnessStrategy,
-                        speciationControl,
-                        _globalIndexRegistry
-                    );
-                } else {
-                    // Fallback to weight mutation
-                    Genome mutated = Operator::weightMutation(parentGenome, _weightMutationParams);
-                    
-                    Operator::mutationPlacement(_populationContainer, i, _generation,
-                        std::move(mutated),
-                        parentData,
-                        [&](Genome& genome, DynamicGenomeData& data) {
-                            // Final fallback weight mutation lambda
-                            data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
-                            data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
-                            
-                            if (!data.isUnderRepair) {
-                                Operator::phenotypeUpdateWeight(_populationContainer, i, _generation);
-                                
-                                // Note: Fitness evaluation now handled by mutationPlacement operator
-                            }
-                        },
-                        _fitnessStrategy,
-                        speciationControl,
-                        _globalIndexRegistry
-                    );
-                }
+            switch (_globalIndexRegistry.getState(i)) {
+                case GenomeState::HotElimination:
+                case GenomeState::ColdElimination:
+                    Operator::generationTransition(_globalIndexRegistry, i, Operator::GenerationTransitionParams{});
+                case GenomeState::ReadyForReplacement:
+                    continue;
+                case GenomeState::Active:
+                    performEvolutionOperation(chooseEvolutionOperation(i), i);
+                    break;
+                default:
+                    assert(false && "unhandled Genome State");
+                    break;
             }
         }
-
-        // Phase 2: Population Analysis - Species grouping and dynamic data update
-        // Note: Fitness evaluation now happens within each mutationPlacement lambda
-        const auto& lastFitnessResults = _populationContainer.getLastFitnessResults(_generation);
-        auto& lastGenomeDataForUpdate = _populationContainer.getLastGenomeData(_generation);
-        
+        fix the rest of the generation loop because 1to1 is fixed now
         auto speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation - 1, _speciesData, _globalIndexRegistry);
-
-        // Assert that all genomes in species grouping have empty deltas
-        for (const auto& [speciesId, indices] : speciesGrouping) {
-            for (size_t globalIndex : indices) {
-                assert(Operator::emptyDeltas(lastGenomes[globalIndex]) && 
-                       "Species grouping contains genome with uncleared deltas");
-            }
-        }
-
-        // ELITE_TRACK: Check if any species with Elite genomes are about to be eliminated
-        std::unordered_set<uint32_t> speciesWithElites;
-        for (size_t i = 0; i < lastGenomeDataForUpdate.size(); ++i) {
-            if (_globalIndexRegistry.getState(i) == GenomeState::Elite) {
-                speciesWithElites.insert(lastGenomeDataForUpdate[i].speciesId);
-            }
-        }
-        
-        std::unordered_set<uint32_t> eliminatedSpeciesIds;
-        for (const auto& [speciesId, data] : _speciesData) {
-            if (data.isMarkedForElimination) {
-                eliminatedSpeciesIds.insert(speciesId);
-                if (speciesWithElites.find(speciesId) != speciesWithElites.end()) {
-                    LOG_DEBUG("ELITE_TRACK: WARNING - Species {} marked for elimination but contains Elite genomes!", speciesId);
-                }
-            }
-        }
         
         Operator::dynamicDataUpdate(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, speciesGrouping, _updateParams, _globalIndexRegistry);
         
         speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation - 1, _speciesData, _globalIndexRegistry);
-
-        // DEBUG: Verify all active species appear in the grouping
-        for (const auto& [speciesId, speciesData] : _speciesData) {
-            if (!speciesData.isMarkedForElimination && speciesData.currentPopulationSize > 0) {
-                assert(speciesGrouping.find(speciesId) != speciesGrouping.end() && 
-                       "Active species must appear in species grouping after creation");
-            }
-        }
-
-
-        // ELITE_TRACK: Verify species elimination didn't affect Elite species
-        for (const auto& [speciesId, data] : _speciesData) {
-            if (data.isMarkedForElimination && eliminatedSpeciesIds.find(speciesId) == eliminatedSpeciesIds.end()) {
-                // This species was newly marked for elimination
-                if (speciesWithElites.find(speciesId) != speciesWithElites.end()) {
-                    LOG_DEBUG("ELITE_TRACK: CRITICAL - Species {} with Elite genomes was eliminated by dynamicDataUpdate!", speciesId);
-                }
-            }
-        }
         
         // Phase 3.5: Elite Selection - Mark elites in global registry for protection during 1:1 evolution
         Operator::plotElites(speciesGrouping, _eliteParams, _globalIndexRegistry, _speciesData);
@@ -687,124 +372,21 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         // Plot crossover pairs for later use
         auto crossoverPairs = Operator::plotCrossover(speciesGrouping, _crossoverParams, _globalIndexRegistry, _speciesData);
         
-        // NEAT Algorithm Validation: Every active species must have at least one elite
-        // Count truly active species (exist in species data, not marked for elimination, and have non-zero population)
-        size_t activeSpeciesCount = 0;
-        for (const auto& [speciesId, speciesData] : _speciesData) {
-            if (!speciesData.isMarkedForElimination && speciesData.currentPopulationSize > 0) {
-                activeSpeciesCount++;
-            }
-        }
         
-        // DEBUG: Verify each active species has at least one valid genome in fitness results
-        for (const auto& [speciesId, speciesData] : _speciesData) {
-            if (!speciesData.isMarkedForElimination && speciesData.currentPopulationSize > 0) {
-                // Check if this species has any valid genomes in fitness results
-                bool hasValidGenomes = false;
-                for (const auto& [fitness, globalIndex] : lastFitnessResults) {
-                    if (lastGenomeDataForUpdate[globalIndex].speciesId == speciesId) {
-                        auto state = _globalIndexRegistry.getState(globalIndex);
-                        if ((state == GenomeState::Active || state == GenomeState::Elite) && 
-                            !lastGenomeDataForUpdate[globalIndex].isUnderRepair) {
-                            hasValidGenomes = true;
-                            break;
-                        }
-                    }
-                }
-                assert(hasValidGenomes && "Active species must have at least one valid genome in fitness results");
-            }
-        }
-        
-        // DEBUG: Log active species vs grouping details
-        LOG_DEBUG("Active species count: {}", activeSpeciesCount);
-        LOG_DEBUG("Species grouping size: {}", speciesGrouping.size());
-        for (const auto& [speciesId, speciesData] : _speciesData) {
-            if (!speciesData.isMarkedForElimination && speciesData.currentPopulationSize > 0) {
-                LOG_DEBUG("Active species {}: in grouping = {}, population = {}", speciesId, 
-                         speciesGrouping.find(speciesId) != speciesGrouping.end(),
-                         speciesData.currentPopulationSize);
-            }
-        }
-        
-        // Assert species fitness progression: non-eliminated species should maintain or improve
-        for (const auto& [speciesId, speciesData] : _speciesData) {
-            // Skip eliminated species and newly discovered species
-            if (!speciesData.isMarkedForElimination && 
-                _previousBestFitnessBySpecies.find(speciesId) != _previousBestFitnessBySpecies.end()) {
-                
-                // Find best fitness for this species in current generation
-                FitnessResultType currentBest = std::numeric_limits<FitnessResultType>::lowest();
-                bool foundGenome = false;
-                
-                for (const auto& [fitness, globalIndex] : lastFitnessResults) {
-                    if (lastGenomeDataForUpdate[globalIndex].speciesId == speciesId) {
-                        auto state = _globalIndexRegistry.getState(globalIndex);
-                        if ((state == GenomeState::Active || state == GenomeState::Elite) && 
-                            !lastGenomeDataForUpdate[globalIndex].isUnderRepair) {
-                            if (!foundGenome || fitness.isBetterThan(currentBest)) {
-                                currentBest = fitness;
-                                foundGenome = true;
-                            }
-                        }
-                    }
-                }
-                
-                if (foundGenome) {
-                    FitnessResultType previousBest = _previousBestFitnessBySpecies[speciesId];
-                    assert((currentBest.isBetterThan(previousBest) || currentBest.isEqualTo(previousBest)) && 
-                           "Non-eliminated species must maintain or improve best fitness");
-                }
-            }
-        }
-        
-        // Only validate if we have species data from previous generations
-        if (activeSpeciesCount > 0) {
-            // Validate species grouping completeness against active species count
-            assert(speciesGrouping.size() == activeSpeciesCount && 
-                   "Every active species should have at least one valid genome for elite selection");
-            
-            // Per-species validation: every active species must appear in grouping with valid genomes AND elites
-            for (const auto& [speciesId, speciesData] : _speciesData) {
-                if (!speciesData.isMarkedForElimination && speciesData.currentPopulationSize > 0) {
-                    assert(speciesGrouping.find(speciesId) != speciesGrouping.end() && 
-                           "Active species must appear in species grouping");
-                    assert(!speciesGrouping.at(speciesId).empty() && 
-                           "Active species must have at least one valid genome");
-                           
-                    // Check that at least one genome in this species is Elite
-                    bool hasElite = false;
-                    for (size_t globalIndex : speciesGrouping.at(speciesId)) {
-                        if (_globalIndexRegistry.getState(globalIndex) == GenomeState::Elite) {
-                            hasElite = true;
-                            break;
-                        }
-                    }
-                    assert(hasElite && "Every active species must have at least one elite genome");
-                }
-            }
-        }
-        
-        // Phase 5: Crossover Replacement - Replace eliminated genomes with crossover offspring
         for (const auto& [parentAIndex, parentBIndex] : crossoverPairs) {
-            // Get parent genomes and data
-            const auto& parentGenomes = _populationContainer.getGenomes(_generation);
-            const auto& parentGenomeData = _populationContainer.getGenomeData(_generation);
-            const Genome& parentA = parentGenomes[parentAIndex];
-            const Genome& parentB = parentGenomes[parentBIndex];
-            const DynamicGenomeData& parentAData = parentGenomeData[parentAIndex];
-            const DynamicGenomeData& parentBData = parentGenomeData[parentBIndex];
+            const Genome& parentA = _populationContainer.getGenome(_generation - 1, parentAIndex);
+            const Genome& parentB = _populationContainer.getGenome(_generation - 1, parentBIndex);
+            const DynamicGenomeData& parentAData = _populationContainer.getGenomeData(_generation - 1, parentAIndex);
+            const DynamicGenomeData& parentBData = _populationContainer.getGenomeData(_generation - 1, parentBIndex);
             
-            // Extract fitness values
             auto [fitnessA, fitnessB] = Operator::fitnessExtraction(
-                _populationContainer, parentAIndex, parentBIndex, _generation);
+                _populationContainer, parentAIndex, parentBIndex, _generation - 1);
             
-            // Place crossover result with metadata creation and post-placement logic
             Operator::genomePlacement(
                 _populationContainer,
                 _globalIndexRegistry,
                 Operator::crossover(parentA, fitnessA, parentB, fitnessB, _crossoverOperatorParams),
                 [&](const Genome& offspring, size_t placementIndex) {
-                    // Create metadata
                     uint32_t speciesId = Operator::compatibilityDistance(
                         offspring, _historyTracker, _compatibilityParams);
                     bool hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
@@ -812,79 +394,13 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                         parentAData, parentBData, parentAIndex, parentBIndex, 
                         speciesId, hasCycles);
                     
-                    // Post-placement logic (will execute after genome is placed)
                     if (!hasCycles) {
                         Operator::phenotypeConstruct(_populationContainer, placementIndex, _generation);
                     }
                     
                     return metadata;
-                },
-                _generation,
-                _fitnessStrategy,
-                speciationControl
-            );
+                }, _generation, _fitnessStrategy, speciationControl);
         }
-        
-        // Log final population composition
-        const size_t finalPopSize = currentGenomes.size();
-        
-        // Validate final population state - Active and Elite genomes need to be valid
-        size_t activeGenomeCount = 0;
-        size_t eliteGenomeCount = 0;
-        size_t nonActiveGenomeCount = 0;
-        std::unordered_map<uint32_t, size_t> finalSpeciesDistribution;
-        
-        for (size_t i = 0; i < currentGenomeData.size(); ++i) {
-            const auto& genomeData = currentGenomeData[i];
-            auto state = _globalIndexRegistry.getState(i);
-            
-            if (state == GenomeState::Active) {
-                // Validate Active genomes have consistent data
-                assert(genomeData.speciesId != UINT32_MAX && "Active genome should have valid species ID");
-                finalSpeciesDistribution[genomeData.speciesId]++;
-                activeGenomeCount++;
-            } else if (state == GenomeState::Elite) {
-                // Validate Elite genomes have consistent data
-                assert(genomeData.speciesId != UINT32_MAX && "Elite genome should have valid species ID");
-                finalSpeciesDistribution[genomeData.speciesId]++;
-                eliteGenomeCount++;
-            } else {
-                // Non-Active genomes (HotElimination, ColdElimination, ReadyForReplacement) are acceptable
-                nonActiveGenomeCount++;
-            }
-        }
-        
-        LOG_DEBUG("GENERATION {} FINAL STATE: {} active genomes, {} elite genomes, {} non-active genomes, {} species active", 
-                  generation, activeGenomeCount, eliteGenomeCount, nonActiveGenomeCount, finalSpeciesDistribution.size());
-        
-        // Log final generation state after all replacements
-        // logPopulationState("FINAL-STATE - last", generation, _generation - 1);
-        // logPopulationState("FINAL-STATE - current", generation, _generation);
-        
-        // Update previous generation's best fitness for next iteration
-        _previousBestFitnessBySpecies.clear();
-        for (const auto& [speciesId, indices] : speciesGrouping) {
-            // Find best fitness for this species in current generation
-            FitnessResultType bestFitness = std::numeric_limits<FitnessResultType>::lowest();
-            bool foundGenome = false;
-            
-            for (size_t globalIndex : indices) {
-                for (const auto& [fitness, fitnessGlobalIndex] : lastFitnessResults) {
-                    if (fitnessGlobalIndex == globalIndex) {
-                        if (!foundGenome || fitness.isBetterThan(bestFitness)) {
-                            bestFitness = fitness;
-                            foundGenome = true;
-                        }
-                        break;
-                    }
-                }
-            }
-            
-            if (foundGenome) {
-                _previousBestFitnessBySpecies[speciesId] = bestFitness;
-            }
-        }
-        
         // end of generation loop
     }
     
@@ -937,5 +453,118 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
     );
 }
 
+template<typename FitnessResultType>
+void EvolutionPrototype::performEvolutionOperation(size_t& i)
+{
+    const Genome& parentGenome = _populationContainer.getGenome(_generation - 1, i);
+    const DynamicGenomeData& parentData = _populationContainer.getGenomeData(_generation - 1, i);
+
+    switch (chooseEvolutionOperation(parentGenome, parentData)) {
+        case EvolutionOperation::ELITE_COPY:
+            Operator::mutationPlacement(_populationContainer, i, _generation,
+                Genome(parentGenome),
+                [&](Genome& genome, DynamicGenomeData& data) {
+                    data.isUnderRepair = false;
+                    assert(Operator::genomeEquals(parentGenome, genome) && "Elite genome copy should be identical to parent");
+                }, _fitnessStrategy, speciationControl, _globalIndexRegistry);
+            return;
+        case EvolutionOperation::REPAIR:
+            Operator::mutationPlacement(_populationContainer, i, _generation,
+                Genome(parentGenome), parentData,
+                [&](Genome& genome, DynamicGenomeData& data) {
+                    data.isUnderRepair = false;
+                    assert(Operator::genomeEquals(parentGenome, genome) && "Elite genome copy should be identical to parent");
+                }, _fitnessStrategy, speciationControl, _globalIndexRegistry);
+            return;
+        case EvolutionOperation::WEIGHT_MUTATION:
+            Operator::mutationPlacement(_populationContainer, i, _generation,
+                Operator::weightMutation(parentGenome, _weightMutationParams),
+                parentData,
+                [&](Genome& genome, DynamicGenomeData& data) {
+                    data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                    data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+                    
+                    if (!data.isUnderRepair) {
+                        Operator::phenotypeUpdateWeight(_populationContainer, i, _generation);
+                    }
+                }, _fitnessStrategy, speciationControl, _globalIndexRegistry);
+            return;
+        case EvolutionOperation::NODE_MUTATION:
+            Operator::mutationPlacement(_populationContainer, i, _generation,
+                Operator::nodeMutation(parentGenome, _historyTracker, _nodeMutationParams),
+                parentData,
+                [&](Genome& genome, DynamicGenomeData& data) {
+                    data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                    data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+                    
+                    if (!data.isUnderRepair) {
+                        Operator::phenotypeUpdateNode(_populationContainer, i, _generation);
+                    }
+                }, _fitnessStrategy, speciationControl, _globalIndexRegistry);
+            return;
+        case EvolutionOperation::CONNECTION_MUTATION:
+            Operator::mutationPlacement(_populationContainer, i, _generation,
+                Operator::connectionMutation(parentGenome, _historyTracker, _connectionMutationParams),
+                parentData,
+                [&](Genome& genome, DynamicGenomeData& data) {
+                    data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                    data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+                    
+                    if (!data.isUnderRepair) {
+                        Operator::phenotypeUpdateConnection(_populationContainer, i, _generation);
+                    }
+                }, _fitnessStrategy, speciationControl, _globalIndexRegistry);
+            return;
+        case EvolutionOperation::CONNECTION_REACTIVATION:
+            Operator::mutationPlacement(_populationContainer, i, _generation,
+                Operator::connectionReactivation(parentGenome, _connectionReactivationParams),
+                parentData,
+                [&](Genome& genome, DynamicGenomeData& data) {
+                    data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                    data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+                    
+                    if (!data.isUnderRepair) {
+                        Operator::phenotypeUpdateConnection(_populationContainer, i, _generation);
+                    }
+                }, _fitnessStrategy, speciationControl, _globalIndexRegistry);
+            return;
+        default: 
+            assert(false && "unhandled evolution operation");
+            break;
+    }
+}
+
+template<typename FitnessResultType>
+EvolutionOperation EvolutionPrototype::chooseEvolutionOperation(const Genome& parentGenome, const DynamicGenomeData& parentData)
+{
+    if (parentData.isUnderRepair)
+        return EvolutionOperation::REPAIR;
+    else if (parentData.isElite)
+        return EvolutionOperation::ELITE_COPY;
+    
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    double random = dist(_rng);
+    
+    if (random < _mutationParams.weightMutationProbability)
+    {
+        return EvolutionOperation::WEIGHT_MUTATION;
+    } 
+    else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability)
+    {
+        if (Operator::hasActiveConnections(parentGenome))
+            return EvolutionOperation::NODE_MUTATION;
+    }
+    else if (random < _mutationParams.weightMutationProbability + _mutationParams.nodeMutationProbability + _mutationParams.connectionMutationProbability)
+    {
+        if (Operator::hasPossibleConnections(parentGenome))
+            return EvolutionOperation::CONNECTION_MUTATION;
+    }
+    else
+    {
+        if (Operator::hasDisabledConnections(parentGenome))
+            return EvolutionOperation::CONNECTION_REACTIVATION;
+    }
+    return EvolutionOperation::WEIGHT_MUTATION;
+}
 
 } // namespace Evolution
