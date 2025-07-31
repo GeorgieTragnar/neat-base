@@ -150,7 +150,7 @@ public:
 private:
 
     EvolutionOperation chooseEvolutionOperation(const Genome& parentGenome, const DynamicGenomeData& parentData);
-    void performEvolutionOperation(size_t& i);
+    void performEvolutionOperation(size_t i);
 
 
     // Create a simple concrete implementation of SpeciationControlUnit
@@ -201,6 +201,8 @@ private:
     // Fitness progression tracking
     std::unordered_map<uint32_t, FitnessResultType> _previousBestFitnessBySpecies;
 
+    // Crossover pairs storage for delayed execution
+    std::vector<std::pair<size_t, size_t>> _pendingCrossoverPairs;
 };
 
 // Template implementation
@@ -333,8 +335,7 @@ template<typename FitnessResultType>
 EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(uint32_t maxGenerations) {
 
     for (; _generation < maxGenerations; ++_generation) {
-        _generation++;
-
+        
         // TODO: these two should be atomically a single operation
         _populationContainer.clearGenerationFitnessResults(_generation);
         _populationContainer.announceNewGeneration(_generation);
@@ -343,6 +344,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         LOG_DEBUG("Generation {}: Starting with {} genomes", _generation, populationSize);
 
+        // Phase 1: 1:1 Evolution Loop (mutations, elites, repairs)
         for (size_t i = 0; i < populationSize; ++i) {
             switch (_globalIndexRegistry.getState(i)) {
                 case GenomeState::HotElimination:
@@ -351,7 +353,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 case GenomeState::ReadyForReplacement:
                     continue;
                 case GenomeState::Active:
-                    performEvolutionOperation(chooseEvolutionOperation(i), i);
+                    performEvolutionOperation(i);
                     break;
                 default:
                     assert(false && "unhandled Genome State");
@@ -359,48 +361,63 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
             }
         }
         
-        auto speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation - 1, _speciesData, _globalIndexRegistry);
+        // Phase 2: Execute Crossover (from previous generation's planned pairs)
+        if (!_pendingCrossoverPairs.empty()) {
+            LOG_DEBUG("Generation {}: Executing {} crossover pairs from previous generation", 
+                     _generation, _pendingCrossoverPairs.size());
+            
+            for (const auto& [parentAIndex, parentBIndex] : _pendingCrossoverPairs) {
+                const Genome& parentA = _populationContainer.getGenome(_generation - 1, parentAIndex);
+                const Genome& parentB = _populationContainer.getGenome(_generation - 1, parentBIndex);
+                const DynamicGenomeData& parentAData = _populationContainer.getGenomeData(_generation - 1, parentAIndex);
+                const DynamicGenomeData& parentBData = _populationContainer.getGenomeData(_generation - 1, parentBIndex);
+                
+                auto [fitnessA, fitnessB] = Operator::fitnessExtraction(
+                    _populationContainer, parentAIndex, parentBIndex, _generation - 1);
+                
+                Operator::genomePlacement(
+                    _populationContainer,
+                    _globalIndexRegistry,
+                    Operator::crossover(parentA, fitnessA, parentB, fitnessB, _crossoverOperatorParams),
+                    [&](const Genome& offspring, size_t placementIndex) {
+                        uint32_t speciesId = Operator::compatibilityDistance(
+                            offspring, _historyTracker, _compatibilityParams);
+                        bool hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
+                        DynamicGenomeData metadata = Operator::createCrossoverDynamicData(
+                            parentAData, parentBData, parentAIndex, parentBIndex, 
+                            speciesId, hasCycles);
+                        
+                        if (!hasCycles) {
+                            Operator::phenotypeConstruct(_populationContainer, placementIndex, _generation);
+                        }
+                        
+                        return metadata;
+                    }, _generation, _fitnessStrategy, speciationControl);
+            }
+            _pendingCrossoverPairs.clear();
+        }
         
-        Operator::dynamicDataUpdate(lastFitnessResults, lastGenomeDataForUpdate, _speciesData, speciesGrouping, _updateParams, _globalIndexRegistry);
+        // Phase 3: Population Analysis
+        auto speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation, _speciesData, _globalIndexRegistry);
         
-        speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation - 1, _speciesData, _globalIndexRegistry);
+        // Get fitness results and genome data for dynamic data update
+        const auto& fitnessResults = _populationContainer.getCurrentFitnessResults(_generation);
+        auto& genomeData = _populationContainer.getCurrentGenomeData(_generation);
         
-        // Phase 3.5: Elite Selection - Mark elites in genome data for protection during 1:1 evolution
+        Operator::dynamicDataUpdate(fitnessResults, genomeData, _speciesData, speciesGrouping, _updateParams, _globalIndexRegistry);
+        
+        // Re-run species grouping after dynamic data update (as elimination may have changed)
+        speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation, _speciesData, _globalIndexRegistry);
+        
+        // Phase 3.5: Elite Selection - Mark elites for next generation
         Operator::plotElites(speciesGrouping, _eliteParams, _populationContainer, _generation, _globalIndexRegistry, _speciesData);
         
-        // Phase 4: Crossover Planning
-        // Plot crossover pairs for later use
-        auto crossoverPairs = Operator::plotCrossover(speciesGrouping, _crossoverParams, _globalIndexRegistry, _populationContainer.getCurrentGenomeData(_generation - 1), _speciesData);
+        // Phase 4: Crossover Planning - Store pairs for execution in next generation
+        _pendingCrossoverPairs = Operator::plotCrossover(speciesGrouping, _crossoverParams, _globalIndexRegistry, _populationContainer.getCurrentGenomeData(_generation), _speciesData);
         
+        LOG_DEBUG("Generation {}: Plotted {} crossover pairs for next generation", 
+                 _generation, _pendingCrossoverPairs.size());
         
-        for (const auto& [parentAIndex, parentBIndex] : crossoverPairs) {
-            const Genome& parentA = _populationContainer.getGenome(_generation - 1, parentAIndex);
-            const Genome& parentB = _populationContainer.getGenome(_generation - 1, parentBIndex);
-            const DynamicGenomeData& parentAData = _populationContainer.getGenomeData(_generation - 1, parentAIndex);
-            const DynamicGenomeData& parentBData = _populationContainer.getGenomeData(_generation - 1, parentBIndex);
-            
-            auto [fitnessA, fitnessB] = Operator::fitnessExtraction(
-                _populationContainer, parentAIndex, parentBIndex, _generation - 1);
-            
-            Operator::genomePlacement(
-                _populationContainer,
-                _globalIndexRegistry,
-                Operator::crossover(parentA, fitnessA, parentB, fitnessB, _crossoverOperatorParams),
-                [&](const Genome& offspring, size_t placementIndex) {
-                    uint32_t speciesId = Operator::compatibilityDistance(
-                        offspring, _historyTracker, _compatibilityParams);
-                    bool hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
-                    DynamicGenomeData metadata = Operator::createCrossoverDynamicData(
-                        parentAData, parentBData, parentAIndex, parentBIndex, 
-                        speciesId, hasCycles);
-                    
-                    if (!hasCycles) {
-                        Operator::phenotypeConstruct(_populationContainer, placementIndex, _generation);
-                    }
-                    
-                    return metadata;
-                }, _generation, _fitnessStrategy, speciationControl);
-        }
         // end of generation loop
     }
     
@@ -454,7 +471,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
 }
 
 template<typename FitnessResultType>
-void EvolutionPrototype::performEvolutionOperation(size_t& i)
+void EvolutionPrototype<FitnessResultType>::performEvolutionOperation(size_t i)
 {
     const Genome& parentGenome = _populationContainer.getGenome(_generation - 1, i);
     const DynamicGenomeData& parentData = _populationContainer.getGenomeData(_generation - 1, i);
@@ -535,7 +552,7 @@ void EvolutionPrototype::performEvolutionOperation(size_t& i)
 }
 
 template<typename FitnessResultType>
-EvolutionOperation EvolutionPrototype::chooseEvolutionOperation(const Genome& parentGenome, const DynamicGenomeData& parentData)
+EvolutionOperation EvolutionPrototype<FitnessResultType>::chooseEvolutionOperation(const Genome& parentGenome, const DynamicGenomeData& parentData)
 {
     if (parentData.isUnderRepair)
         return EvolutionOperation::REPAIR;
