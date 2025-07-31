@@ -290,6 +290,9 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
                 _compatibilityParams
             );
             bool isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+
+            if (!isUnderRepair)
+                Operator::phenotypeConstruct(_populationContainer, globalIndex, _generation);
             
             // Create and return metadata
             DynamicGenomeData metadata;
