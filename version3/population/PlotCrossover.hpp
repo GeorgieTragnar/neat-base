@@ -15,8 +15,8 @@ namespace Operator {
 
 class PlotCrossoverParams;
 
-std::vector<std::pair<size_t, size_t>> plotCrossover(
-    const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
+std::vector<std::pair<uint32_t, uint32_t>> plotCrossover(
+    const std::unordered_map<uint32_t, std::vector<uint32_t>>& speciesGroupings,
     const PlotCrossoverParams& params,
     const GlobalIndexRegistry& registry,
     const std::vector<DynamicGenomeData>& genomeData,
@@ -42,8 +42,8 @@ public:
     }
 
 private:
-    friend std::vector<std::pair<size_t, size_t>> plotCrossover(
-        const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
+    friend std::vector<std::pair<uint32_t, uint32_t>> plotCrossover(
+        const std::unordered_map<uint32_t, std::vector<uint32_t>>& speciesGroupings,
         const PlotCrossoverParams& params,
         const GlobalIndexRegistry& registry,
         const std::vector<DynamicGenomeData>& genomeData,
@@ -61,8 +61,8 @@ namespace {
     thread_local std::mt19937 gen(rd());
 }
 
-inline std::vector<std::pair<size_t, size_t>> plotCrossover(
-    const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
+inline std::vector<std::pair<uint32_t, uint32_t>> plotCrossover(
+    const std::unordered_map<uint32_t, std::vector<uint32_t>>& speciesGroupings,
     const PlotCrossoverParams& params,
     const GlobalIndexRegistry& registry,
     const std::vector<DynamicGenomeData>& genomeData,
@@ -70,7 +70,7 @@ inline std::vector<std::pair<size_t, size_t>> plotCrossover(
     
     assert(!speciesGroupings.empty());
     
-    std::vector<std::pair<size_t, size_t>> crossoverPairs;
+    std::vector<std::pair<uint32_t, uint32_t>> crossoverPairs;
     
     for (const auto& [speciesId, genomeIndices] : speciesGroupings) {
         assert(!genomeIndices.empty());
@@ -82,9 +82,9 @@ inline std::vector<std::pair<size_t, size_t>> plotCrossover(
         }
         
         // Filter out genomes marked for elimination or under repair
-        std::vector<size_t> activeGenomes;
-        for (size_t globalIndex : genomeIndices) {
-            auto state = registry.getState(static_cast<uint32_t>(globalIndex));
+        std::vector<uint32_t> activeGenomes;
+        for (uint32_t globalIndex : genomeIndices) {
+            auto state = registry.getState(globalIndex);
             if (state == GenomeState::Active && 
                 globalIndex < genomeData.size() && 
                 !genomeData[globalIndex].isMarkedForElimination && 
@@ -125,8 +125,8 @@ inline std::vector<std::pair<size_t, size_t>> plotCrossover(
             }
             
             // Convert to global indices (active genomes already contain global indices)
-            size_t globalParentA = activeGenomes[parentAIndex];
-            size_t globalParentB = activeGenomes[parentBIndex];
+            uint32_t globalParentA = activeGenomes[parentAIndex];
+            uint32_t globalParentB = activeGenomes[parentBIndex];
             
             crossoverPairs.emplace_back(globalParentA, globalParentB);
         }

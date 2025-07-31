@@ -64,11 +64,6 @@ inline void generationTransition(
             // Already ready for replacement, no further transition needed
             break;
             
-        case GenomeState::Elite:
-            // Elite genomes don't transition in this context
-            // They remain Elite until explicitly cleared
-            break;
-            
         case GenomeState::Active:
             // Should not reach here due to assertion above
             assert(false && "Logic error: Active genome in generationTransition");

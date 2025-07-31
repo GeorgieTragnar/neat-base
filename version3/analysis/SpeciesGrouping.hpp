@@ -8,27 +8,29 @@
 #include "../data/PopulationData.hpp"
 #include "../data/PopulationContainer.hpp"
 #include "../data/GlobalIndexRegistry.hpp"
+#include "../population/GenerationPopulationData.hpp"
 
 namespace Operator {
 
 template<typename FitnessResultType>
-std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(const PopulationContainer<FitnessResultType>& container, uint32_t generation, std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData, const GlobalIndexRegistry& registry);
+GenerationPopulationData<FitnessResultType> speciesGrouping(const PopulationContainer<FitnessResultType>& container, uint32_t generation, std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData, const GlobalIndexRegistry& registry);
 
-// Main operator function - templated on fitness result type
+// Main operator function - returns GenerationPopulationData
 template<typename FitnessResultType>
-std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
+GenerationPopulationData<FitnessResultType> speciesGrouping(
     const PopulationContainer<FitnessResultType>& container,
     uint32_t generation,
     std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData,
     const GlobalIndexRegistry& registry
 ) {
-    // Get data from container
+    // Get fitness results from container
     const auto& fitnessResults = container.getFitnessResults(generation);
     const auto& genomeData = container.getGenomeData(generation);
     
     assert(!fitnessResults.empty());
     
-    std::unordered_map<uint32_t, std::vector<size_t>> speciesIndices;
+    // Create GenerationPopulationData with fitness results reference
+    GenerationPopulationData<FitnessResultType> populationData(fitnessResults);
     
     // Reset species population sizes at start of analysis
     for (auto& [speciesId, data] : speciesData) {
@@ -40,17 +42,16 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
         const uint32_t speciesId = genomeData[globalIndex].speciesId;
         
         // Only include valid genomes (active genomes and elites, not under repair)
-        // Note: isUnderRepair filtering no longer needed since fitness multimap only contains valid genomes
         auto state = registry.getState(globalIndex);
         if (state == GenomeState::Active) {
             // Skip species that exist in species data and are marked for elimination
             if (speciesData.find(speciesId) == speciesData.end()) {
                 // Extract species ID from genome data and group indices
-                speciesIndices[speciesId].push_back(globalIndex);
+                populationData.speciesGrouping[speciesId].push_back(globalIndex);
             }
             else if (!speciesData[speciesId].isMarkedForElimination) {
                 // Extract species ID from genome data and group indices
-                speciesIndices[speciesId].push_back(globalIndex);
+                populationData.speciesGrouping[speciesId].push_back(globalIndex);
             }
         }
         
@@ -62,8 +63,8 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
     
 #ifndef NDEBUG
     // Validate that all global indices in fitnessResults are unique
-    std::unordered_set<size_t> uniqueGlobalIndices;
-    std::vector<size_t> duplicateIndices;
+    std::unordered_set<uint32_t> uniqueGlobalIndices;
+    std::vector<uint32_t> duplicateIndices;
     for (const auto& [fitnessResult, globalIndex] : fitnessResults) {
         if (uniqueGlobalIndices.find(globalIndex) != uniqueGlobalIndices.end()) {
             duplicateIndices.push_back(globalIndex);
@@ -76,11 +77,8 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
     // Validate completeness: every valid genome index should appear exactly once
     size_t totalIndices = 0;
     size_t validGenomeCount = 0;
-    for (const auto& [speciesId, indices] : speciesIndices) {
+    for (const auto& [speciesId, indices] : populationData.speciesGrouping) {
         totalIndices += indices.size();
-        
-        // Note: Genome indices within species preserve fitness ordering from multimap,
-        // not ascending index order, so no ordering constraint is needed here
     }
     
     // Count valid genomes (active in registry and not under repair, and not from eliminated species)
@@ -100,15 +98,15 @@ std::unordered_map<uint32_t, std::vector<size_t>> speciesGrouping(
     assert(totalIndices == validGenomeCount);
     
     // Validate no empty species vectors
-    for (const auto& [speciesId, indices] : speciesIndices) {
+    for (const auto& [speciesId, indices] : populationData.speciesGrouping) {
         assert(!indices.empty());
     }
     
     // Note: New species discovered in genome data may not yet exist in speciesData
-    // They will be added during dynamic data update process
+    // They will be added during species ranking process
 #endif
     
-    return speciesIndices;
+    return populationData;
 }
 
 }

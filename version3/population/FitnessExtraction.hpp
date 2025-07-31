@@ -10,8 +10,8 @@ namespace Operator {
 template<typename FitnessResultType>
 std::pair<FitnessResultType, FitnessResultType> fitnessExtraction(
     const PopulationContainer<FitnessResultType>& container,
-    const size_t& parentAIndex,
-    const size_t& parentBIndex,
+    const uint32_t& parentAIndex,
+    const uint32_t& parentBIndex,
     const uint32_t& generation
 );
 
@@ -19,8 +19,8 @@ std::pair<FitnessResultType, FitnessResultType> fitnessExtraction(
 template<typename FitnessResultType>
 std::pair<FitnessResultType, FitnessResultType> fitnessExtraction(
     const PopulationContainer<FitnessResultType>& container,
-    const size_t& parentAIndex,
-    const size_t& parentBIndex,
+    const uint32_t& parentAIndex,
+    const uint32_t& parentBIndex,
     const uint32_t& generation
 ) {
     // Get parent fitness from previous generation (where it was calculated)

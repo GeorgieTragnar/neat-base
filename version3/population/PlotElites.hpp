@@ -17,7 +17,7 @@ class PlotElitesParams;
 
 template<typename FitnessResultType>
 void plotElites(
-    const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
+    const std::unordered_map<uint32_t, std::vector<uint32_t>>& speciesGroupings,
     const PlotElitesParams& params,
     PopulationContainer<FitnessResultType>& populationContainer,
     uint32_t generation,
@@ -43,7 +43,7 @@ public:
 private:
     template<typename FitnessResultType>
     friend void plotElites(
-        const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
+        const std::unordered_map<uint32_t, std::vector<uint32_t>>& speciesGroupings,
         const PlotElitesParams& params,
         PopulationContainer<FitnessResultType>& populationContainer,
         uint32_t generation,
@@ -58,7 +58,7 @@ private:
 
 template<typename FitnessResultType>
 void plotElites(
-    const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGroupings,
+    const std::unordered_map<uint32_t, std::vector<uint32_t>>& speciesGroupings,
     const PlotElitesParams& params,
     PopulationContainer<FitnessResultType>& populationContainer,
     uint32_t generation,
@@ -88,8 +88,8 @@ void plotElites(
         }
         
         // Filter out genomes marked for elimination or under repair
-        std::vector<size_t> activeGenomes;
-        for (size_t globalIndex : genomeIndices) {
+        std::vector<uint32_t> activeGenomes;
+        for (uint32_t globalIndex : genomeIndices) {
             if (globalIndex < genomeData.size() && 
                 registry.getState(globalIndex) == GenomeState::Active &&
                 !genomeData[globalIndex].isMarkedForElimination && 
@@ -100,9 +100,9 @@ void plotElites(
         
         // Note: SpeciesGrouping should not produce duplicates (validated by assertion in SpeciesGrouping.hpp:65)
         // However, we preserve duplicate removal using fitness-order-preserving approach
-        std::vector<size_t> uniqueActiveGenomes;
-        std::unordered_set<size_t> seenIndices;
-        for (size_t globalIndex : activeGenomes) {
+        std::vector<uint32_t> uniqueActiveGenomes;
+        std::unordered_set<uint32_t> seenIndices;
+        for (uint32_t globalIndex : activeGenomes) {
             if (seenIndices.find(globalIndex) == seenIndices.end()) {
                 uniqueActiveGenomes.push_back(globalIndex);
                 seenIndices.insert(globalIndex);
@@ -128,7 +128,7 @@ void plotElites(
         LOG_DEBUG("ELITE_TRACK: plotElites - Species {} selecting {} elites from {} active genomes", 
                  speciesId, eliteCount, speciesSize);
         for (size_t i = 0; i < eliteCount; ++i) {
-            size_t eliteIndex = activeGenomes[activeGenomes.size() - 1 - i];
+            uint32_t eliteIndex = activeGenomes[activeGenomes.size() - 1 - i];
             genomeData[eliteIndex].isElite = true;
             LOG_DEBUG("ELITE_TRACK: plotElites - Marked genome {} as Elite for species {}", eliteIndex, speciesId);
         }

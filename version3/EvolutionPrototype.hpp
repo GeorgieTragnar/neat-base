@@ -41,10 +41,13 @@
 // Population management
 #include "version3/data/PopulationContainer.hpp"
 #include "version3/data/PopulationData.hpp"
-#include "version3/population/DynamicDataUpdate.hpp"
 #include "version3/analysis/SpeciesGrouping.hpp"
+#include "version3/population/SpeciesRanking.hpp"
+#include "version3/population/SpeciesEquilibriumElimination.hpp"
+#include "version3/population/GenomeEquilibriumElimination.hpp"
+#include "version3/population/FilterEliminatedIndices.hpp"
 #include "version3/population/PlotElites.hpp"
-#include "version3/evolution/PlotCrossover.hpp"
+#include "version3/population/PlotCrossover.hpp"
 #include "version3/data/GlobalIndexRegistry.hpp"
 #include "version3/population/GenerationTransition.hpp"
 #include "version3/phenotype/PhenotypeConstruct.hpp"
@@ -130,7 +133,8 @@ public:
         std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
         uint32_t targetPopulationSize,
         const Operator::InitParams& initParams,
-        const Operator::DynamicDataUpdateParams& updateParams,
+        const Operator::SpeciesEquilibriumParams& speciesEquilibriumParams,
+        const Operator::GenomeEquilibriumParams& genomeEquilibriumParams,
         const Operator::PlotElitesParams& eliteParams,
         const Operator::PlotCrossoverParams& crossoverParams,
         const Operator::CompatibilityDistanceParams& compatibilityParams,
@@ -184,7 +188,8 @@ private:
     std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> _fitnessStrategy;
     uint32_t _targetPopulationSize;
     Operator::InitParams _initParams;
-    Operator::DynamicDataUpdateParams _updateParams;
+    Operator::SpeciesEquilibriumParams _speciesEquilibriumParams;
+    Operator::GenomeEquilibriumParams _genomeEquilibriumParams;
     Operator::PlotElitesParams _eliteParams;
     Operator::PlotCrossoverParams _crossoverParams;
     Operator::CompatibilityDistanceParams _compatibilityParams;
@@ -202,7 +207,7 @@ private:
     std::unordered_map<uint32_t, FitnessResultType> _previousBestFitnessBySpecies;
 
     // Crossover pairs storage for delayed execution
-    std::vector<std::pair<size_t, size_t>> _pendingCrossoverPairs;
+    std::vector<std::pair<uint32_t, uint32_t>> _pendingCrossoverPairs;
 };
 
 // Template implementation
@@ -211,7 +216,8 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
     uint32_t targetPopulationSize,
     const Operator::InitParams& initParams,
-    const Operator::DynamicDataUpdateParams& updateParams,
+    const Operator::SpeciesEquilibriumParams& speciesEquilibriumParams,
+    const Operator::GenomeEquilibriumParams& genomeEquilibriumParams,
     const Operator::PlotElitesParams& eliteParams,
     const Operator::PlotCrossoverParams& crossoverParams,
     const Operator::CompatibilityDistanceParams& compatibilityParams,
@@ -227,7 +233,8 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
 ) : _fitnessStrategy(std::move(fitnessStrategy)),
     _targetPopulationSize(targetPopulationSize),
     _initParams(initParams),
-    _updateParams(updateParams),
+    _speciesEquilibriumParams(speciesEquilibriumParams),
+    _genomeEquilibriumParams(genomeEquilibriumParams),
     _eliteParams(eliteParams),
     _crossoverParams(crossoverParams),
     _compatibilityParams(compatibilityParams),
@@ -398,22 +405,25 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         }
         
         // Phase 3: Population Analysis
-        auto speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation, _speciesData, _globalIndexRegistry);
+        auto populationData = Operator::speciesGrouping(_populationContainer, _generation, _speciesData, _globalIndexRegistry);
         
-        // Get fitness results and genome data for dynamic data update
-        const auto& fitnessResults = _populationContainer.getCurrentFitnessResults(_generation);
-        auto& genomeData = _populationContainer.getCurrentGenomeData(_generation);
+        // Species ranking - calculate performance metrics and assign ordinal rankings
+        Operator::speciesRanking(populationData, _populationContainer, _generation, _speciesData);
         
-        Operator::dynamicDataUpdate(fitnessResults, genomeData, _speciesData, speciesGrouping, _updateParams, _globalIndexRegistry);
+        // Species equilibrium elimination - eliminate worst-performing species
+        Operator::speciesEquilibriumElimination(populationData, _speciesData, _populationContainer, _generation, _speciesEquilibriumParams, _globalIndexRegistry);
         
-        // Re-run species grouping after dynamic data update (as elimination may have changed)
-        speciesGrouping = Operator::speciesGrouping(_populationContainer, _generation, _speciesData, _globalIndexRegistry);
+        // Genome equilibrium elimination - eliminate worst-performing genomes within species
+        Operator::genomeEquilibriumElimination(populationData, _speciesData, _populationContainer, _generation, _genomeEquilibriumParams, _globalIndexRegistry);
         
-        // Phase 3.5: Elite Selection - Mark elites for next generation
-        Operator::plotElites(speciesGrouping, _eliteParams, _populationContainer, _generation, _globalIndexRegistry, _speciesData);
+        // Filter out eliminated genomes for elite selection and crossover planning
+        Operator::filterEliminatedIndices(populationData, _globalIndexRegistry);
         
-        // Phase 4: Crossover Planning - Store pairs for execution in next generation
-        _pendingCrossoverPairs = Operator::plotCrossover(speciesGrouping, _crossoverParams, _globalIndexRegistry, _populationContainer.getCurrentGenomeData(_generation), _speciesData);
+        // Phase 3.5: Elite Selection - Mark elites for next generation using filtered grouping
+        Operator::plotElites(populationData.speciesGrouping, _eliteParams, _populationContainer, _generation, _globalIndexRegistry, _speciesData);
+        
+        // Phase 4: Crossover Planning - Store pairs for execution in next generation using filtered grouping
+        _pendingCrossoverPairs = Operator::plotCrossover(populationData.speciesGrouping, _crossoverParams, _globalIndexRegistry, _populationContainer.getCurrentGenomeData(_generation), _speciesData);
         
         LOG_DEBUG("Generation {}: Plotted {} crossover pairs for next generation", 
                  _generation, _pendingCrossoverPairs.size());
@@ -479,7 +489,7 @@ void EvolutionPrototype<FitnessResultType>::performEvolutionOperation(size_t i)
     switch (chooseEvolutionOperation(parentGenome, parentData)) {
         case EvolutionOperation::ELITE_COPY:
             Operator::mutationPlacement(_populationContainer, i, _generation,
-                Genome(parentGenome),
+                Genome(parentGenome), parentData,
                 [&](Genome& genome, DynamicGenomeData& data) {
                     data.isUnderRepair = false;
                     assert(Operator::genomeEquals(parentGenome, genome) && "Elite genome copy should be identical to parent");

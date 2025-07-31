@@ -42,7 +42,7 @@ public:
         return _genomeData[generation % 3];
     }
     
-    const std::multimap<FitnessResultType, size_t>& getFitnessResults(uint32_t generation) const {
+    const std::multimap<FitnessResultType, uint32_t>& getFitnessResults(uint32_t generation) const {
         return _fitnessResults[generation % 3];
     }
     
@@ -75,16 +75,16 @@ public:
         return getGenomeData(currentGen - 2);
     }
     
-    const std::multimap<FitnessResultType, size_t>& getCurrentFitnessResults(uint32_t currentGen) const {
+    const std::multimap<FitnessResultType, uint32_t>& getCurrentFitnessResults(uint32_t currentGen) const {
         return getFitnessResults(currentGen);
     }
     
-    const std::multimap<FitnessResultType, size_t>& getLastFitnessResults(uint32_t currentGen) const {
+    const std::multimap<FitnessResultType, uint32_t>& getLastFitnessResults(uint32_t currentGen) const {
         assert(currentGen > 0 && "Cannot access last generation fitness: currentGen underflow");
         return getFitnessResults(currentGen - 1);
     }
     
-    const std::multimap<FitnessResultType, size_t>& getGenerationBeforeLastFitnessResults(uint32_t currentGen) const {
+    const std::multimap<FitnessResultType, uint32_t>& getGenerationBeforeLastFitnessResults(uint32_t currentGen) const {
         assert(currentGen > 1 && "Cannot access generation before last fitness: currentGen underflow");
         return getFitnessResults(currentGen - 2);
     }
@@ -152,7 +152,7 @@ public:
         _extraPopulationSizes[newGenIdx] = 0; // Start with no additional genomes
     }
 
-protected:
+// protected:
     // Keep existing manual friend declaration
     friend class GlobalIndexRegistry;
     
@@ -167,7 +167,7 @@ protected:
         return _genomeData[generation % 3];
     }
     
-    std::multimap<FitnessResultType, size_t>& getFitnessResults(uint32_t generation) {
+    std::multimap<FitnessResultType, uint32_t>& getFitnessResults(uint32_t generation) {
         return _fitnessResults[generation % 3];
     }
     
@@ -200,16 +200,16 @@ protected:
         return getGenomeData(currentGen - 2);
     }
     
-    std::multimap<FitnessResultType, size_t>& getCurrentFitnessResults(uint32_t currentGen) {
+    std::multimap<FitnessResultType, uint32_t>& getCurrentFitnessResults(uint32_t currentGen) {
         return getFitnessResults(currentGen);
     }
     
-    std::multimap<FitnessResultType, size_t>& getLastFitnessResults(uint32_t currentGen) {
+    std::multimap<FitnessResultType, uint32_t>& getLastFitnessResults(uint32_t currentGen) {
         assert(currentGen > 0 && "Cannot access last generation fitness: currentGen underflow");
         return getFitnessResults(currentGen - 1);
     }
     
-    std::multimap<FitnessResultType, size_t>& getGenerationBeforeLastFitnessResults(uint32_t currentGen) {
+    std::multimap<FitnessResultType, uint32_t>& getGenerationBeforeLastFitnessResults(uint32_t currentGen) {
         assert(currentGen > 1 && "Cannot access generation before last fitness: currentGen underflow");
         return getFitnessResults(currentGen - 2);
     }
@@ -283,7 +283,7 @@ private:
     // Triple-buffer storage arrays
     std::array<std::vector<Genome>, 3> _genomes;
     std::array<std::vector<DynamicGenomeData>, 3> _genomeData;
-    std::array<std::multimap<FitnessResultType, size_t>, 3> _fitnessResults;
+    std::array<std::multimap<FitnessResultType, uint32_t>, 3> _fitnessResults;
     
     // Population size tracking - base + extra model
     std::array<size_t, 3> _basePopulationSizes;  // Inherited stable size from previous generation

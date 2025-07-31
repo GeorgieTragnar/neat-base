@@ -21,9 +21,8 @@
 #include "evolution/WeightMutation.hpp"
 #include "display/DisplayGenome.hpp"
 #include "display/DisplayPhenotype.hpp"
-#include "population/DynamicDataUpdate.hpp"
 #include "population/PlotElites.hpp"
-#include "evolution/PlotCrossover.hpp"
+#include "population/PlotCrossover.hpp"
 #include "analysis/CompatibilityDistance.hpp"
 #include "evolution/Crossover.hpp"
 #include "validation/CycleDetection.hpp"
@@ -320,15 +319,20 @@ int main(int argc, char* argv[])
             Operator::ConnectionReactivationParams::SelectionStrategy::RANDOM
         );
         
-        // Create dynamic data update parameters
-        Operator::DynamicDataUpdateParams updateParams(
-            2, // maxGenomePendingEliminationLimit
-            10, // maxSpeciesPendingEliminationRating - reduced from 10 to 3 (faster elimination)
-            1, // speciesElitePlacementProtectionPercentage
-            0.9, // speciesPendingEliminationPercentage - increased from 0.8 to 0.95 (95%)
-            0.6, // genomesPendingEliminationPercentage - increased from 0.3 to 0.7 (70%)
+        // Create species equilibrium elimination parameters
+        Operator::SpeciesEquilibriumParams speciesEquilibriumParams(
             5, // equilibriumSpeciesCount
+            0.9, // speciesPendingEliminationPercentage - increased from 0.8 to 0.95 (95%)
+            1.0, // elitePlacementProtectionPercentage
+            10, // maxPendingEliminationRating - reduced from 10 to 3 (faster elimination)
             populationSize // targetPopulationSize
+        );
+        
+        // Create genome equilibrium elimination parameters
+        Operator::GenomeEquilibriumParams genomeEquilibriumParams(
+            populationSize, // targetPopulationSize
+            0.6, // genomesPendingEliminationPercentage - increased from 0.3 to 0.7 (70%)
+            2 // maxPendingEliminationCounter (was maxGenomePendingEliminationLimit)
         );
         
         // Create compatibility distance parameters
@@ -370,7 +374,8 @@ int main(int argc, char* argv[])
             std::move(fitnessStrategy),
             populationSize,
             initParams,
-            updateParams,
+            speciesEquilibriumParams,
+            genomeEquilibriumParams,
             eliteParams,
             crossoverParams,
             compatibilityParams,
