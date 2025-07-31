@@ -17,7 +17,7 @@ void genomePlacement(
     PopulationContainer<FitnessResultType>& container,
     GlobalIndexRegistry& registry,
     Genome genome,
-    std::function<DynamicGenomeData(const Genome&, size_t)> metadataCreator,
+    std::function<DynamicGenomeData(const Genome&, uint32_t)> metadataCreator,
     uint32_t currentGeneration,
     std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
     Analysis::SpeciationControlUnit& speciationControl
@@ -28,7 +28,7 @@ inline void genomePlacement(
     PopulationContainer<FitnessResultType>& container,
     GlobalIndexRegistry& registry,
     Genome genome,
-    std::function<DynamicGenomeData(const Genome&, size_t)> metadataCreator,
+    std::function<DynamicGenomeData(const Genome&, uint32_t)> metadataCreator,
     uint32_t currentGeneration,
     std::shared_ptr<Analysis::FitnessStrategy<FitnessResultType>> fitnessStrategy,
     Analysis::SpeciationControlUnit& speciationControl

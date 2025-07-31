@@ -38,7 +38,7 @@ public:
     GenomeState getState(uint32_t globalIndex) const;
     uint32_t getMaxIndex() const { return static_cast<uint32_t>(_states.size()); }
 
-// protected:
+protected:
     // Keep existing manual friend declaration
     template<typename FitnessResultType>
     friend class PopulationContainer;

@@ -141,7 +141,7 @@ public:
     
     // Generation lifecycle management
     void announceNewGeneration(uint32_t newGeneration) {
-        assert(newGeneration >= 2 && "Bootstrap should handle gen 0→1 transition, announceNewGeneration is for gen 2+");
+        assert(newGeneration >= 1 && "announceNewGeneration requires generation >= 1 to inherit from previous generation");
         
         size_t newGenIdx = newGeneration % 3;
         size_t prevGenIdx = (newGeneration - 1) % 3;
@@ -152,7 +152,7 @@ public:
         _extraPopulationSizes[newGenIdx] = 0; // Start with no additional genomes
     }
 
-// protected:
+protected:
     // Keep existing manual friend declaration
     friend class GlobalIndexRegistry;
     

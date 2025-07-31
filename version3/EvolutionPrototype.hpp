@@ -48,6 +48,7 @@
 #include "version3/population/FilterEliminatedIndices.hpp"
 #include "version3/population/PlotElites.hpp"
 #include "version3/population/PlotCrossover.hpp"
+#include "version3/population/Bootstrap.hpp"
 #include "version3/data/GlobalIndexRegistry.hpp"
 #include "version3/population/GenerationTransition.hpp"
 #include "version3/phenotype/PhenotypeConstruct.hpp"
@@ -276,66 +277,39 @@ EvolutionPrototype<FitnessResultType>::EvolutionPrototype(
     // Reserve capacity for initial population
     _populationContainer.reserveCapacity(_targetPopulationSize);
     
-    // Bootstrap population using genomePlacement operator
-    for (uint32_t i = 0; i < _targetPopulationSize; ++i) {
-        // Create new genome for bootstrap
-        Genome newGenome = Operator::init(_historyTracker, _initParams);
-        
-        // Use genomePlacement with lambda for complete setup
-        Operator::genomePlacement<FitnessResultType>(
-            _populationContainer,
-            _globalIndexRegistry,
-            std::move(newGenome),
-            [this](const Genome& genome, size_t placedIndex) -> DynamicGenomeData {
-                // Construct phenotype for the placed genome
-                Operator::phenotypeConstruct(_populationContainer, placedIndex, 0);
-                
-                // Calculate species assignment and cycle detection
-                uint32_t speciesId = Operator::compatibilityDistance(
-                    genome, 
-                    _historyTracker, 
-                    _compatibilityParams
-                );
-                bool isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
-                
-                // Create and return complete metadata
-                DynamicGenomeData metadata;
-                metadata.speciesId = speciesId;
-                metadata.pendingEliminationCounter = 0;
-                metadata.isUnderRepair = isUnderRepair;
-                metadata.isMarkedForElimination = false;
-                metadata.parentAIndex = UINT32_MAX;  // Bootstrap genomes have no parents
-                metadata.parentBIndex = UINT32_MAX;
-                
-                return metadata;
-            },
-            0,  // generation 0
-            _fitnessStrategy,
-            speciationControl
-        );
-    }
-    
-    // Get references for validation and elite selection
-    const auto& currentGenomes = _populationContainer.getCurrentGenomes(0);
-    const auto& currentGenomeData = _populationContainer.getCurrentGenomeData(0);
-    
-    // Bootstrap validation: verify species assignments are correct
-    for (size_t i = 0; i < currentGenomes.size(); ++i) {
-        uint32_t storedSpeciesId = currentGenomeData[i].speciesId;
-        uint32_t calculatedSpeciesId = Operator::compatibilityDistance(
-            currentGenomes[i], 
-            _historyTracker, 
-            _compatibilityParams
-        );
-        assert(storedSpeciesId == calculatedSpeciesId && 
-               "Bootstrap: stored species ID must match calculated species ID");
-    }
-    
-    // Bootstrap elite selection: establish initial elites for each species
-    auto initialSpeciesGrouping = Operator::speciesGrouping(_populationContainer, _generation, _speciesData, _globalIndexRegistry);
-    Operator::plotElites(initialSpeciesGrouping, _eliteParams, _populationContainer, _generation, _globalIndexRegistry, _speciesData);
-    
-    _generation = 0;
+    // Bootstrap population using the Bootstrap operator
+    Operator::bootstrap<FitnessResultType>(
+        _populationContainer,
+        _globalIndexRegistry,
+        _generation,
+        _targetPopulationSize,
+        [this]() -> Genome {
+            return Operator::init(_historyTracker, _initParams);
+        },
+        [this](const Genome& genome, uint32_t globalIndex) -> DynamicGenomeData {
+            // Calculate species assignment and cycle detection
+            uint32_t speciesId = Operator::compatibilityDistance(
+                genome, 
+                _historyTracker, 
+                _compatibilityParams
+            );
+            bool isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+            
+            // Create and return metadata
+            DynamicGenomeData metadata;
+            metadata.speciesId = speciesId;
+            metadata.pendingEliminationCounter = 0;
+            metadata.isUnderRepair = isUnderRepair;
+            metadata.isMarkedForElimination = false;
+            metadata.isElite = false;
+            metadata.repairAttempts = 0;
+            metadata.genomeIndex = globalIndex;
+            metadata.parentAIndex = UINT32_MAX;  // Bootstrap genomes have no parents
+            metadata.parentBIndex = UINT32_MAX;
+            
+            return metadata;
+        }
+    );
 }
 
 template<typename FitnessResultType>
@@ -386,7 +360,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                     _populationContainer,
                     _globalIndexRegistry,
                     Operator::crossover(parentA, fitnessA, parentB, fitnessB, _crossoverOperatorParams),
-                    [&](const Genome& offspring, size_t placementIndex) {
+                    [&](const Genome& offspring, uint32_t placementIndex) {
                         uint32_t speciesId = Operator::compatibilityDistance(
                             offspring, _historyTracker, _compatibilityParams);
                         bool hasCycles = Operator::hasCycles(offspring, _cycleDetectionParams);
