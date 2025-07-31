@@ -10,16 +10,19 @@
 #include <utility>
 #include "../data/GlobalIndexRegistry.hpp"
 #include "../data/PopulationData.hpp"
+#include "../data/PopulationContainer.hpp"
 
 namespace Operator {
 
 class PlotCrossoverParams;
 
+template<typename FitnessResultType>
 std::vector<std::pair<uint32_t, uint32_t>> plotCrossover(
     const std::unordered_map<uint32_t, std::vector<uint32_t>>& speciesGroupings,
     const PlotCrossoverParams& params,
     const GlobalIndexRegistry& registry,
-    const std::vector<DynamicGenomeData>& genomeData,
+    const PopulationContainer<FitnessResultType>& container,
+    uint32_t generation,
     const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
 );
 
@@ -42,11 +45,13 @@ public:
     }
 
 private:
+    template<typename FitnessResultType>
     friend std::vector<std::pair<uint32_t, uint32_t>> plotCrossover(
         const std::unordered_map<uint32_t, std::vector<uint32_t>>& speciesGroupings,
         const PlotCrossoverParams& params,
         const GlobalIndexRegistry& registry,
-        const std::vector<DynamicGenomeData>& genomeData,
+        const PopulationContainer<FitnessResultType>& container,
+        uint32_t generation,
         const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
     );
     
@@ -61,14 +66,19 @@ namespace {
     thread_local std::mt19937 gen(rd());
 }
 
+template<typename FitnessResultType>
 inline std::vector<std::pair<uint32_t, uint32_t>> plotCrossover(
     const std::unordered_map<uint32_t, std::vector<uint32_t>>& speciesGroupings,
     const PlotCrossoverParams& params,
     const GlobalIndexRegistry& registry,
-    const std::vector<DynamicGenomeData>& genomeData,
+    const PopulationContainer<FitnessResultType>& container,
+    uint32_t generation,
     const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData) {
     
     assert(!speciesGroupings.empty());
+    
+    // Extract genome data from container
+    const auto& genomeData = container.getGenomeData(generation);
     
     std::vector<std::pair<uint32_t, uint32_t>> crossoverPairs;
     

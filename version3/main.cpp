@@ -403,7 +403,6 @@ int main(int argc, char* argv[])
         // Display results
         LOG_INFO("Evolution completed in {} ms", duration.count());
         LOG_INFO("Best fitness achieved: {}", results.getBestFitness().getValue());
-        LOG_INFO("Final population size: {}", results.getFinalPopulation().size());
         
         // Display the best solution
         auto bestGenome = results.getBestGenome();

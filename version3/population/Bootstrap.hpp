@@ -71,37 +71,18 @@ inline void bootstrap(
     
     LOG_DEBUG("Bootstrap: Generation 0 complete with {} genomes", targetPopulationSize);
     
-    // Generation 1: Direct copy from generation 0
-    LOG_DEBUG("Bootstrap: Creating generation 1 as copy of generation 0");
-    container.clearGenerationFitnessResults(1);
-    container.announceNewGeneration(1);
-    
-    const auto& gen0Genomes = container.getGenomes(0);
-    const auto& gen0Data = container.getGenomeData(0);
-    
-    for (uint32_t i = 0; i < targetPopulationSize; ++i) {
-        // Deep copy genome and metadata
-        Genome genomeCopy(gen0Genomes[i]);
-        DynamicGenomeData dataCopy(gen0Data[i]);
-        
-        // Add to generation 1
-        uint32_t globalIndex = container.push_back(1, std::move(genomeCopy), std::move(dataCopy));
-        
-        // Verify index matches (should reuse same indices)
-        assert(globalIndex == i && "Bootstrap generation 1 should reuse same indices");
-    }
-    
-    LOG_DEBUG("Bootstrap: Generation 1 complete with {} genomes", targetPopulationSize);
-    
-    // Set generation for main evolution loop
-    generation = 2;
+    // PopulationContainer automatically synchronized all 3 generations during push_back operations
+    // Generation 1 is ready for announceNewGeneration(1) call
+    generation = 1;
     LOG_INFO("Bootstrap: Complete. Evolution will start at generation {}", generation);
     
-    // Validate container state
-    assert(container.getPopulationSize(0) == targetPopulationSize);
-    assert(container.getPopulationSize(1) == targetPopulationSize);
+    // Validate container state - all generations should have same population due to auto-sync
+    assert(container.getGenerationSize(0) == targetPopulationSize);
+    assert(container.getGenerationSize(1) == targetPopulationSize);
+    assert(container.getGenerationSize(2) == targetPopulationSize);
     assert(container.getFitnessResults(0).empty() && "Generation 0 should have no fitness results");
     assert(container.getFitnessResults(1).empty() && "Generation 1 should have no fitness results");
+    assert(container.getFitnessResults(2).empty() && "Generation 2 should have no fitness results");
 }
 
 } // namespace Operator

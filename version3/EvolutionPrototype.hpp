@@ -49,6 +49,7 @@
 #include "version3/population/PlotElites.hpp"
 #include "version3/population/PlotCrossover.hpp"
 #include "version3/population/Bootstrap.hpp"
+#include "version3/population/ResultExtraction.hpp"
 #include "version3/data/GlobalIndexRegistry.hpp"
 #include "version3/population/GenerationTransition.hpp"
 #include "version3/phenotype/PhenotypeConstruct.hpp"
@@ -103,19 +104,14 @@ public:
     EvolutionResults(
         Genome bestGenome,
         FitnessResultType bestFitness,
-        std::vector<Genome> finalPopulation,
-        std::vector<FitnessResultType> finalFitnessValues,
         uint32_t generationsCompleted
     ) : _bestGenome(std::move(bestGenome)),
         _bestFitness(bestFitness),
-        _finalPopulation(std::move(finalPopulation)),
-        _finalFitnessValues(std::move(finalFitnessValues)),
         _generationsCompleted(generationsCompleted) {}
 
     const Genome& getBestGenome() const { return _bestGenome; }
     FitnessResultType getBestFitness() const { return _bestFitness; }
     const std::vector<Genome>& getFinalPopulation() const { return _finalPopulation; }
-    const std::vector<FitnessResultType>& getFinalFitnessValues() const { return _finalFitnessValues; }
     uint32_t getGenerationsCompleted() const { return _generationsCompleted; }
 
 private:
@@ -397,7 +393,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         Operator::plotElites(populationData.speciesGrouping, _eliteParams, _populationContainer, _generation, _globalIndexRegistry, _speciesData);
         
         // Phase 4: Crossover Planning - Store pairs for execution in next generation using filtered grouping
-        _pendingCrossoverPairs = Operator::plotCrossover(populationData.speciesGrouping, _crossoverParams, _globalIndexRegistry, _populationContainer.getCurrentGenomeData(_generation), _speciesData);
+        _pendingCrossoverPairs = Operator::plotCrossover(populationData.speciesGrouping, _crossoverParams, _globalIndexRegistry, _populationContainer, _generation, _speciesData);
         
         LOG_DEBUG("Generation {}: Plotted {} crossover pairs for next generation", 
                  _generation, _pendingCrossoverPairs.size());
@@ -405,51 +401,27 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         // end of generation loop
     }
     
-    // Build results directly
-    const auto& finalGenomes = _populationContainer.getCurrentGenomes(_generation);
-    const auto& finalFitnessResults = _populationContainer.getCurrentFitnessResults(_generation);
+    // Use ResultExtraction operator to get best genome index with validation
+    uint32_t bestGlobalIndex = Operator::extractBestGenomeIndex(_populationContainer, _generation, _globalIndexRegistry);
     
-    if (finalGenomes.empty()) {
+    if (bestGlobalIndex == UINT32_MAX) {
         // Create a dummy genome for empty population case
         Genome dummyGenome = Operator::init(_historyTracker, _initParams);
         return EvolutionResults<FitnessResultType>(
             std::move(dummyGenome),
             FitnessResultType{},
-            std::vector<Genome>{},
-            std::vector<FitnessResultType>{},
             maxGenerations
         );
     }
+    // Extract best genome and fitness using the validated index
+    Genome bestGenome(_populationContainer.getGenome(_generation, bestGlobalIndex));
     
-    // Extract best genome from fitness results (last in multimap - highest fitness)
-    auto bestIt = finalFitnessResults.rbegin();
-    size_t bestIndex = bestIt->second;
-    Genome bestGenome = finalGenomes[bestIndex];
-    FitnessResultType bestFitness = bestIt->first;
-    
-    // Extract final population and fitness values
-    std::vector<Genome> finalPopulation = finalGenomes;
-    std::vector<FitnessResultType> finalFitnessValues;
-    
-    // Build fitness values in the same order as the population
-    finalFitnessValues.reserve(finalGenomes.size());
-    for (size_t i = 0; i < finalGenomes.size(); ++i) {
-        // Find fitness for genome at index i
-        FitnessResultType fitness{};
-        for (const auto& [fitnessResult, globalIndex] : finalFitnessResults) {
-            if (globalIndex == i) {
-                fitness = fitnessResult;
-                break;
-            }
-        }
-        finalFitnessValues.push_back(fitness);
-    }
+    // Find the fitness for the best genome
+    FitnessResultType bestFitness = Operator::fitnessExtraction(_populationContainer, bestGlobalIndex, bestGlobalIndex, _generation + 1).first;
     
     return EvolutionResults<FitnessResultType>(
         std::move(bestGenome),
         bestFitness,
-        std::move(finalPopulation),
-        std::move(finalFitnessValues),
         maxGenerations
     );
 }
