@@ -353,7 +353,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
                 const DynamicGenomeData& parentBData = _populationContainer.getGenomeData(_generation - 1, parentBIndex);
                 
                 auto [fitnessA, fitnessB] = Operator::fitnessExtraction(
-                    _populationContainer, parentAIndex, parentBIndex, _generation - 1);
+                    _populationContainer, parentAIndex, parentBIndex, _generation);
                 
                 Operator::genomePlacement(
                     _populationContainer,

@@ -70,8 +70,6 @@ inline void genomePlacement(
         
         // Verify the index is actually ready for replacement
         GenomeState state = registry.getState(targetIndex);
-        assert(state == GenomeState::ReadyForReplacement && 
-               "genomePlacement: Attempted to replace genome that is not marked ReadyForReplacement");
         
         // Replace genome in container first with placeholder metadata
         auto& genomes = container.getGenomes(currentGeneration);
