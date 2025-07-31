@@ -73,13 +73,13 @@ void speciesEquilibriumElimination(
     const uint32_t excessSpeciesCount = (populationData.activeSpeciesCount > params.equilibriumSpeciesCount)
         ? populationData.activeSpeciesCount - params.equilibriumSpeciesCount : 0;
     
-    assert(excessSpeciesCount < populationData.activeSpeciesCount && 
+    assert(excessSpeciesCount <= populationData.activeSpeciesCount && 
            "there cannot be more excess than active species");
     
     const uint32_t speciesPendingElimination = excessSpeciesCount > 0
         ? static_cast<uint32_t>(excessSpeciesCount * params.speciesPendingEliminationPercentage) : 0;
     
-    assert(speciesPendingElimination < populationData.activeSpeciesCount && 
+    assert(speciesPendingElimination <= populationData.activeSpeciesCount && 
            "there cannot be more species pending elimination than active species");
     
     // Track species that had their rating increased this generation
