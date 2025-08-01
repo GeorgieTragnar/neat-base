@@ -176,22 +176,6 @@ void speciesEquilibriumElimination(
             }
         }
     }
-    
-    // Mark all genomes belonging to eliminated species for elimination
-    if (!eliminatedSpeciesIds.empty()) {
-        size_t genomesMarkedForElimination = 0;
-        for (size_t globalIndex = 0; globalIndex < genomeData.size(); ++globalIndex) {
-            const auto& genome = genomeData[globalIndex];
-            if (eliminatedSpeciesIds.find(genome.speciesId) != eliminatedSpeciesIds.end()) {
-                if (registry.getState(globalIndex) == GenomeState::Active) {
-                    registry.markForElimination(globalIndex);
-                    genomesMarkedForElimination++;
-                }
-            }
-        }
-        LOG_INFO("Marked {} genomes for elimination across {} eliminated species", 
-                genomesMarkedForElimination, eliminatedSpeciesIds.size());
-    }
 }
 
 } // namespace Operator
