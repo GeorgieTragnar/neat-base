@@ -56,6 +56,7 @@
 #include "version3/phenotype/PhenotypeUpdateWeight.hpp"
 #include "version3/phenotype/PhenotypeUpdateNode.hpp"
 #include "version3/phenotype/PhenotypeUpdateConnection.hpp"
+#include "version3/validation/EliteGenomeValidation.hpp"
 
 #include "logger/Logger.hpp"
 
@@ -391,6 +392,10 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
         // Filter out eliminated genomes for elite selection and crossover planning
         Operator::filterEliminatedIndices(populationData, _globalIndexRegistry);
+        
+        // Validate elite genome preservation between generations
+        bool eliteValidationPassed = Operator::validateEliteGenomes(_populationContainer, _generation, _globalIndexRegistry);
+        assert(eliteValidationPassed && "Elite genome validation failed - elite preservation is broken");
         
         // Phase 3.5: Elite Selection - Mark elites for next generation using filtered grouping
         Operator::plotElites(populationData.speciesGrouping, _eliteParams, _populationContainer, _generation, _globalIndexRegistry, _speciesData);
