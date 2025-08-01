@@ -446,10 +446,18 @@ void EvolutionPrototype<FitnessResultType>::performEvolutionOperation(size_t i)
             return;
         case EvolutionOperation::REPAIR:
             Operator::mutationPlacement(_populationContainer, i, _generation,
-                Genome(parentGenome), parentData,
+                Operator::repair(parentGenome, _repairParams),
+                parentData,
                 [&](Genome& genome, DynamicGenomeData& data) {
-                    data.isUnderRepair = false;
-                    assert(Operator::genomeEquals(parentGenome, genome) && "Elite genome copy should be identical to parent");
+                    data.speciesId = Operator::compatibilityDistance(genome, _historyTracker, _compatibilityParams);
+                    data.isUnderRepair = Operator::hasCycles(genome, _cycleDetectionParams);
+                    
+                    if (data.isUnderRepair) {
+                        data.repairAttempts++;  // Increment repair attempts on failed repair
+                    } else {
+                        data.repairAttempts = 0;  // Reset on successful repair
+                        Operator::phenotypeConstruct(_populationContainer, i, _generation);  // Construct new phenotype
+                    }
                 }, _fitnessStrategy, speciationControl, _globalIndexRegistry);
             return;
         case EvolutionOperation::WEIGHT_MUTATION:

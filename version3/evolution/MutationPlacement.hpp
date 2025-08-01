@@ -52,6 +52,9 @@ void mutationPlacement(
     assert(currentGenomes.size() == currentGenomeData.size() && 
            "mutationPlacement: Genome and data vectors must have equal size");
     
+    // Validate parent data has proper genomeIndex before copying
+    assert(parentData.genomeIndex != UINT32_MAX && "Parent genome must have valid genomeIndex before mutation placement");
+    
     // Copy parent data and place genome with move semantics
     currentGenomeData[targetIndex] = parentData;
     currentGenomes[targetIndex] = std::move(offspring);

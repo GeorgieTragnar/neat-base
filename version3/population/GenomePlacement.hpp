@@ -49,8 +49,9 @@ inline void genomePlacement(
         auto& genomes = container.getGenomes(currentGeneration);
         auto& genomeData = container.getGenomeData(currentGeneration);
         DynamicGenomeData metadata = metadataCreator(genomes[targetIndex], targetIndex);
+        metadata.genomeIndex = targetIndex;  // Always override to ensure correct index
         
-        // Update with actual metadata
+        // Update with actual metadata using emplace for efficiency
         genomeData[targetIndex] = std::move(metadata);
         
         // Perform fitness evaluation if genome is evaluable
@@ -79,6 +80,7 @@ inline void genomePlacement(
         
         // Create actual metadata with placed genome
         DynamicGenomeData metadata = metadataCreator(genomes[targetIndex], targetIndex);
+        metadata.genomeIndex = targetIndex;  // Always override to ensure correct index
         
         // Update with actual metadata
         genomeData[targetIndex] = std::move(metadata);
