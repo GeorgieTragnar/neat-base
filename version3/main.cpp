@@ -260,7 +260,7 @@ int main(int argc, char* argv[])
     try {
         // Evolution parameters
         const uint32_t populationSize = 100;
-        const uint32_t maxGenerations = 160;
+        const uint32_t maxGenerations = 350;
         const uint32_t randomSeed = 12345;
         
         // Create input node attributes (2 inputs for XOR)
@@ -360,12 +360,12 @@ int main(int argc, char* argv[])
         // Create repair operator parameters (using defaults)
         Operator::RepairOperatorParams repairParams(2);
         
-        // Create weight mutation parameters for better exploration
+        // Create weight mutation parameters matching NEAT standards for XOR
         Operator::WeightMutationParams weightMutationParams(
-            0.8,  // perturbationRate - still high but allow more replacements
-            0.25, // replacementRate - increased for more dramatic changes
-            1.5,  // perturbationStrength - stronger perturbations for better exploration
-            4.0,  // weightRange - wider range matching connection mutations
+            0.8,  // perturbationRate - standard NEAT value (80%)
+            0.1,  // replacementRate - reduced to standard NEAT value (10%)
+            0.5,  // perturbationStrength - reduced to standard NEAT value (0.5)
+            4.0,  // weightRange - keep current range for replacement weights
             Operator::WeightMutationParams::MutationType::MIXED
         );
         

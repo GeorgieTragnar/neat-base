@@ -3,19 +3,23 @@
 #include "version3/data/PopulationContainer.hpp"
 #include "version3/data/GlobalIndexRegistry.hpp"
 #include "version3/population/GenerationPopulationData.hpp"
+#include "version3/data/PopulationData.hpp"
 #include "version3/logger/Logger.hpp"
 #include <cassert>
 #include <cmath>
+#include <unordered_map>
 
 namespace Operator {
 
 // Validates that the best-performing genome in each species is not marked for elimination
+// (unless the entire species is marked for elimination)
 template<typename FitnessResultType>
 void validateBestGenomePreservation(
     const GenerationPopulationData<FitnessResultType>& populationData,
     const PopulationContainer<FitnessResultType>& container,
     const uint32_t& generation,
-    const GlobalIndexRegistry& registry
+    const GlobalIndexRegistry& registry,
+    const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
 );
 
 template<typename FitnessResultType>
@@ -23,7 +27,8 @@ void validateBestGenomePreservation(
     const GenerationPopulationData<FitnessResultType>& populationData,
     const PopulationContainer<FitnessResultType>& container,
     const uint32_t& generation,
-    const GlobalIndexRegistry& registry
+    const GlobalIndexRegistry& registry,
+    const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
 ) {
     auto logger = LOGGER("validation.BestGenomePreservation");
     
@@ -32,6 +37,13 @@ void validateBestGenomePreservation(
     // Check the best genome in each species
     for (const auto& [speciesId, genomeIndices] : populationData.speciesGrouping) {
         if (genomeIndices.empty()) continue;
+        
+        // Skip validation if the entire species is marked for elimination
+        auto speciesIt = speciesData.find(speciesId);
+        if (speciesIt != speciesData.end() && speciesIt->second.isMarkedForElimination) {
+            LOG_DEBUG("Skipping validation for species {} - entire species marked for elimination", speciesId);
+            continue;
+        }
         
         // Get the best performer (last element in the fitness-ordered vector)
         const uint32_t bestGenomeIndex = genomeIndices.back();

@@ -393,7 +393,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
 #ifndef NDEBUG
         // Validate species fitness doesn't regress and update tracking
-        Operator::validateSpeciesFitnessRegression(_speciesBestFitnessTracker, _populationContainer, _generation, _globalIndexRegistry);
+        Operator::validateSpeciesFitnessRegression(_speciesBestFitnessTracker, _populationContainer, _generation, _globalIndexRegistry, _speciesData);
 #endif
         
         // Species equilibrium elimination - eliminate worst-performing species
@@ -404,7 +404,7 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         
 #ifndef NDEBUG
         // Validate that best performers weren't marked for elimination
-        Operator::validateBestGenomePreservation(populationData, _populationContainer, _generation, _globalIndexRegistry);
+        Operator::validateBestGenomePreservation(populationData, _populationContainer, _generation, _globalIndexRegistry, _speciesData);
 #endif
         
         // Filter out eliminated genomes for elite selection and crossover planning

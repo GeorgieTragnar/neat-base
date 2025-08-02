@@ -2,6 +2,7 @@
 
 #include "version3/data/PopulationContainer.hpp"
 #include "version3/data/GlobalIndexRegistry.hpp"
+#include "version3/data/PopulationData.hpp"
 #include "version3/logger/Logger.hpp"
 #include <unordered_map>
 #include <cassert>
@@ -16,7 +17,8 @@ void validateSpeciesFitnessRegression(
     std::unordered_map<uint32_t, FitnessResultType>& speciesBestFitnessTracker,
     const PopulationContainer<FitnessResultType>& container,
     const uint32_t& generation,
-    const GlobalIndexRegistry& registry
+    const GlobalIndexRegistry& registry,
+    const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
 );
 
 // Validates that species fitness doesn't regress and updates the tracking map
@@ -25,7 +27,8 @@ void validateSpeciesFitnessRegression(
     std::unordered_map<uint32_t, FitnessResultType>& speciesBestFitnessTracker,
     const PopulationContainer<FitnessResultType>& container,
     const uint32_t& generation,
-    const GlobalIndexRegistry& registry
+    const GlobalIndexRegistry& registry,
+    const std::unordered_map<uint32_t, DynamicSpeciesData>& speciesData
 ) {
     auto logger = LOGGER("operator.SpeciesFitnessRegression");
     
@@ -64,6 +67,13 @@ void validateSpeciesFitnessRegression(
         auto trackerIt = speciesBestFitnessTracker.find(speciesId);
         
         if (trackerIt != speciesBestFitnessTracker.end()) {
+            // Check if species is marked for elimination
+            auto speciesIt = speciesData.find(speciesId);
+            if (speciesIt != speciesData.end() && speciesIt->second.isMarkedForElimination) {
+                LOG_DEBUG("Species {} marked for elimination, skipping regression check", speciesId);
+                continue;
+            }
+            
             // Species exists in tracker - validate no regression
             const FitnessResultType& historicalBest = trackerIt->second;
             
