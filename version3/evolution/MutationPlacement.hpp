@@ -63,11 +63,19 @@ void mutationPlacement(
     currentGenomeData[targetIndex].parentAIndex = static_cast<uint32_t>(targetIndex);  // Same index in last generation
     currentGenomeData[targetIndex].parentBIndex = UINT32_MAX;                          // Single parent (not crossover)
     
+    // Store parent species before post-placement operations
+    uint32_t parentSpeciesId = parentData.speciesId;
+    
     // Execute post-placement operations (species assignment, cycle detection, phenotype updates, etc.)
     postPlacementOperator(
         currentGenomes[targetIndex],
         currentGenomeData[targetIndex]
     );
+    
+    // Reset elimination counter if offspring moved to a different species
+    if (currentGenomeData[targetIndex].speciesId != parentSpeciesId) {
+        currentGenomeData[targetIndex].pendingEliminationCounter = 0;
+    }
     
     // Perform fitness evaluation if genome is evaluable
     if (!currentGenomeData[targetIndex].isUnderRepair) {

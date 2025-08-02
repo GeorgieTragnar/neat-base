@@ -135,8 +135,8 @@ void genomeEquilibriumElimination(
         LOG_DEBUG("Species {}: {} genomes, equilibrium {}, excess {}, targeting {} for pending elimination",
                  speciesId, activeGenomeCount, equilibrium, excessGenomeCount, genomesPendingElimination);
         
-        // Increment pending elimination counter for worst performers (end of fitness-ordered vector)
-        for (size_t i = validGenomes.size() - genomesPendingElimination; i < validGenomes.size(); ++i) {
+        // Increment pending elimination counter for worst performers (beginning of fitness-ordered vector)
+        for (size_t i = 0; i < genomesPendingElimination; ++i) {
             // Skip genomes that may have been marked for elimination during this update cycle
             if (registry.getState(validGenomes[i]) != GenomeState::Active) {
                 continue;
@@ -156,8 +156,8 @@ void genomeEquilibriumElimination(
             }
         }
         
-        // Decrement pending elimination counter for better performers (beginning of fitness-ordered vector)
-        for (size_t i = 0; i < (validGenomes.size() - genomesPendingElimination); ++i) {
+        // Decrement pending elimination counter for better performers (end of fitness-ordered vector)
+        for (size_t i = genomesPendingElimination; i < validGenomes.size(); ++i) {
             // Skip genomes that may have been marked for elimination during this update cycle
             if (registry.getState(validGenomes[i]) != GenomeState::Active) {
                 continue;

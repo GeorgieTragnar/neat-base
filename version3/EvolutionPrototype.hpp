@@ -57,6 +57,8 @@
 #include "version3/phenotype/PhenotypeUpdateNode.hpp"
 #include "version3/phenotype/PhenotypeUpdateConnection.hpp"
 #include "version3/validation/EliteGenomeValidation.hpp"
+#include "version3/validation/SpeciesFitnessRegression.hpp"
+#include "version3/validation/BestGenomePreservationValidation.hpp"
 
 #include "logger/Logger.hpp"
 
@@ -206,6 +208,11 @@ private:
 
     // Crossover pairs storage for delayed execution
     std::vector<std::pair<uint32_t, uint32_t>> _pendingCrossoverPairs;
+    
+#ifndef NDEBUG
+    // Debug-only tracking of historical best fitness per species
+    std::unordered_map<uint32_t, FitnessResultType> _speciesBestFitnessTracker;
+#endif
 };
 
 // Template implementation
@@ -384,11 +391,21 @@ EvolutionResults<FitnessResultType> EvolutionPrototype<FitnessResultType>::run(u
         // Species ranking - calculate performance metrics and assign ordinal rankings
         Operator::speciesRanking(populationData, _populationContainer, _generation, _speciesData);
         
+#ifndef NDEBUG
+        // Validate species fitness doesn't regress and update tracking
+        Operator::validateSpeciesFitnessRegression(_speciesBestFitnessTracker, _populationContainer, _generation, _globalIndexRegistry);
+#endif
+        
         // Species equilibrium elimination - eliminate worst-performing species
         Operator::speciesEquilibriumElimination(populationData, _speciesData, _populationContainer, _generation, _speciesEquilibriumParams, _globalIndexRegistry);
         
         // Genome equilibrium elimination - eliminate worst-performing genomes within species
         Operator::genomeEquilibriumElimination(populationData, _speciesData, _populationContainer, _generation, _genomeEquilibriumParams, _globalIndexRegistry);
+        
+#ifndef NDEBUG
+        // Validate that best performers weren't marked for elimination
+        Operator::validateBestGenomePreservation(populationData, _populationContainer, _generation, _globalIndexRegistry);
+#endif
         
         // Filter out eliminated genomes for elite selection and crossover planning
         Operator::filterEliminatedIndices(populationData, _globalIndexRegistry);

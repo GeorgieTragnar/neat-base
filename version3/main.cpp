@@ -35,21 +35,30 @@
 
 // Evolution prototype
 #include "EvolutionPrototype.hpp"
+#include "analysis/FitnessResult.hpp"
 
 static auto logger = LOGGER("evolution.EvolutionPrototype");
 
 // User-defined fitness result type for XOR problem
-class DoubleFitnessResult {
+class DoubleFitnessResult : public Analysis::FitnessResultInterface {
 public:
     explicit DoubleFitnessResult(double penalizedValue = 0.0, double rawValue = 0.0) 
         : _penalizedValue(penalizedValue), _rawValue(rawValue) {}
     
-    bool isBetterThan(const DoubleFitnessResult& other) const {
-        return _penalizedValue > other._penalizedValue; // Higher is better, use penalized for comparison
+    bool isBetterThan(const Analysis::FitnessResultInterface& other) const override {
+        const auto* otherDouble = dynamic_cast<const DoubleFitnessResult*>(&other);
+        if (!otherDouble) return false;
+        return _penalizedValue > otherDouble->_penalizedValue; // Higher is better, use penalized for comparison
     }
     
-    bool isEqualTo(const DoubleFitnessResult& other) const {
-        return std::abs(_penalizedValue - other._penalizedValue) < std::numeric_limits<double>::epsilon();
+    bool isEqualTo(const Analysis::FitnessResultInterface& other) const override {
+        const auto* otherDouble = dynamic_cast<const DoubleFitnessResult*>(&other);
+        if (!otherDouble) return false;
+        return std::abs(_penalizedValue - otherDouble->_penalizedValue) < std::numeric_limits<double>::epsilon();
+    }
+    
+    std::unique_ptr<Analysis::FitnessResultInterface> clone() const override {
+        return std::make_unique<DoubleFitnessResult>(_penalizedValue, _rawValue);
     }
     
     double getValue() const { return _penalizedValue; } // Return penalized for sorting/selection
