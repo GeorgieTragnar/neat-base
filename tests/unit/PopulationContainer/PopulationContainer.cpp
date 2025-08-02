@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "version3/data/Genome.hpp"
-#include "version3/population/PopulationData.hpp"
-#include "version3/population/PopulationContainer.hpp"
+#include "version3/data/PopulationData.hpp"
+#include "version3/data/PopulationContainer.hpp"
 
 using namespace Population;
 

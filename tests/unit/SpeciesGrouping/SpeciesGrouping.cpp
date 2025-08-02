@@ -6,7 +6,7 @@
 
 #include "tests/test_common.h"
 #include "version3/population/SpeciesGrouping.hpp"
-#include "version3/population/GlobalIndexRegistry.hpp"
+#include "version3/data/GlobalIndexRegistry.hpp"
 
 using namespace Population;
 

@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
-#include "version3/population/GlobalIndexRegistry.hpp"
-
-using namespace Population;
+#include "tests/test_common.h"
+#include "version3/data/GlobalIndexRegistry.hpp"
 
 class GlobalIndexRegistryTest : public ::testing::Test {
 protected:

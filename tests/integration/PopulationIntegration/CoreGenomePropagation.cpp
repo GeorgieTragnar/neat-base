@@ -4,9 +4,9 @@
 
 #include "version3/data/Genome.hpp"
 #include "version3/data/HistoryTracker.hpp"
-#include "version3/population/PopulationData.hpp"
-#include "version3/population/GlobalIndexRegistry.hpp"
-#include "version3/population/PopulationContainer.hpp"
+#include "version3/data/PopulationData.hpp"
+#include "version3/data/GlobalIndexRegistry.hpp"
+#include "version3/data/PopulationContainer.hpp"
 #include "version3/operator/CompatibilityDistance.hpp"
 #include "version3/operator/Init.hpp"
 #include "version3/operator/Crossover.hpp"
@@ -21,7 +21,7 @@
 #include "version3/operator/PhenotypeUpdateNode.hpp"
 #include "version3/operator/PhenotypeUpdateConnection.hpp"
 #include "version3/population/SpeciesGrouping.hpp"
-#include "version3/population/PlotElites.hpp"
+#include "version3/operator/PlotElites.hpp"
 
 #include <memory>
 #include <vector>
@@ -45,8 +45,8 @@ class CoreGenomePropagationTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Initialize core components exactly as specified in integration test plan
-        _globalIndexRegistry = std::make_unique<Population::GlobalIndexRegistry>(0);
-        _populationContainer = std::make_unique<Population::PopulationContainer<TestFitnessResult>>(*_globalIndexRegistry);
+        _globalIndexRegistry = std::make_unique<GlobalIndexRegistry>(0);
+        _populationContainer = std::make_unique<PopulationContainer<TestFitnessResult>>(*_globalIndexRegistry);
         _historyTracker = std::make_shared<HistoryTracker>();
         _compatibilityParams = std::make_unique<Operator::CompatibilityDistanceParams>(3.0f, 1.0f, 0.4f, 2.0f);
     }
@@ -113,8 +113,8 @@ protected:
     
     // 1. Global Index Validity
     void validateGlobalIndexConsistency(
-        Population::PopulationContainer<TestFitnessResult>& container,
-        Population::GlobalIndexRegistry& registry,
+        PopulationContainer<TestFitnessResult>& container,
+        GlobalIndexRegistry& registry,
         uint32_t gen) {
             
         size_t expectedGenomes = container.getGenerationSize(gen);
@@ -218,8 +218,8 @@ protected:
     }
 
 private:
-    std::unique_ptr<Population::GlobalIndexRegistry> _globalIndexRegistry;
-    std::unique_ptr<Population::PopulationContainer<TestFitnessResult>> _populationContainer;
+    std::unique_ptr<GlobalIndexRegistry> _globalIndexRegistry;
+    std::unique_ptr<PopulationContainer<TestFitnessResult>> _populationContainer;
     std::shared_ptr<HistoryTracker> _historyTracker;
     std::unique_ptr<Operator::CompatibilityDistanceParams> _compatibilityParams;
     
@@ -580,7 +580,7 @@ protected:
 private:
     void initializeFitnessTrackingComponents() {
         // Initialize elite selection parameters
-        _eliteParams = std::make_unique<Population::PlotElitesParams>(0.20, 1, 3); // 20% elites, min 1, max 3
+        _eliteParams = std::make_unique<Operator::PlotElitesParams>(0.20, 1, 3); // 20% elites, min 1, max 3
         
         // Initialize species data map (required for elite selection)
         initializeSpeciesDataFromEvolvedPopulation();
@@ -591,7 +591,7 @@ private:
     void initializeSpeciesDataFromEvolvedPopulation() {
         // Create species data entries for all evolved species
         for (const auto& [speciesId, genomeIndices] : _evolvedSpeciesMap) {
-            Population::DynamicSpeciesData speciesData;
+            DynamicSpeciesData speciesData;
             speciesData.currentPopulationSize = genomeIndices.size();
             speciesData.isMarkedForElimination = false;
             // Initialize other species data fields as needed
@@ -604,8 +604,8 @@ private:
 
 protected:
     // Fitness tracking components
-    std::unique_ptr<Population::PlotElitesParams> _eliteParams;
-    std::unordered_map<uint32_t, Population::DynamicSpeciesData> _speciesData;
+    std::unique_ptr<Operator::PlotElitesParams> _eliteParams;
+    std::unordered_map<uint32_t, DynamicSpeciesData> _speciesData;
     
     // Helper function to evaluate realistic fitness on evolved population
     void evaluateRealisticFitnessOnEvolvedPopulation() {
@@ -680,7 +680,7 @@ protected:
         logEliteStatus();
         
         // Run PlotElites on the evolved population
-        Population::plotElites(speciesGrouping, *_eliteParams, *_globalIndexRegistry, _speciesData);
+        Operator::plotElites(speciesGrouping, *_eliteParams, *_globalIndexRegistry, _speciesData);
         
         std::cout << "\n=== AFTER ELITE SELECTION ===" << std::endl;
         logEliteStatus();
@@ -697,7 +697,7 @@ protected:
         for (size_t i = 0; i < evolvedGenomes.size(); ++i) {
             auto state = _globalIndexRegistry->getState(i);
             uint32_t speciesId = evolvedGenomeData[i].speciesId;
-            bool isElite = (state == Population::GenomeState::Elite);
+            bool isElite = (state == GenomeState::Elite);
             
             std::cout << "Genome " << i << ": species=" << speciesId 
                       << ", state=" << static_cast<int>(state) 
@@ -710,34 +710,51 @@ protected:
         const std::unordered_map<uint32_t, std::vector<size_t>>& speciesGrouping,
         const std::multimap<TestFitnessResult, size_t>& fitnessResults) {
         
-        // For each species, verify that the highest-fitness genome is marked as elite
+        // For each species, verify that at least one genome with the highest fitness is marked as elite
         for (const auto& [speciesId, genomeIndices] : speciesGrouping) {
-            // Find the highest fitness genome in this species
+            // Find the highest fitness value in this species
             TestFitnessResult bestFitness(0.0);
-            size_t bestGenomeIndex = SIZE_MAX;
-            bool foundBestGenome = false;
+            bool foundBestFitness = false;
             
             for (size_t genomeIndex : genomeIndices) {
                 for (const auto& [fitness, globalIndex] : fitnessResults) {
                     if (globalIndex == genomeIndex) {
-                        if (!foundBestGenome || fitness.isBetterThan(bestFitness)) {
+                        if (!foundBestFitness || fitness.isBetterThan(bestFitness)) {
                             bestFitness = fitness;
-                            bestGenomeIndex = genomeIndex;
-                            foundBestGenome = true;
+                            foundBestFitness = true;
                         }
                         break;
                     }
                 }
             }
             
-            // Verify this genome is marked as elite
-            if (foundBestGenome) {
-                auto state = _globalIndexRegistry->getState(bestGenomeIndex);
-                assert(state == Population::GenomeState::Elite && 
-                       "Highest fitness genome in species should be marked as Elite");
+            // Find all genomes with the best fitness and verify at least one is elite
+            if (foundBestFitness) {
+                std::vector<size_t> bestGenomes;
+                std::vector<size_t> bestEliteGenomes;
                 
-                std::cout << "Species " << speciesId << ": Elite genome " << bestGenomeIndex 
-                          << " with fitness " << bestFitness.getFitness() << std::endl;
+                for (size_t genomeIndex : genomeIndices) {
+                    for (const auto& [fitness, globalIndex] : fitnessResults) {
+                        if (globalIndex == genomeIndex) {
+                            if (fitness.isEqualTo(bestFitness)) {
+                                bestGenomes.push_back(genomeIndex);
+                                auto state = _globalIndexRegistry->getState(genomeIndex);
+                                if (state == GenomeState::Elite) {
+                                    bestEliteGenomes.push_back(genomeIndex);
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+                
+                // Verify at least one genome with best fitness is marked as elite
+                assert(!bestEliteGenomes.empty() && 
+                       "At least one genome with best fitness in species should be marked as Elite");
+                
+                std::cout << "Species " << speciesId << ": " << bestEliteGenomes.size() 
+                          << " elite(s) among " << bestGenomes.size() 
+                          << " genome(s) with best fitness " << bestFitness.getFitness() << std::endl;
             }
         }
     }
@@ -790,7 +807,7 @@ private:
         // Identify all current elites
         for (size_t i = 0; i < evolvedGenomes.size(); ++i) {
             auto state = _globalIndexRegistry->getState(i);
-            if (state == Population::GenomeState::Elite) {
+            if (state == GenomeState::Elite) {
                 _baselineElites.push_back(i);
                 
                 // Capture elite properties for byte-for-byte comparison
@@ -849,7 +866,7 @@ protected:
             const Population::DynamicGenomeData& parentData = lastGenomeData[i];
             
             // Elite protection logic (exact copy from EvolutionPrototype.hpp:441-448)
-            if (_globalIndexRegistry->getState(i) == Population::GenomeState::Elite) {
+            if (_globalIndexRegistry->getState(i) == GenomeState::Elite) {
                 // Elite protection: copy as-is without any mutation
                 currentGenomes[i] = parentGenome;
                 currentGenomeData[i] = parentData;
@@ -872,7 +889,7 @@ protected:
         for (size_t i = 0; i < currentGenomes.size(); ++i) {
             const Genome& genome = currentGenomes[i];
             
-            if (_globalIndexRegistry->getState(i) == Population::GenomeState::Elite) {
+            if (_globalIndexRegistry->getState(i) == GenomeState::Elite) {
                 // Elite fitness preservation: copy fitness from previous generation
                 const auto& lastFitnessResults = _populationContainer->getLastFitnessResults(targetGeneration);
                 TestFitnessResult eliteFitness(0.0);
@@ -989,7 +1006,7 @@ protected:
             for (const auto& [fitness, globalIndex] : currentFitnessResults) {
                 if (currentGenomeData[globalIndex].speciesId == speciesId) {
                     auto state = _globalIndexRegistry->getState(globalIndex);
-                    if ((state == Population::GenomeState::Active || state == Population::GenomeState::Elite)) {
+                    if ((state == GenomeState::Active || state == GenomeState::Elite)) {
                         if (!foundGenome || fitness.isBetterThan(currentBest)) {
                             currentBest = fitness;
                             foundGenome = true;
@@ -1033,7 +1050,7 @@ protected:
         
         for (size_t eliteIndex : _baselineElites) {
             auto currentState = _globalIndexRegistry->getState(eliteIndex);
-            bool isStillElite = (currentState == Population::GenomeState::Elite);
+            bool isStillElite = (currentState == GenomeState::Elite);
             
             EXPECT_TRUE(isStillElite) 
                 << "Elite genome " << eliteIndex << " lost Elite status in generation " << generation
@@ -1429,7 +1446,7 @@ TEST_F(FitnessTrackingTest, EliteSelectionAccuracy) {
     }
     
     // Run PlotElites algorithm on the evolved population
-    Population::plotElites(speciesGrouping, *_eliteParams, *_globalIndexRegistry, _speciesData);
+    Operator::plotElites(speciesGrouping, *_eliteParams, *_globalIndexRegistry, _speciesData);
     
     // Log status after elite selection
     std::cout << "After elite selection:" << std::endl;
@@ -1447,7 +1464,7 @@ TEST_F(FitnessTrackingTest, EliteSelectionAccuracy) {
     
     for (size_t i = 0; i < evolvedGenomes.size(); ++i) {
         auto state = _globalIndexRegistry->getState(i);
-        if (state == Population::GenomeState::Elite) {
+        if (state == GenomeState::Elite) {
             uint32_t speciesId = evolvedGenomeData[i].speciesId;
             actualElitesBySpecies[speciesId]++;
             allEliteIndices.push_back(i);
@@ -1468,7 +1485,7 @@ TEST_F(FitnessTrackingTest, EliteSelectionAccuracy) {
         std::vector<size_t> speciesElites;
         for (size_t genomeIndex : genomeIndices) {
             auto state = _globalIndexRegistry->getState(genomeIndex);
-            if (state == Population::GenomeState::Elite) {
+            if (state == GenomeState::Elite) {
                 speciesElites.push_back(genomeIndex);
             }
         }
@@ -1492,7 +1509,7 @@ TEST_F(FitnessTrackingTest, EliteSelectionAccuracy) {
             // Check that elite has higher fitness than all non-elites in species
             for (size_t genomeIndex : genomeIndices) {
                 auto state = _globalIndexRegistry->getState(genomeIndex);
-                if (state != Population::GenomeState::Elite) {
+                if (state != GenomeState::Elite) {
                     // Find non-elite's fitness
                     for (const auto& [fitness, globalIndex] : currentFitnessResults) {
                         if (globalIndex == genomeIndex) {
@@ -1638,7 +1655,7 @@ TEST_F(ElitePreservationTest, MultiGenerationElitePreservation) {
         
         // Check elite status preservation
         auto currentState = _globalIndexRegistry->getState(eliteIndex);
-        bool stillElite = (currentState == Population::GenomeState::Elite);
+        bool stillElite = (currentState == GenomeState::Elite);
         if (stillElite) preservedElites++;
         
         // Check identity preservation
